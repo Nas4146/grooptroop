@@ -1,0 +1,60 @@
+version: 2.1
+
+jobs:
+  build-and-test:
+    macos:
+      xcode: 15.3.0 # Use the latest stable Xcode
+    
+    resource_class: macos.x86.medium.gen2
+    
+    steps:
+      - checkout
+      
+      # Setup Node.js environment
+      - node/install:
+          node-version: '20.10.0'
+      
+      # Restore cached dependencies
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "package.json" }}
+            - v1-dependencies-
+      
+      # Install dependencies
+      - run:
+          name: Install dependencies
+          command: npm install
+      
+      # Save cache
+      - save_cache:
+          paths:
+            - node_modules
+          key: v1-dependencies-{{ checksum "package.json" }}
+      
+      # Run tests
+      - run:
+          name: Run tests
+          command: npm test
+          
+      # Optionally build the app
+      - run:
+          name: Build iOS app
+          command: |
+            cd ios
+            pod install
+            cd ..
+            npx expo prebuild --platform ios --no-install
+          no_output_timeout: 20m
+      
+      # Store artifacts
+      - store_artifacts:
+          path: ios/build
+
+orbs:
+  node: circleci/node@5.1.0
+
+workflows:
+  version: 2
+  build-test-deploy:
+    jobs:
+      - build-and-test
