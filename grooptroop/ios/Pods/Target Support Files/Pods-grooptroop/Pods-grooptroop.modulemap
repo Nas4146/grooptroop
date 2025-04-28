@@ -1,0 +1,6 @@
+module Pods_grooptroop {
+  umbrella header "Pods-grooptroop-umbrella.h"
+
+  export *
+  module * { export * }
+}

@@ -12,10 +12,22 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "ios": { "bundleIdentifier": "com.nick.grooptroop" },
-    "android": { "package": "com.nick.grooptroop" },
+    "ios": {
+      "bundleIdentifier": "com.nick.grooptroop",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.nick.grooptroop"
+    },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "aa4a7513-c314-4aae-9caf-4287b478b827"
+      }
     }
   }
 }
