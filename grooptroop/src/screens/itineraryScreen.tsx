@@ -4,7 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ItineraryService } from '../services/ItineraryService';
 import { ItineraryDay } from '../models/itinerary';
 import DaySection from '../components/itinerary/DaySection';
-import '../styles/commonStyles.css';
+// Remove this import as we don't need CSS imports with twrnc
+// import '../styles/global.css'; 
+import tw from '../utils/tw';
 
 export default function ItineraryScreen() {
   const [itinerary, setItinerary] = useState<ItineraryDay[]>([]);
@@ -36,27 +38,26 @@ export default function ItineraryScreen() {
 
   if (loading) {
     return (
-      <View className="flex-1 justify-center items-center bg-gray-50">
+      <View style={tw`flex-1 justify-center items-center bg-gray-50`}>
         <ActivityIndicator size="large" color="#7C3AED" />
-        <Text className="mt-4 text-gray-600">Loading your itinerary...</Text>
+        <Text style={tw`mt-4 text-gray-600`}>Loading your itinerary...</Text>
       </View>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50">
-      <View className="flex-row justify-between items-center px-4 py-3 border-b border-gray-200">
-        <Text className="text-2xl font-bold text-gray-800">Bachelor Party</Text>
-        <Text className="text-violet-600 font-medium">June 5-8, 2024</Text>
+    <SafeAreaView style={tw`flex-1 bg-gray-50`}>
+      <View style={tw`bg-red-500 p-4`}>
+        <Text style={tw`text-white`}>Debug: Screen is rendering</Text>
       </View>
       
       <ScrollView
-  className="flex-1"
-  contentContainerStyle={{ padding: 16, paddingBottom: 64 }}
-  showsVerticalScrollIndicator={false}
-  refreshControl={
-    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-  }
+        style={tw`flex-1`}
+        contentContainerStyle={{ padding: 16, paddingBottom: 64 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       >
         {itinerary.map((day) => (
           <DaySection key={day.date} day={day} />
