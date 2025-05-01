@@ -1,12 +1,25 @@
-const preset = require('nativewind/preset');
+/** @type {import('tailwindcss').Config} */
 module.exports = {
-  // 👇 1. Tell Tailwind where to scan for class names
   content: [
-    './src/styles/commonStyles.css',        // CSS entry
-    './src/**/*.{js,jsx,ts,tsx}',           // app code
-    './components/**/*.{js,jsx,ts,tsx}',
+    './App.{js,jsx,ts,tsx}',         // Add this to scan App.tsx
+    './src/**/*.{js,jsx,ts,tsx}',     // app code
+    './components/**/*.{js,ts,tsx}'
   ],
-
   presets: [require('nativewind/preset')],
-  theme: { extend: {} },
+  theme: {
+    extend: {
+      colors: {
+        primary: '#7C3AED',     /* Vibrant purple */
+        secondary: '#F43F5E',   /* Hot pink */
+        accent: '#10B981',      /* Bright teal */
+        neutral: '#1F2937',     /* Dark slate */
+        light: '#F9FAFB',       /* Light gray */
+      },
+      fontFamily: {
+        heading: ['Poppins', 'sans-serif'],
+        body: ['Inter', 'sans-serif'],
+      }
+    },
+  },
+  plugins: [],
 };

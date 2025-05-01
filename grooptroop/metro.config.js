@@ -1,18 +1,7 @@
-/**
- * metro.config.js – GroopTroop
- * Compatible with Expo SDK 50 + and NativeWind v4.
- */
-const { getDefaultConfig } = require('expo/metro-config');          // ← use expo/metro-config, not @expo/…
-const { withNativeWind }   = require('nativewind/metro');            // ← wrapper that runs Tailwind
+const { getDefaultConfig } = require('expo/metro-config');
+const { withNativeWind } = require('nativewind/metro');
 
-///** @type {import('expo/metro-config').MetroConfig} */
+// eslint-disable-next-line no-undef
 const config = getDefaultConfig(__dirname);
 
-/* Optional: let RN load custom fonts or other non-JS assets */
-config.resolver.assetExts.push('ttf', 'otf');
-
-/* Wrap the config so NativeWind can compile your Tailwind CSS once per build */
-module.exports = withNativeWind(config, {
-  input: './src/styles/commonStyles.css',   // exact path to @tailwind directives
-  output: './.nativewind/generated.css',    // optional, speeds CI
-});
+module.exports = withNativeWind(config, { input: './src/styles/global.css' });

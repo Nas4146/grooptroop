@@ -9,7 +9,12 @@
       --color-accent: #10B981;      /* Bright teal */
       --color-neutral: #1F2937;     /* Dark slate */
       --color-light: #F9FAFB;       /* Light gray */
-      --font-heading: 'Poppins', sans-serif;
-      --font-body: 'Inter', sans-serif;
+    }
+  }
+  
+  /* Custom components */
+  @layer components {
+    .btn-primary {
+      @apply bg-violet-600 text-white px-4 py-2 rounded-md;
     }
   }
