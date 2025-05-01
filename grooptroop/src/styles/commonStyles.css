@@ -1,3 +1,15 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+    :root {
+      --color-primary: #7C3AED;     /* Vibrant purple */
+      --color-secondary: #F43F5E;   /* Hot pink */
+      --color-accent: #10B981;      /* Bright teal */
+      --color-neutral: #1F2937;     /* Dark slate */
+      --color-light: #F9FAFB;       /* Light gray */
+      --font-heading: 'Poppins', sans-serif;
+      --font-body: 'Inter', sans-serif;
+    }
+  }
