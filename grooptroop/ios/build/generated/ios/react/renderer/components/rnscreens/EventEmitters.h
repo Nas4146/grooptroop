@@ -20,93 +20,7 @@ class RNSFullWindowOverlayEventEmitter : public ViewEventEmitter {
   
   
 };
-class RNSModalScreenEventEmitter : public ViewEventEmitter {
- public:
-  using ViewEventEmitter::ViewEventEmitter;
-
-  struct OnAppear {
-      
-    };
-
-  struct OnDisappear {
-      
-    };
-
-  struct OnDismissed {
-      int dismissCount;
-    };
-
-  struct OnNativeDismissCancelled {
-      int dismissCount;
-    };
-
-  struct OnWillAppear {
-      
-    };
-
-  struct OnWillDisappear {
-      
-    };
-
-  struct OnHeaderHeightChange {
-      double headerHeight;
-    };
-
-  struct OnTransitionProgress {
-      double progress;
-    int closing;
-    int goingForward;
-    };
-
-  struct OnGestureCancel {
-      
-    };
-
-  struct OnHeaderBackButtonClicked {
-      
-    };
-
-  struct OnSheetDetentChanged {
-      int index;
-    bool isStable;
-    };
-  void onAppear(OnAppear value) const;
-
-  void onDisappear(OnDisappear value) const;
-
-  void onDismissed(OnDismissed value) const;
-
-  void onNativeDismissCancelled(OnNativeDismissCancelled value) const;
-
-  void onWillAppear(OnWillAppear value) const;
-
-  void onWillDisappear(OnWillDisappear value) const;
-
-  void onHeaderHeightChange(OnHeaderHeightChange value) const;
-
-  void onTransitionProgress(OnTransitionProgress value) const;
-
-  void onGestureCancel(OnGestureCancel value) const;
-
-  void onHeaderBackButtonClicked(OnHeaderBackButtonClicked value) const;
-
-  void onSheetDetentChanged(OnSheetDetentChanged value) const;
-};
 class RNSScreenContainerEventEmitter : public ViewEventEmitter {
- public:
-  using ViewEventEmitter::ViewEventEmitter;
-
-  
-  
-};
-class RNSScreenContentWrapperEventEmitter : public ViewEventEmitter {
- public:
-  using ViewEventEmitter::ViewEventEmitter;
-
-  
-  
-};
-class RNSScreenFooterEventEmitter : public ViewEventEmitter {
  public:
   using ViewEventEmitter::ViewEventEmitter;
 
@@ -141,27 +55,14 @@ class RNSScreenEventEmitter : public ViewEventEmitter {
       
     };
 
-  struct OnHeaderHeightChange {
-      double headerHeight;
-    };
-
   struct OnTransitionProgress {
       double progress;
     int closing;
     int goingForward;
     };
 
-  struct OnGestureCancel {
-      
-    };
-
   struct OnHeaderBackButtonClicked {
       
-    };
-
-  struct OnSheetDetentChanged {
-      int index;
-    bool isStable;
     };
   void onAppear(OnAppear value) const;
 
@@ -175,15 +76,9 @@ class RNSScreenEventEmitter : public ViewEventEmitter {
 
   void onWillDisappear(OnWillDisappear value) const;
 
-  void onHeaderHeightChange(OnHeaderHeightChange value) const;
-
   void onTransitionProgress(OnTransitionProgress value) const;
 
-  void onGestureCancel(OnGestureCancel value) const;
-
   void onHeaderBackButtonClicked(OnHeaderBackButtonClicked value) const;
-
-  void onSheetDetentChanged(OnSheetDetentChanged value) const;
 };
 class RNSScreenNavigationContainerEventEmitter : public ViewEventEmitter {
  public:
@@ -196,16 +91,8 @@ class RNSScreenStackHeaderConfigEventEmitter : public ViewEventEmitter {
  public:
   using ViewEventEmitter::ViewEventEmitter;
 
-  struct OnAttached {
-      
-    };
-
-  struct OnDetached {
-      
-    };
-  void onAttached(OnAttached value) const;
-
-  void onDetached(OnDetached value) const;
+  
+  
 };
 class RNSScreenStackHeaderSubviewEventEmitter : public ViewEventEmitter {
  public:
@@ -227,11 +114,11 @@ class RNSSearchBarEventEmitter : public ViewEventEmitter {
  public:
   using ViewEventEmitter::ViewEventEmitter;
 
-  struct OnSearchFocus {
+  struct OnFocus {
       
     };
 
-  struct OnSearchBlur {
+  struct OnBlur {
       
     };
 
@@ -254,9 +141,9 @@ class RNSSearchBarEventEmitter : public ViewEventEmitter {
   struct OnOpen {
       
     };
-  void onSearchFocus(OnSearchFocus value) const;
+  void onFocus(OnFocus value) const;
 
-  void onSearchBlur(OnSearchBlur value) const;
+  void onBlur(OnBlur value) const;
 
   void onSearchButtonPress(OnSearchButtonPress value) const;
 

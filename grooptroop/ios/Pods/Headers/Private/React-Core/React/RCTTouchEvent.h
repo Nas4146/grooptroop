@@ -1,1 +1,1 @@
-../../../../../../node_modules/react-native/React/Base/RCTTouchEvent.h
+../../../../../../node_modules/.pnpm/react-native@0.76.9_@babel+core@7.27.1_@babel+preset-env@7.27.1_@babel+core@7.27.1__@types+react@18.3.20_react@18.3.1/node_modules/react-native/React/Base/RCTTouchEvent.h

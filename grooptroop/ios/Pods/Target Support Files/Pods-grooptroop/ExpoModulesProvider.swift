@@ -12,11 +12,15 @@ import EXConstants
 import ExpoFileSystem
 import ExpoFont
 import ExpoKeepAwake
-import ExpoSystemUI
+#if EXPO_CONFIGURATION_DEBUG
+import EXDevLauncher
+import EXDevMenu
+#endif
 
 @objc(ExpoModulesProvider)
 public class ExpoModulesProvider: ModulesProvider {
   public override func getModuleClasses() -> [AnyModule.Type] {
+    #if EXPO_CONFIGURATION_DEBUG
     return [
       ExpoFetchModule.self,
       AssetModule.self,
@@ -25,19 +29,50 @@ public class ExpoModulesProvider: ModulesProvider {
       FileSystemNextModule.self,
       FontLoaderModule.self,
       KeepAwakeModule.self,
-      ExpoSystemUIModule.self
+      DevLauncherInternal.self,
+      DevLauncherAuth.self,
+      RNCSafeAreaProviderManager.self,
+      DevMenuModule.self,
+      DevMenuInternalModule.self,
+      DevMenuPreferences.self,
+      RNCSafeAreaProviderManager.self
     ]
+    #else
+    return [
+      ExpoFetchModule.self,
+      AssetModule.self,
+      ConstantsModule.self,
+      FileSystemModule.self,
+      FileSystemNextModule.self,
+      FontLoaderModule.self,
+      KeepAwakeModule.self
+    ]
+    #endif
   }
 
   public override func getAppDelegateSubscribers() -> [ExpoAppDelegateSubscriber.Type] {
+    #if EXPO_CONFIGURATION_DEBUG
+    return [
+      FileSystemBackgroundSessionHandler.self,
+      ExpoDevLauncherAppDelegateSubscriber.self
+    ]
+    #else
     return [
       FileSystemBackgroundSessionHandler.self
     ]
+    #endif
   }
 
   public override func getReactDelegateHandlers() -> [ExpoReactDelegateHandlerTupleType] {
+    #if EXPO_CONFIGURATION_DEBUG
+    return [
+      (packageName: "expo-dev-launcher", handler: ExpoDevLauncherReactDelegateHandler.self),
+      (packageName: "expo-dev-menu", handler: ExpoDevMenuReactDelegateHandler.self)
+    ]
+    #else
     return [
     ]
+    #endif
   }
 
   public override func getAppCodeSignEntitlements() -> AppCodeSignEntitlements {

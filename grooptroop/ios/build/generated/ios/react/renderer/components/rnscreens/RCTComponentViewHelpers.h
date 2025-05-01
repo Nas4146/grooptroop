@@ -17,19 +17,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
-@protocol RCTRNSModalScreenViewProtocol <NSObject>
-
-@end
-
 @protocol RCTRNSScreenContainerViewProtocol <NSObject>
-
-@end
-
-@protocol RCTRNSScreenContentWrapperViewProtocol <NSObject>
-
-@end
-
-@protocol RCTRNSScreenFooterViewProtocol <NSObject>
 
 @end
 
@@ -59,7 +47,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)clearText;
 - (void)toggleCancelButton:(BOOL)flag;
 - (void)setText:(NSString *)text;
-- (void)cancelSearch;
 @end
 
 RCT_EXTERN inline void RCTRNSSearchBarHandleCommand(
@@ -146,20 +133,6 @@ if ([commandName isEqualToString:@"setText"]) {
   NSString * text = (NSString *)arg0;
 
   [componentView setText:text];
-  return;
-}
-
-if ([commandName isEqualToString:@"cancelSearch"]) {
-#if RCT_DEBUG
-  if ([args count] != 0) {
-    RCTLogError(@"%@ command %@ received %d arguments, expected %d.", @"RNSSearchBar", commandName, (int)[args count], 0);
-    return;
-  }
-#endif
-
-  
-
-  [componentView cancelSearch];
   return;
 }
 

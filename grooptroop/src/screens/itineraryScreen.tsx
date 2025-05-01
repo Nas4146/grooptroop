@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ItineraryService } from '../services/ItineraryService';
 import { ItineraryDay } from '../models/itinerary';
 import DaySection from '../components/itinerary/DaySection';
+import '../styles/commonStyles.css';
 
 export default function ItineraryScreen() {
   const [itinerary, setItinerary] = useState<ItineraryDay[]>([]);

@@ -1,1 +1,1 @@
-../../../../../../node_modules/expo/ios/Expo.h
+../../../../../../node_modules/.pnpm/expo@52.0.46_@babel+core@7.27.1_@babel+preset-env@7.27.1_@babel+core@7.27.1__react-nati_312ab04e86d533b1718e3d350ff2b223/node_modules/expo/ios/Expo.h

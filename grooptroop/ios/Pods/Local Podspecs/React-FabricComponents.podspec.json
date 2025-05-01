@@ -86,7 +86,7 @@
     "ReactCodegen": [
 
     ],
-    "React-jsc": [
+    "hermes-engine": [
 
     ]
   },

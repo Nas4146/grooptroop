@@ -1,1 +1,1 @@
-../../../../../../node_modules/expo-modules-core/ios/Legacy/NativeModulesProxy/EXNativeModulesProxy.h
+../../../../../../node_modules/.pnpm/expo-modules-core@2.2.3/node_modules/expo-modules-core/ios/Legacy/NativeModulesProxy/EXNativeModulesProxy.h

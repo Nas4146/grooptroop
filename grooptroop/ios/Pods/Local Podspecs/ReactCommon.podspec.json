@@ -55,6 +55,9 @@
         ],
         "glog": [
 
+        ],
+        "hermes-engine": [
+
         ]
       },
       "subspecs": [
@@ -63,6 +66,9 @@
           "dependencies": {
             "React-jsi": [
               "0.76.9"
+            ],
+            "hermes-engine": [
+
             ]
           },
           "source_files": "react/bridging/**/*.{cpp,h}",

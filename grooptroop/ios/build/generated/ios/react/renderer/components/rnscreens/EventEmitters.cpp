@@ -14,110 +14,6 @@
 namespace facebook::react {
 
 
-void RNSModalScreenEventEmitter::onAppear(OnAppear $event) const {
-  dispatchEvent("appear", [](jsi::Runtime &runtime) {
-    auto $payload = jsi::Object(runtime);
-    
-    return $payload;
-  });
-}
-
-
-void RNSModalScreenEventEmitter::onDisappear(OnDisappear $event) const {
-  dispatchEvent("disappear", [](jsi::Runtime &runtime) {
-    auto $payload = jsi::Object(runtime);
-    
-    return $payload;
-  });
-}
-
-
-void RNSModalScreenEventEmitter::onDismissed(OnDismissed $event) const {
-  dispatchEvent("dismissed", [$event=std::move($event)](jsi::Runtime &runtime) {
-    auto $payload = jsi::Object(runtime);
-    $payload.setProperty(runtime, "dismissCount", $event.dismissCount);
-    return $payload;
-  });
-}
-
-
-void RNSModalScreenEventEmitter::onNativeDismissCancelled(OnNativeDismissCancelled $event) const {
-  dispatchEvent("nativeDismissCancelled", [$event=std::move($event)](jsi::Runtime &runtime) {
-    auto $payload = jsi::Object(runtime);
-    $payload.setProperty(runtime, "dismissCount", $event.dismissCount);
-    return $payload;
-  });
-}
-
-
-void RNSModalScreenEventEmitter::onWillAppear(OnWillAppear $event) const {
-  dispatchEvent("willAppear", [](jsi::Runtime &runtime) {
-    auto $payload = jsi::Object(runtime);
-    
-    return $payload;
-  });
-}
-
-
-void RNSModalScreenEventEmitter::onWillDisappear(OnWillDisappear $event) const {
-  dispatchEvent("willDisappear", [](jsi::Runtime &runtime) {
-    auto $payload = jsi::Object(runtime);
-    
-    return $payload;
-  });
-}
-
-
-void RNSModalScreenEventEmitter::onHeaderHeightChange(OnHeaderHeightChange $event) const {
-  dispatchEvent("headerHeightChange", [$event=std::move($event)](jsi::Runtime &runtime) {
-    auto $payload = jsi::Object(runtime);
-    $payload.setProperty(runtime, "headerHeight", $event.headerHeight);
-    return $payload;
-  });
-}
-
-
-void RNSModalScreenEventEmitter::onTransitionProgress(OnTransitionProgress $event) const {
-  dispatchEvent("transitionProgress", [$event=std::move($event)](jsi::Runtime &runtime) {
-    auto $payload = jsi::Object(runtime);
-    $payload.setProperty(runtime, "progress", $event.progress);
-$payload.setProperty(runtime, "closing", $event.closing);
-$payload.setProperty(runtime, "goingForward", $event.goingForward);
-    return $payload;
-  });
-}
-
-
-void RNSModalScreenEventEmitter::onGestureCancel(OnGestureCancel $event) const {
-  dispatchEvent("gestureCancel", [](jsi::Runtime &runtime) {
-    auto $payload = jsi::Object(runtime);
-    
-    return $payload;
-  });
-}
-
-
-void RNSModalScreenEventEmitter::onHeaderBackButtonClicked(OnHeaderBackButtonClicked $event) const {
-  dispatchEvent("headerBackButtonClicked", [](jsi::Runtime &runtime) {
-    auto $payload = jsi::Object(runtime);
-    
-    return $payload;
-  });
-}
-
-
-void RNSModalScreenEventEmitter::onSheetDetentChanged(OnSheetDetentChanged $event) const {
-  dispatchEvent("sheetDetentChanged", [$event=std::move($event)](jsi::Runtime &runtime) {
-    auto $payload = jsi::Object(runtime);
-    $payload.setProperty(runtime, "index", $event.index);
-$payload.setProperty(runtime, "isStable", $event.isStable);
-    return $payload;
-  });
-}
-
-
-
-
 
 void RNSScreenEventEmitter::onAppear(OnAppear $event) const {
   dispatchEvent("appear", [](jsi::Runtime &runtime) {
@@ -173,30 +69,12 @@ void RNSScreenEventEmitter::onWillDisappear(OnWillDisappear $event) const {
 }
 
 
-void RNSScreenEventEmitter::onHeaderHeightChange(OnHeaderHeightChange $event) const {
-  dispatchEvent("headerHeightChange", [$event=std::move($event)](jsi::Runtime &runtime) {
-    auto $payload = jsi::Object(runtime);
-    $payload.setProperty(runtime, "headerHeight", $event.headerHeight);
-    return $payload;
-  });
-}
-
-
 void RNSScreenEventEmitter::onTransitionProgress(OnTransitionProgress $event) const {
   dispatchEvent("transitionProgress", [$event=std::move($event)](jsi::Runtime &runtime) {
     auto $payload = jsi::Object(runtime);
     $payload.setProperty(runtime, "progress", $event.progress);
 $payload.setProperty(runtime, "closing", $event.closing);
 $payload.setProperty(runtime, "goingForward", $event.goingForward);
-    return $payload;
-  });
-}
-
-
-void RNSScreenEventEmitter::onGestureCancel(OnGestureCancel $event) const {
-  dispatchEvent("gestureCancel", [](jsi::Runtime &runtime) {
-    auto $payload = jsi::Object(runtime);
-    
     return $payload;
   });
 }
@@ -211,33 +89,6 @@ void RNSScreenEventEmitter::onHeaderBackButtonClicked(OnHeaderBackButtonClicked 
 }
 
 
-void RNSScreenEventEmitter::onSheetDetentChanged(OnSheetDetentChanged $event) const {
-  dispatchEvent("sheetDetentChanged", [$event=std::move($event)](jsi::Runtime &runtime) {
-    auto $payload = jsi::Object(runtime);
-    $payload.setProperty(runtime, "index", $event.index);
-$payload.setProperty(runtime, "isStable", $event.isStable);
-    return $payload;
-  });
-}
-
-
-
-void RNSScreenStackHeaderConfigEventEmitter::onAttached(OnAttached $event) const {
-  dispatchEvent("attached", [](jsi::Runtime &runtime) {
-    auto $payload = jsi::Object(runtime);
-    
-    return $payload;
-  });
-}
-
-
-void RNSScreenStackHeaderConfigEventEmitter::onDetached(OnDetached $event) const {
-  dispatchEvent("detached", [](jsi::Runtime &runtime) {
-    auto $payload = jsi::Object(runtime);
-    
-    return $payload;
-  });
-}
 
 
 
@@ -250,8 +101,8 @@ void RNSScreenStackEventEmitter::onFinishTransitioning(OnFinishTransitioning $ev
 }
 
 
-void RNSSearchBarEventEmitter::onSearchFocus(OnSearchFocus $event) const {
-  dispatchEvent("searchFocus", [](jsi::Runtime &runtime) {
+void RNSSearchBarEventEmitter::onFocus(OnFocus $event) const {
+  dispatchEvent("focus", [](jsi::Runtime &runtime) {
     auto $payload = jsi::Object(runtime);
     
     return $payload;
@@ -259,8 +110,8 @@ void RNSSearchBarEventEmitter::onSearchFocus(OnSearchFocus $event) const {
 }
 
 
-void RNSSearchBarEventEmitter::onSearchBlur(OnSearchBlur $event) const {
-  dispatchEvent("searchBlur", [](jsi::Runtime &runtime) {
+void RNSSearchBarEventEmitter::onBlur(OnBlur $event) const {
+  dispatchEvent("blur", [](jsi::Runtime &runtime) {
     auto $payload = jsi::Object(runtime);
     
     return $payload;
