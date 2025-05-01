@@ -4,11 +4,11 @@
     "slug": "grooptroop",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/GT-logo.png",
+    "icon": "./assets/GTlogo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/GT-logo.png",
+      "image": "./assets/GTlogo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
