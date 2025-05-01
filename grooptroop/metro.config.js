@@ -12,4 +12,7 @@ const config = getDefaultConfig(__dirname);
 config.resolver.assetExts.push('ttf', 'otf');
 
 /* Wrap the config so NativeWind can compile your Tailwind CSS once per build */
-module.exports = withNativeWind(config);
+module.exports = withNativeWind(config, {
+  input: './src/styles/commonStyles.css',   // exact path to @tailwind directives
+  output: './.nativewind/generated.css',    // optional, speeds CI
+});
