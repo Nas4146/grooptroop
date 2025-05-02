@@ -47,9 +47,7 @@ export default function ItineraryScreen() {
 
   return (
     <SafeAreaView style={tw`flex-1 bg-gray-50`}>
-      <View style={tw`bg-red-500 p-4`}>
-        <Text style={tw`text-white`}>Debug: Screen is rendering</Text>
-      </View>
+      
       
       <ScrollView
         style={tw`flex-1`}
