@@ -48,4 +48,4 @@ with_node \
   --target "/Users/nick/GroopTroop/grooptroop/ios/Pods/Target Support Files/Pods-grooptroop/ExpoModulesProvider.swift" \
   --entitlement "/Users/nick/GroopTroop/grooptroop/ios/grooptroop/grooptroop.entitlements" \
   --platform "apple" \
-  --packages "expo" "expo-asset" "expo-constants" "expo-dev-launcher" "expo-dev-menu" "expo-file-system" "expo-font" "expo-keep-awake"
+  --packages "expo" "expo-asset" "expo-constants" "expo-dev-launcher" "expo-dev-menu" "expo-file-system" "expo-font" "expo-keep-awake" "expo-secure-store"

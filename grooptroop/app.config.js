@@ -3,14 +3,13 @@ import 'dotenv/config';
 export default ({ config }) => {
   return {
     ...config,
-    // Preserve existing configuration
     expo: {
       ...config.expo,
       plugins: [
         ...(config.expo?.plugins || []),
-        "expo-secure-store" // You already have this in app.json, ensuring it's preserved
+        "expo-secure-store"
       ],
-      // Add EAS configuration here
+      jsEngine: "hermes", // Explicitly set jsEngine to hermes
       extra: {
         ...config.extra,
         firebaseApiKey: process.env.FIREBASE_API_KEY,

@@ -12,6 +12,7 @@ import EXConstants
 import ExpoFileSystem
 import ExpoFont
 import ExpoKeepAwake
+import ExpoSecureStore
 #if EXPO_CONFIGURATION_DEBUG
 import EXDevLauncher
 import EXDevMenu
@@ -28,7 +29,9 @@ public class ExpoModulesProvider: ModulesProvider {
       FileSystemModule.self,
       FileSystemNextModule.self,
       FontLoaderModule.self,
+      FontUtilsModule.self,
       KeepAwakeModule.self,
+      SecureStoreModule.self,
       DevLauncherInternal.self,
       DevLauncherAuth.self,
       RNCSafeAreaProviderManager.self,
@@ -45,7 +48,9 @@ public class ExpoModulesProvider: ModulesProvider {
       FileSystemModule.self,
       FileSystemNextModule.self,
       FontLoaderModule.self,
-      KeepAwakeModule.self
+      FontUtilsModule.self,
+      KeepAwakeModule.self,
+      SecureStoreModule.self
     ]
     #endif
   }
