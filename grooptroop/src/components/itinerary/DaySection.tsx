@@ -2,25 +2,36 @@ import React from 'react';
 import { View, Text } from 'react-native';
 import { ItineraryDay } from '../../models/itinerary';
 import EventCard from './EventCard';
+import { DaySectionProps } from '../../navigation/types';
 import tw from '../../utils/tw';
-
-interface DaySectionProps {
-  day: ItineraryDay;
-}
 
 export default function DaySection({ day }: DaySectionProps) {
   return (
     <View style={tw`mb-8`}>
-      <Text style={tw`text-xl font-bold mb-3 text-gray-800 px-4`}>
-        {day.formattedDate}
-      </Text>
+      {/* Modern day header with blob-shaped background - Gen Z loves asymmetrical shapes */}
+      <View style={tw`mb-3 flex-row items-center`}>
+        <View style={tw`bg-secondary rounded-l-full rounded-tr-3xl rounded-br-lg px-4 py-2 shadow-sm`}>
+          <Text style={tw`text-lg font-bold text-white`}>
+            {day.formattedDate}
+          </Text>
+        </View>
+        
+        {/* Floating tag for day energy/vibe }
+        <View style={tw`ml-2 bg-black bg-opacity-10 rounded-full px-3 py-1`}>
+          <Text style={tw`text-xs font-medium text-gray-700`}>chill vibes</Text>
+        </View>*/}
+      </View>
       
-      {day.events.map((event) => (
-        <EventCard 
-          key={event.id} 
-          event={event}
-        />
-      ))}
+      <View style={tw`ml-2`}>
+        {day.events.map((event, index) => (
+          <EventCard 
+            key={event.id} 
+            event={event}
+            isFirst={index === 0}
+            isLast={index === day.events.length - 1}
+          />
+        ))}
+      </View>
     </View>
   );
 }
