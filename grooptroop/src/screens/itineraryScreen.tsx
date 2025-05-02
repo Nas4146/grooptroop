@@ -149,22 +149,40 @@ export default function ItineraryScreen() {
           <Text style={tw`font-bold text-neutral text-sm`}>Trip Home Base</Text>
           
           <View style={tw`flex-row`}>
-            {/* View on Airbnb*/}
-            <TouchableOpacity 
-              style={tw`bg-gray-100 rounded-full px-2 py-0.5 flex-row items-center`}
-              onPress={() => Linking.openURL('https://airbnb.com/rooms/123456')}
-            >
-              <Ionicons name="home" size={12} color="#7C3AED" />
-              <Text style={tw`text-xs text-primary ml-1`}>Airbnb</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        
-        <Text style={tw`text-gray-600 text-xs`}>Calle Roma Norte 123</Text>
-        <Text style={tw`text-gray-600 text-xs`}>Mexico City, 06700</Text>
+    {/* View on Airbnb with payment indicator */}
+    <TouchableOpacity 
+      style={tw`bg-gray-100 rounded-full px-2 py-0.5 flex-row items-center`}
+      onPress={() => Linking.openURL('https://airbnb.com/rooms/123456')}
+    >
+      <Ionicons name="home" size={12} color="#7C3AED" />
+      <Text style={tw`text-xs text-primary ml-1`}>Airbnb</Text>
+    </TouchableOpacity>
+  </View>
+</View>
+
+{/* Add payment information row */}
+<View style={tw`flex-row items-center justify-between mb-0.5`}>
+  <View>
+    <Text style={tw`text-gray-600 text-xs`}>Calle Roma Norte 123</Text>
+    <Text style={tw`text-gray-600 text-xs`}>Mexico City, 06700</Text>
+  </View>
+  
+  <View style={tw`flex-row items-center`}>
+    <View style={tw`rounded-full p-1.5 bg-amber-100 mr-1.5`}>
+      <Ionicons 
+        name="card-outline" 
+        size={16} 
+        color="#F59E0B" 
+      />
+    </View>
+    <View style={tw`bg-amber-100 px-2 py-0.5 rounded-full`}>
+      <Text style={tw`text-xs font-bold text-amber-700`}>$150</Text>
+    </View>
+  </View>
+</View>
         
 {/* Reorganized and centered button row: Copy, View Map, Message Group */}
-<View style={tw`flex-row justify-center mt-1.5`}>
+<View style={tw`flex-row justify-left mt-1.5`}>
     {/* Copy button */}
     <TouchableOpacity 
       style={tw`bg-gray-100 rounded-lg px-2.5 py-0.5 flex-row items-center mr-2`}
