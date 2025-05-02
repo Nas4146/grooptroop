@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthProvider';
-import { ChatService } from '../services/ChatService';
+import { ChatService } from '../services/chatService';
 import { ChatMessage } from '../models/chat';
 import { FlashList } from '@shopify/flash-list';
 import MessageBubble from '../components/chat/MessageBubble';
