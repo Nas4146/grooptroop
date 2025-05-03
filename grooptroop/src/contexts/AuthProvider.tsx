@@ -2,23 +2,45 @@ import React, { createContext, useState, useEffect, useContext } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { User } from 'firebase/auth';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth, createUserDocument, signInAnonymousUser } from '../lib/firebase';
+import { 
+  auth, 
+  createUserDocument, 
+  signInAnonymousUser, 
+  signUpWithEmail,
+  signInWithEmail,
+  sendPasswordReset,
+  useGoogleAuth as useFirebaseGoogleAuth,
+  signInWithApple,
+  signOut as firebaseSignOut
+} from '../lib/firebase';
 
 // Define our user type to include Firestore profile data
-type UserProfile = {
+export type UserProfile = {
   uid: string;
   displayName: string;
+  email?: string;
+  photoURL?: string;
   avatarColor: string;
   isAnonymous: boolean;
   createdAt: Date;
   lastActive: Date;
+  providers?: string[];
 };
 
 type AuthContextType = {
   user: User | null;
   profile: UserProfile | null;
   isLoading: boolean;
-  signIn: () => Promise<void>;
+  isAuthenticated: boolean;
+  // Phase 0 methods (preserved)
+  signInAnonymously: () => Promise<void>;
+  // Phase 1 methods (new)
+  signUp: (email: string, password: string, displayName?: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
+  signInWithApple: () => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
+  signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 };
 
@@ -27,7 +49,14 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
   isLoading: true,
+  isAuthenticated: false,
+  signInAnonymously: async () => {},
+  signUp: async () => {},
   signIn: async () => {},
+  signInWithGoogle: async () => {},
+  signInWithApple: async () => {},
+  resetPassword: async () => {},
+  signOut: async () => {},
   refreshProfile: async () => {},
 });
 
@@ -38,6 +67,10 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  
+  // Google authentication hook
+  const { signInWithGoogle: firebaseSignInWithGoogle } = useFirebaseGoogleAuth();
 
   // Handle auth persistence using SecureStore
   const persistAuthState = async (uid: string | null) => {
@@ -60,15 +93,94 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
     }
   };
 
-  // Sign in anonymously
-  const signIn = async () => {
+  // Sign in anonymously (preserved from Phase 0)
+  const signInAnonymously = async () => {
     try {
       setIsLoading(true);
-      const user = await signInAnonymousUser();
+      await signInAnonymousUser();
       // User's auth state will be updated by the onAuthStateChanged listener
-      console.log('Anonymous sign-in successful');
+    } catch (error) {
+      console.error('Error signing in anonymously:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Email sign up
+  const signUp = async (email: string, password: string, displayName?: string) => {
+    try {
+      setIsLoading(true);
+      await signUpWithEmail(email, password, displayName);
+      // User's auth state will be updated by the onAuthStateChanged listener
+    } catch (error) {
+      console.error('Error signing up:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Email sign in
+  const signIn = async (email: string, password: string) => {
+    try {
+      setIsLoading(true);
+      await signInWithEmail(email, password);
+      // User's auth state will be updated by the onAuthStateChanged listener
     } catch (error) {
       console.error('Error signing in:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Google sign in
+  const handleSignInWithGoogle = async () => {
+    try {
+      setIsLoading(true);
+      await firebaseSignInWithGoogle();
+      // User's auth state will be updated by the onAuthStateChanged listener
+    } catch (error) {
+      console.error('Error signing in with Google:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Apple sign in
+  const handleSignInWithApple = async () => {
+    try {
+      setIsLoading(true);
+      await signInWithApple();
+      // User's auth state will be updated by the onAuthStateChanged listener
+    } catch (error) {
+      console.error('Error signing in with Apple:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Password reset
+  const resetPassword = async (email: string) => {
+    try {
+      await sendPasswordReset(email);
+    } catch (error) {
+      console.error('Error resetting password:', error);
+      throw error;
+    }
+  };
+  
+  // Sign out
+  const handleSignOut = async () => {
+    try {
+      setIsLoading(true);
+      await firebaseSignOut();
+      // User's auth state will be updated by the onAuthStateChanged listener
+    } catch (error) {
+      console.error('Error signing out:', error);
+      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -85,6 +197,7 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
       const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
         if (authUser) {
           setUser(authUser);
+          setIsAuthenticated(true);
           persistAuthState(authUser.uid);
           
           // Fetch or create user profile
@@ -93,16 +206,8 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
         } else {
           setUser(null);
           setProfile(null);
+          setIsAuthenticated(false);
           persistAuthState(null);
-          
-          // If we had a persisted user but now auth returns null,
-          // attempt to sign in again anonymously
-          if (persistedUid) {
-            signIn();
-          } else {
-            // First app launch - sign in anonymously
-            signIn();
-          }
         }
         setIsLoading(false);
       });
@@ -118,7 +223,14 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
     user,
     profile,
     isLoading,
+    isAuthenticated,
+    signInAnonymously, // Preserved from Phase 0
+    signUp,
     signIn,
+    signInWithGoogle: handleSignInWithGoogle,
+    signInWithApple: handleSignInWithApple,
+    resetPassword,
+    signOut: handleSignOut,
     refreshProfile
   };
 

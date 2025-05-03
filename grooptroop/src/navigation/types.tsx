@@ -1,6 +1,14 @@
 import { ItineraryEvent, ItineraryDay } from '../models/itinerary';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-// Navigation param types
+// Auth navigation param types
+export type AuthStackParamList = {
+  SignIn: undefined;
+  SignUp: undefined;
+  ForgotPassword: undefined;
+};
+
+// Main navigation param types
 export type RootStackParamList = {
   Itinerary: undefined;
   Map: undefined;
@@ -8,7 +16,10 @@ export type RootStackParamList = {
   Chat: undefined;
   Profile: undefined;
   EventDetails: { eventId: string };
-};
+} & AuthStackParamList; // Merge with auth types for easier navigation
+
+// Navigation type helpers
+export type AuthScreenNavigationProp = NativeStackNavigationProp<AuthStackParamList>;
 
 // Component prop types
 export interface EventCardProps {

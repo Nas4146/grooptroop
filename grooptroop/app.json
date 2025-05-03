@@ -19,7 +19,7 @@
       }
     },
     "android": {
-      "package": "com.nick.grooptroop"
+      "package": "com.nas4146.grooptroop"
     },
     "web": {
       "favicon": "./assets/favicon.png"
