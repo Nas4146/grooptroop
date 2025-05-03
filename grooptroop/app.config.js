@@ -40,7 +40,6 @@ export default ({ config }) => {
       plugins: [
         ...(config.expo?.plugins || []),
         "expo-secure-store",
-        "expo-web-browser" // Add this line for web browser support
       ],
       jsEngine: "hermes",
       extra: {
