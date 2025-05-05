@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/GTlogo.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/GTlogo.png",
       "resizeMode": "contain",
