@@ -30,7 +30,20 @@
       }
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-crypto",
+      "expo-web-browser",
+      "expo-application",
+      "expo-apple-authentication",
+    [
+        "expo-build-properties",
+        {
+          "ios": {
+            "flipperEnabled": false,
+            "newArchEnabled": false
+          }
+        }
+      ]
     ]
   }
 }
