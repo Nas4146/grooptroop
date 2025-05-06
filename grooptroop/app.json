@@ -27,24 +27,30 @@
     "extra": {
       "eas": {
         "projectId": "aa4a7513-c314-4aae-9caf-4287b478b827"
+      },
+      "reactNativeVersion": "0.76.9",
+      "buildProperties": {
+        "ios": {
+          "useFrameworks": "static"
       }
-    },
-    "plugins": [
-      "expo-secure-store",
-      "expo-crypto",
-      "expo-web-browser",
-      "expo-application",
-      "expo-apple-authentication",
-      "expo-linking",
-    [
-        "expo-build-properties",
-        {
-          "ios": {
-            "flipperEnabled": false,
-            "newArchEnabled": false
-          }
-        }
-      ]
-    ]
+    }
+},
+"plugins": [
+  "expo-secure-store",
+  "expo-crypto",
+  "expo-web-browser",
+  "expo-application",
+  "expo-apple-authentication",
+  "expo-linking",
+  [
+    "expo-build-properties",
+    {
+      "ios": {
+        "flipperEnabled": false,
+        "newArchEnabled": false
+      }
+    }
+  ]
+]
   }
 }
