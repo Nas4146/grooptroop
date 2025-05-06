@@ -2,5 +2,18 @@
     "files.associations": {
         "mutex": "cpp",
         "shared_mutex": "cpp"
-    }
+    },
+    // Ignore folders with huge numbers of files
+"files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/node_modules/**": true,
+    "**/dist/**": true,
+    "**/build/**": true,
+    "**/logs/**": true
+  },
+  "search.exclude": {
+  "**/node_modules/**": true,
+  "**/dist/**": true,
+  "**/build/**": true
+}
 }
