@@ -20,7 +20,16 @@ export default ({ config }) => {
       "**/*"
     ],
     plugins: [
-      "expo-secure-store"
+      'expo-secure-store',
+      [
+        'expo-build-properties',
+        {
+          ios: {
+            flipperEnabled: false,    // disable Flipper entirely
+            newArchEnabled: false,    // ensure New Architecture is off
+          },
+        },
+      ],
     ],
     jsEngine: "hermes",
     extra: {
