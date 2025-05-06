@@ -20,13 +20,6 @@ export default ({ config }) => {
       "**/*"
     ],
     plugins: [
-      'expo-secure-store',
-      'expo-crypto',
-      'expo-web-browser',
-      'expo-application',
-      'expo-apple-authentication',
-      'expo-linking',
-      [
         'expo-build-properties',
         {
           ios: {
@@ -35,7 +28,6 @@ export default ({ config }) => {
           },
         },
       ],
-    ],
     jsEngine: "hermes",
     extra: {
       firebaseApiKey: process.env.FIREBASE_API_KEY,
