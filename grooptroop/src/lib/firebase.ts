@@ -156,34 +156,34 @@ export const sendPasswordReset = async (email: string) => {
 
 // Google authentication
 export const useGoogleAuth = () => {
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    expoClientId: GOOGLE_CLIENT_ID,
-    iosClientId: GOOGLE_IOS_CLIENT_ID,
-    androidClientId: GOOGLE_ANDROID_CLIENT_ID,
-    webClientId: GOOGLE_CLIENT_ID,
-  });
-  
+  const [request, response, promptAsync] =
+    Google.useAuthRequest({
+      clientId:     GOOGLE_CLIENT_ID,
+      iosClientId:  GOOGLE_IOS_CLIENT_ID,
+      androidClientId: GOOGLE_ANDROID_CLIENT_ID,
+      webClientId:  GOOGLE_CLIENT_ID,
+    });
+
   const signInWithGoogle = async () => {
-    try {
-      const result = await promptAsync();
-      
-      if (result.type === 'success') {
-        // Create a Google credential with the token
-        const { id_token } = result.authentication;
-        const credential = GoogleAuthProvider.credential(id_token);
-        
-        // Sign in with the credential
-        const userCredential = await signInWithCredential(auth, credential);
-        await createUserDocument(userCredential.user);
-        return userCredential.user;
+    const result = await promptAsync();
+
+    // only proceed on a successful auth and when .authentication is defined
+    if (result.type === 'success' && result.authentication) {
+      const { idToken } = result.authentication;
+
+      if (!idToken) {
+        throw new Error('No ID token received from Google authentication');
       }
-      return null;
-    } catch (error) {
-      console.error('Error signing in with Google:', error);
-      throw error;
+
+      const credential = GoogleAuthProvider.credential(idToken);
+      const userCredential = await signInWithCredential(auth, credential);
+      await createUserDocument(userCredential.user);
+      return userCredential.user;
     }
+
+    return null;
   };
-  
+
   return { signInWithGoogle, request };
 };
 

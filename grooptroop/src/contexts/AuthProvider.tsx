@@ -1,18 +1,18 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import * as SecureStore from 'expo-secure-store';
-import { User } from 'firebase/auth';
-import { onAuthStateChanged } from 'firebase/auth';
 import { 
-  auth, 
-  createUserDocument, 
-  signInAnonymousUser, 
-  signUpWithEmail,
-  signInWithEmail,
-  sendPasswordReset,
-  useGoogleAuth as useFirebaseGoogleAuth,
-  signInWithApple,
-  signOut as firebaseSignOut
-} from '../lib/firebase';
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signOut as firebaseSignOut,
+  onAuthStateChanged,
+  User,
+  signInAnonymously as firebaseSignInAnonymously,
+  updateProfile
+} from 'firebase/auth';
+import { auth, db } from '../lib/firebase';
+import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
+import { useGoogleAuth, signInWithApple } from '../lib/firebase';
 
 // Define our user type to include Firestore profile data
 export type UserProfile = {
@@ -27,16 +27,15 @@ export type UserProfile = {
   providers?: string[];
 };
 
+// Define the context type
 type AuthContextType = {
+  isAuthenticated: boolean;
+  isLoading: boolean;
   user: User | null;
   profile: UserProfile | null;
-  isLoading: boolean;
-  isAuthenticated: boolean;
-  // Phase 0 methods (preserved)
   signInAnonymously: () => Promise<void>;
-  // Phase 1 methods (new)
+  signIn: (email: string, password: string) => Promise<User>;
   signUp: (email: string, password: string, displayName?: string) => Promise<void>;
-  signIn: (email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signInWithApple: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -44,33 +43,57 @@ type AuthContextType = {
   refreshProfile: () => Promise<void>;
 };
 
-// Create the context with a default value
-const AuthContext = createContext<AuthContextType>({
-  user: null,
-  profile: null,
-  isLoading: true,
-  isAuthenticated: false,
-  signInAnonymously: async () => {},
-  signUp: async () => {},
-  signIn: async () => {},
-  signInWithGoogle: async () => {},
-  signInWithApple: async () => {},
-  resetPassword: async () => {},
-  signOut: async () => {},
-  refreshProfile: async () => {},
-});
+// Create the context with a null default value
+const AuthContext = createContext<AuthContextType | null>(null);
 
 // SecureStore key for persisting auth
 const AUTH_PERSISTENCE_KEY = 'grooptroop-auth-persistence';
 
-export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }) => {
+// Helper function to create/update user document in Firestore
+const createUserDocument = async (user: User): Promise<UserProfile> => {
+  const userRef = doc(db, 'users', user.uid);
+  const userSnap = await getDoc(userRef);
+  
+  const userData = {
+    uid: user.uid,
+    displayName: user.displayName || 'User',
+    email: user.email,
+    photoURL: user.photoURL,
+    avatarColor: userSnap.exists() ? userSnap.data().avatarColor : getRandomColor(),
+    isAnonymous: user.isAnonymous,
+    createdAt: userSnap.exists() ? userSnap.data().createdAt : Timestamp.now(),
+    lastActive: Timestamp.now(),
+    providers: user.providerData.map(provider => provider.providerId)
+  };
+
+  await setDoc(userRef, userData, { merge: true });
+   // Convert Timestamps to Dates for our app's use
+   return {
+    ...userData,
+    createdAt: userData.createdAt instanceof Timestamp ? 
+               userData.createdAt.toDate() : 
+               new Date(),
+    lastActive: userData.lastActive instanceof Timestamp ? 
+                userData.lastActive.toDate() : 
+                new Date()
+  } as UserProfile;
+};
+
+// Helper function for random avatar color
+const getRandomColor = () => {
+  const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFBE0B', '#FB5607', '#8338EC', '#3A86FF'];
+  return colors[Math.floor(Math.random() * colors.length)];
+};
+
+// Create the provider component
+export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   
-  // Google authentication hook
-  const { signInWithGoogle: firebaseSignInWithGoogle } = useFirebaseGoogleAuth();
+  // Google authentication hook - moved inside the component body
+  const googleAuth = useGoogleAuth();
 
   // Handle auth persistence using SecureStore
   const persistAuthState = async (uid: string | null) => {
@@ -93,11 +116,11 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
     }
   };
 
-  // Sign in anonymously (preserved from Phase 0)
+  // Sign in anonymously
   const signInAnonymously = async () => {
     try {
       setIsLoading(true);
-      await signInAnonymousUser();
+      await firebaseSignInAnonymously(auth);
       // User's auth state will be updated by the onAuthStateChanged listener
     } catch (error) {
       console.error('Error signing in anonymously:', error);
@@ -110,7 +133,15 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
   const signUp = async (email: string, password: string, displayName?: string) => {
     try {
       setIsLoading(true);
-      await signUpWithEmail(email, password, displayName);
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      
+      // Update profile with display name if provided
+      if (displayName && userCredential.user) {
+        await updateProfile(userCredential.user, {
+          displayName
+        });
+      }
+      
       // User's auth state will be updated by the onAuthStateChanged listener
     } catch (error) {
       console.error('Error signing up:', error);
@@ -122,23 +153,15 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
   
   // Email sign in
   const signIn = async (email: string, password: string) => {
-    try {
-      setIsLoading(true);
-      await signInWithEmail(email, password);
-      // User's auth state will be updated by the onAuthStateChanged listener
-    } catch (error) {
-      console.error('Error signing in:', error);
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    return userCredential.user;
   };
   
   // Google sign in
   const handleSignInWithGoogle = async () => {
     try {
       setIsLoading(true);
-      await firebaseSignInWithGoogle();
+      await googleAuth.signInWithGoogle();
       // User's auth state will be updated by the onAuthStateChanged listener
     } catch (error) {
       console.error('Error signing in with Google:', error);
@@ -163,20 +186,15 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
   };
   
   // Password reset
-  const resetPassword = async (email: string) => {
-    try {
-      await sendPasswordReset(email);
-    } catch (error) {
-      console.error('Error resetting password:', error);
-      throw error;
-    }
+  const handleResetPassword = async (email: string) => {
+    await sendPasswordResetEmail(auth, email);
   };
   
   // Sign out
   const handleSignOut = async () => {
     try {
       setIsLoading(true);
-      await firebaseSignOut();
+      await firebaseSignOut(auth);
       // User's auth state will be updated by the onAuthStateChanged listener
     } catch (error) {
       console.error('Error signing out:', error);
@@ -220,22 +238,32 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
   }, []);
 
   const value = {
+    isAuthenticated,
+    isLoading,
     user,
     profile,
-    isLoading,
-    isAuthenticated,
-    signInAnonymously, // Preserved from Phase 0
-    signUp,
+    signInAnonymously,
     signIn,
+    signUp,
     signInWithGoogle: handleSignInWithGoogle,
     signInWithApple: handleSignInWithApple,
-    resetPassword,
+    resetPassword: handleResetPassword,
     signOut: handleSignOut,
     refreshProfile
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
-// Custom hook to use the auth context
-export const useAuth = () => useContext(AuthContext);
+// Create and export the hook to use this context
+export const useAuth = (): AuthContextType => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};

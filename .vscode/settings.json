@@ -1,7 +1,8 @@
 {
     "files.associations": {
         "mutex": "cpp",
-        "shared_mutex": "cpp"
+        "shared_mutex": "cpp",
+        "__locale": "cpp"
     },
     // Ignore folders with huge numbers of files
 "files.watcherExclude": {

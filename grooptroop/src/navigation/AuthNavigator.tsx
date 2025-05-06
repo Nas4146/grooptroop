@@ -1,18 +1,18 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { AuthStackParamList } from './types';
-import SignInScreen from '../screens/signinScreen';
-import SignUpScreen from '../screens/signupScreen';
-import ForgotPasswordScreen from '../screens/forgotPasswordScreen';
+import SignInScreen from '../screens/SignInScreen';
+import SignUpScreen from '../screens/SignUpScreen';
+import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();
 
-export default function AuthNavigator() {
+const AuthNavigator = () => {
   return (
-    <Stack.Navigator 
-      screenOptions={{ 
+    <Stack.Navigator
+      screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: '#F9FAFB' }
+        contentStyle: { backgroundColor: '#fff' }
       }}
     >
       <Stack.Screen name="SignIn" component={SignInScreen} />
@@ -20,4 +20,6 @@ export default function AuthNavigator() {
       <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
     </Stack.Navigator>
   );
-}
+};
+
+export default AuthNavigator;
