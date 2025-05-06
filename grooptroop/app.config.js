@@ -20,13 +20,14 @@ export default ({ config }) => {
       "**/*"
     ],
     plugins: [
-        'expo-build-properties',
+        ['expo-build-properties',
         {
           ios: {
             flipperEnabled: false,
             newArchEnabled: false
           },
-        },
+        }
+      ]
       ],
     jsEngine: "hermes",
     extra: {
