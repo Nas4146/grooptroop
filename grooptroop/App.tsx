@@ -6,12 +6,16 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
-import { View, Text, ActivityIndicator } from 'react-native';
+import { View, Text, ActivityIndicator, Button } from 'react-native';
 import BottomTabNavigator from './src/navigation/BottomTabNavigator';
 import AuthNavigator from './src/navigation/AuthNavigator';
 import tw from './src/utils/tw';
+import SimpleTabNavigator from './src/navigation/SimpleTabNavigator';
+import SimpleAuthNavigator from './src/navigation/SimpleAuthNavigator';
+import TestAuth from './src/screens/TestAuth';
+import MinimalTabNavigator from './src/navigation/MinimalTabNavigator';
 
-const ClientOnly = ({ children }) => {
+/*const ClientOnly = ({ children }) => {
   const [mounted, setMounted] = useState(false);
   
   useEffect(() => {
@@ -25,43 +29,70 @@ const ClientOnly = ({ children }) => {
       <Text>Loading...</Text>
     </View>
   );
+};*/
+// Function to enable/disable debug navigation
+const useDebugNavigation = () => {
+  const [debugMode, setDebugMode] = useState(false);
+  
+  // Log changes to debug mode
+  useEffect(() => {
+    console.log(`[DEBUG] Navigation debug mode: ${debugMode ? 'ON' : 'OFF'}`);
+  }, [debugMode]);
+  
+  return { debugMode, toggleDebugMode: () => setDebugMode(prev => !prev) };
 };
 
-// Component to conditionally render auth or main app
 const AppContent = () => {
   const { isAuthenticated, isLoading } = useAuth();
+  const { debugMode, toggleDebugMode } = useDebugNavigation();
   
+  console.log('[DEBUG] AppContent rendering. Auth status:', isAuthenticated ? 'logged in' : 'not logged in');
+  
+  // Show loading state
   if (isLoading) {
     return (
-      <View style={tw`flex-1 justify-center items-center bg-light`}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }}>
         <ActivityIndicator size="large" color="#7C3AED" />
-        <Text style={tw`mt-4 text-gray-600 font-medium`}>Loading...</Text>
+        <Text style={{ marginTop: 10 }}>Loading...</Text>
       </View>
     );
   }
-  
+
+  // Regular app content with debug button
   return (
-    <NavigationContainer>
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Text>App is working!</Text>
-        <Text>Auth status: {isAuthenticated ? 'Logged in' : 'Not logged in'}</Text>
+    <NavigationContainer onStateChange={(state) => console.log('[DEBUG] Navigation state changed:', state?.routes?.[state.index]?.name)}>
+      <View style={{ flex: 1 }}>
+        {debugMode ? (
+          // Show navigation based on auth state
+          isAuthenticated ? (
+            <BottomTabNavigator />
+          ) : (
+            <TestAuth />
+          )
+        ) : (
+          // Show debug screen in regular mode
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+            <Text style={{ fontSize: 20, marginBottom: 20 }}>App is working!</Text>
+            <Text style={{ marginBottom: 30 }}>Auth status: {isAuthenticated ? 'Logged in' : 'Not logged in'}</Text>
+            <Button 
+              title="Toggle Navigation Debug Mode" 
+              onPress={toggleDebugMode} 
+              color="#7C3AED"
+            />
+          </View>
+        )}
       </View>
     </NavigationContainer>
   );
-}
+};
 
-  {/*return (
-    <NavigationContainer>
-      <StatusBar style="dark" />
-      {isAuthenticated ? (
-  <ClientOnly><BottomTabNavigator /></ClientOnly>
-) : (
-  <ClientOnly><AuthNavigator /></ClientOnly>
-)}    </NavigationContainer>
-  );
-};*/}
-
+// Main App component
 export default function App() {
+  useEffect(() => {
+    console.log('[DEBUG] App component MOUNTED');
+    return () => console.log('[DEBUG] App component UNMOUNTED');
+  }, []);
+  
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>

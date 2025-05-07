@@ -36,12 +36,14 @@ type AuthContextType = {
   signInAnonymously: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<User>;
   signUp: (email: string, password: string, displayName?: string) => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: () => Promise<User | null>;
   signInWithApple: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 };
+
+const SKIP_AUTO_LOGIN = true; // Set to false in production
 
 // Create the context with a null default value
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -153,18 +155,45 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   
   // Email sign in
   const signIn = async (email: string, password: string) => {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    return userCredential.user;
+    try {
+      console.log('[AUTH] Attempting email sign in for:', email);
+      setIsLoading(true);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      console.log('[AUTH] Email sign in successful, user:', userCredential.user.uid);
+      return userCredential.user;
+    } catch (error: any) {
+      console.error('[AUTH] Email sign in failed:', error.code, error.message);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
   };
   
-  // Google sign in
-  const handleSignInWithGoogle = async () => {
+  const handleGoogleSignIn = async () => {
     try {
+      console.log('[AUTH] Starting Google sign in process');
       setIsLoading(true);
-      await googleAuth.signInWithGoogle();
-      // User's auth state will be updated by the onAuthStateChanged listener
+      
+      if (!googleAuth || typeof googleAuth.signInWithGoogle !== 'function') {
+        console.error('[AUTH] Google auth not properly initialized');
+        throw new Error('Google authentication is not available right now');
+      }
+      
+      const result = await googleAuth.signInWithGoogle();
+      
+      if (!result) {
+        console.error('[AUTH] Google sign in failed - no user returned');
+        throw new Error('Google sign in failed. No user was returned.');
+      }
+      
+      console.log('[AUTH] Google sign in completed successfully:', result.uid);
+      
+      // Manually set the user while waiting for the auth state to update
+      setUser(result);
+      
+      return result;
     } catch (error) {
-      console.error('Error signing in with Google:', error);
+      console.error('[AUTH] Error in Google sign in:', error);
       throw error;
     } finally {
       setIsLoading(false);
@@ -205,58 +234,69 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   useEffect(() => {
-    const initialize = async () => {
-      setIsLoading(true);
-      
-      // Check if user was previously signed in
-      const persistedUid = await SecureStore.getItemAsync(AUTH_PERSISTENCE_KEY);
-      
-      // Set up auth state listener
-      const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
-        if (authUser) {
-          setUser(authUser);
-          setIsAuthenticated(true);
-          persistAuthState(authUser.uid);
-          
-          // Fetch or create user profile
-          const userData = await createUserDocument(authUser);
-          setProfile(userData as UserProfile);
-        } else {
-          setUser(null);
-          setProfile(null);
-          setIsAuthenticated(false);
-          persistAuthState(null);
-        }
-        setIsLoading(false);
-      });
-      
-      // Cleanup subscription
-      return () => unsubscribe();
-    };
+    console.log('[AUTH] Setting up auth state listener');
     
-    initialize();
+    return onAuthStateChanged(auth, async (user) => {
+      console.log('[AUTH] Auth state changed, user:', user ? `${user.uid} (${user.isAnonymous ? 'anonymous' : 'authenticated'})` : 'null');
+      console.log('[AUTH] User provider data:', user?.providerData?.map(p => p.providerId) || 'none');
+      
+          // Skip auto-login for anonymous users during development
+    if (user && user.isAnonymous && SKIP_AUTO_LOGIN) {
+      console.log('[AUTH] Skipping auto-login for anonymous user during development');
+      await auth.signOut();
+      return;
+    }
+
+      if (user) {
+        try {
+          // Make sure you're setting the user object here
+          setUser(user);
+          console.log('[AUTH] Fetching user profile');
+          const userData = await createUserDocument(user);
+          console.log('[AUTH] User profile loaded:', userData ? 'success' : 'failed');
+          setProfile(userData as UserProfile);
+          setIsAuthenticated(true);
+          
+          // Persist auth state
+          persistAuthState(user.uid);
+        } catch (error) {
+          console.error('[AUTH] Error processing authenticated user:', error);
+          setIsAuthenticated(false);
+          setProfile(null);
+        }
+      } else {
+        console.log('[AUTH] User is signed out');
+        setIsAuthenticated(false);
+        setUser(null);
+        setProfile(null);
+        
+        // Clear persisted auth state
+        persistAuthState(null);      }
+      
+      setIsLoading(false);
+    });
   }, []);
 
-  const value = {
-    isAuthenticated,
-    isLoading,
-    user,
-    profile,
-    signInAnonymously,
-    signIn,
-    signUp,
-    signInWithGoogle: handleSignInWithGoogle,
-    signInWithApple: handleSignInWithApple,
-    resetPassword: handleResetPassword,
-    signOut: handleSignOut,
-    refreshProfile
-  };
+const value = {
+  user,
+  profile,
+  isLoading,
+  isAuthenticated,
+  signInAnonymously,
+  signIn,
+  signUp,
+  signInWithGoogle: handleGoogleSignIn,
+  signInWithApple: handleSignInWithApple,
+  resetPassword: handleResetPassword,
+  signOut: handleSignOut,
+  refreshProfile
+};
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+return (
+  <AuthContext.Provider value={value}>
+    {children}
+  </AuthContext.Provider>
+);
 };
 
 // Create and export the hook to use this context

@@ -12,11 +12,18 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "ios": {
-      "bundleIdentifier": "com.nas4146.grooptroop",
-      "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+"ios": {
+  "bundleIdentifier": "com.nas4146.grooptroop",
+  "infoPlist": {
+    "CFBundleURLTypes": [
+      {
+        "CFBundleURLSchemes": [
+          "com.nas4146.grooptroop"
+        ]
       }
+    ]
+  }
+}
     },
     "android": {
       "package": "com.nas4146.grooptroop"
@@ -37,6 +44,8 @@
     },
     "plugins": [
       [
+        "react-native-screens",
+
         "expo-build-properties",
         {
           "ios": {

@@ -160,35 +160,84 @@ export const sendPasswordReset = async (email: string) => {
 
 // Google authentication
 export const useGoogleAuth = () => {
-  const [request, response, promptAsync] =
+  const [request, response, promptAsync] = 
     Google.useAuthRequest({
-      clientId:     GOOGLE_CLIENT_ID,
-      iosClientId:  GOOGLE_IOS_CLIENT_ID,
+      // Change response type to code
+      responseType: "code",
+      // Keep the client IDs
+      iosClientId: GOOGLE_IOS_CLIENT_ID,
       androidClientId: GOOGLE_ANDROID_CLIENT_ID,
-      webClientId:  GOOGLE_CLIENT_ID,
+      webClientId: GOOGLE_CLIENT_ID,
+      // Additional configuration
+      scopes: ["profile", "email"]
     });
 
+  console.log('[FIREBASE] Google Auth Config:', {
+    clientId: GOOGLE_CLIENT_ID,
+    iosClientId: GOOGLE_IOS_CLIENT_ID,
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID
+  });
+
   const signInWithGoogle = async () => {
+    console.log('[FIREBASE] Starting Google sign-in with promptAsync');
     const result = await promptAsync();
+    console.log('[FIREBASE] Google auth result type:', result.type);
+    console.log('[FIREBASE] Google auth result details:', JSON.stringify(result, null, 2));
+    
+    if (result.type === 'success') {
+      try {
+        // For code-based flow, use the authorization code
+        if (result.params?.code) {
+          console.log('[FIREBASE] Got authorization code, creating credential');
 
-    // only proceed on a successful auth and when .authentication is defined
-    if (result.type === 'success' && result.authentication) {
-      const { idToken } = result.authentication;
-
-      if (!idToken) {
-        throw new Error('No ID token received from Google authentication');
+          // Create a credential using Google provider and Firebase Custom Token
+          // Get the OAuth Access Token using the authorization code
+          const { code } = result.params;
+          
+          // Create a GoogleAuthProvider instance
+          const googleProvider = new GoogleAuthProvider();
+          
+          try {
+            // Exchange the code for a token via Firebase Auth REST API
+            // This typically requires a server-side component
+            
+            // As a workaround, we'll try signing in with a credential created from the code
+            const credential = GoogleAuthProvider.credential(null, code);
+            const userCredential = await signInWithCredential(auth, credential);
+            console.log('[FIREBASE] Successfully signed in with Google code, user:', userCredential.user.uid);
+            await createUserDocument(userCredential.user);
+            return userCredential.user;
+          } catch (tokenError) {
+            console.error('[FIREBASE] Error exchanging code for token:', tokenError);
+            
+            // Alternative approach - try a different method if above fails
+            try {
+              // Create a new credential with just the code as ID token (may not work)
+              const credential = GoogleAuthProvider.credential(code);
+              const userCred = await signInWithCredential(auth, credential);
+              console.log('[FIREBASE] Signed in with alternative method, user:', userCred.user.uid);
+              await createUserDocument(userCred.user);
+              return userCred.user;
+            } catch (altError) {
+              console.error('[FIREBASE] Alternative method failed:', altError);
+              throw new Error('Could not authenticate with Google. Try a different sign-in method.');
+            }
+          }
+        } else {
+          console.error('[FIREBASE] No authorization code received from Google');
+          throw new Error('Authentication failed. No authorization code received from Google.');
+        }
+      } catch (error) {
+        console.error('[FIREBASE] Error during Google authentication:', error);
+        throw error;
       }
-
-      const credential = GoogleAuthProvider.credential(idToken);
-      const userCredential = await signInWithCredential(auth, credential);
-      await createUserDocument(userCredential.user);
-      return userCredential.user;
+    } else {
+      console.warn('[FIREBASE] Google sign-in was not successful:', result.type);
+      throw new Error('Sign in was cancelled');
     }
-
-    return null;
   };
-
-  return { signInWithGoogle, request };
+  
+  return { signInWithGoogle };
 };
 
 // Apple authentication

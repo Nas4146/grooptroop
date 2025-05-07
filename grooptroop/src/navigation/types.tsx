@@ -10,13 +10,16 @@ export type AuthStackParamList = {
 
 // Main navigation param types
 export type RootStackParamList = {
+  Home: undefined;
   Itinerary: undefined;
+  Settings: undefined;
   Map: undefined;
   Payments: undefined;
   Chat: undefined;
   Profile: undefined;
   EventDetails: { eventId: string };
-} & AuthStackParamList; // Merge with auth types for easier navigation
+}; 
+//& AuthStackParamList; // Merge with auth types for easier navigation
 
 // Navigation type helpers
 export type AuthScreenNavigationProp = NativeStackNavigationProp<AuthStackParamList>;

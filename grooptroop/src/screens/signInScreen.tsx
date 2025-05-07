@@ -16,7 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import { AuthScreenNavigationProp } from '../navigation/types';
 import tw from '../utils/tw';
 
-function SignInScreen() {
+export default function SignInScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -179,4 +179,3 @@ function SignInScreen() {
   );
 }
 
-export default SignInScreen;
