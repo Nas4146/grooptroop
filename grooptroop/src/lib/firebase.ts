@@ -12,8 +12,11 @@ import {
   sendPasswordResetEmail,
   EmailAuthProvider,
   User,
-  updateProfile
+  updateProfile,
+  initializeAuth,
+  getReactNativePersistence,
 } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirestore, doc, setDoc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import Constants from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
@@ -32,8 +35,9 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+export const auth = initializeAuth(app, {
+  persistence: getReactNativePersistence(AsyncStorage)
+});export const db = getFirestore(app);
 
 // Google OAuth client IDs
 const GOOGLE_CLIENT_ID = Constants.expoConfig?.extra?.googleClientId;

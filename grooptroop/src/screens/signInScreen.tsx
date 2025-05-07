@@ -16,7 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import { AuthScreenNavigationProp } from '../navigation/types';
 import tw from '../utils/tw';
 
-export default function SignInScreen() {
+function SignInScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -178,3 +178,5 @@ export default function SignInScreen() {
     </KeyboardAvoidingView>
   );
 }
+
+export default SignInScreen;
