@@ -1,4 +1,4 @@
-import React, {useEffect} from 'react';
+import React, {useEffect, useState} from 'react';
 import 'react-native-gesture-handler';
 import './src/styles/global.css';
 import { AuthProvider, useAuth } from './src/contexts/AuthProvider';
@@ -42,6 +42,16 @@ const AppContent = () => {
   
   return (
     <NavigationContainer>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Text>App is working!</Text>
+        <Text>Auth status: {isAuthenticated ? 'Logged in' : 'Not logged in'}</Text>
+      </View>
+    </NavigationContainer>
+  );
+}
+
+  {/*return (
+    <NavigationContainer>
       <StatusBar style="dark" />
       {isAuthenticated ? (
   <ClientOnly><BottomTabNavigator /></ClientOnly>
@@ -49,7 +59,7 @@ const AppContent = () => {
   <ClientOnly><AuthNavigator /></ClientOnly>
 )}    </NavigationContainer>
   );
-};
+};*/}
 
 export default function App() {
   return (
