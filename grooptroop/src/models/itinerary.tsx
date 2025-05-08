@@ -16,6 +16,7 @@ export interface ItineraryEvent {
 }
   
   export interface ItineraryDay {
+    id: string;
     date: string;
     formattedDate: string;
     events: ItineraryEvent[];

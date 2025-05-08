@@ -7,8 +7,10 @@ import { ItineraryService } from '../services/ItineraryService';
 import { ItineraryDay } from '../models/itinerary';
 import DaySection from '../components/itinerary/DaySection';
 import tw from '../utils/tw';
+import { useGroop } from '../contexts/GroopProvider';
 
 export default function ItineraryScreen() {
+  const { currentGroop } = useGroop();
   const [itinerary, setItinerary] = useState<ItineraryDay[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -43,14 +45,28 @@ export default function ItineraryScreen() {
   });
 
   const fetchItinerary = async () => {
+    if (!currentGroop) {
+      console.log('[ITINERARY] No groop selected, skipping itinerary fetch');
+      setItinerary([]);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+  
     try {
-      const data = await ItineraryService.getItinerary();
-      console.log("Itinerary data loaded:", data.length, "days");
+      console.log(`[ITINERARY] Fetching itinerary for groop: ${currentGroop.name} (${currentGroop.id})`);
+      setLoading(true);
+      
+      // When refreshing, bypass cache
+      const data = await ItineraryService.getItinerary(
+        currentGroop.id, 
+        !refreshing // Use cache unless refreshing
+      );
+      
+      console.log("[ITINERARY] Data loaded:", data.length, "days");
       setItinerary(data);
-      // Cache the data for offline use
-      await ItineraryService.cacheItinerary(data);
     } catch (error) {
-      console.error('Error fetching itinerary:', error);
+      console.error('[ITINERARY] Error fetching itinerary:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -63,8 +79,10 @@ export default function ItineraryScreen() {
   };
 
   useEffect(() => {
-    fetchItinerary();
-  }, []);
+    if (currentGroop) {
+      fetchItinerary();
+    }
+  }, [currentGroop]);
 
   // Toggle budget expansion and trigger animation
   const toggleBudget = () => {

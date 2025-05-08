@@ -14,22 +14,9 @@ import SimpleTabNavigator from './src/navigation/SimpleTabNavigator';
 import SimpleAuthNavigator from './src/navigation/SimpleAuthNavigator';
 import TestAuth from './src/screens/TestAuth';
 import MinimalTabNavigator from './src/navigation/MinimalTabNavigator';
+import { GroopProvider } from './src/contexts/GroopProvider';
 
-/*const ClientOnly = ({ children }) => {
-  const [mounted, setMounted] = useState(false);
-  
-  useEffect(() => {
-    const timer = setTimeout(() => setMounted(true), 300);
-    return () => clearTimeout(timer);
-  }, []);
-  
-  return mounted ? children : (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <ActivityIndicator size="large" color="#7C3AED" />
-      <Text>Loading...</Text>
-    </View>
-  );
-};*/
+
 // Function to enable/disable debug navigation
 const useDebugNavigation = () => {
   const [debugMode, setDebugMode] = useState(false);
@@ -97,7 +84,9 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AuthProvider>
-          <AppContent />
+          <GroopProvider>
+            <AppContent />
+          </GroopProvider>
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

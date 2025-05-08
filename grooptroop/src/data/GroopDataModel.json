@@ -1,0 +1,42 @@
+/groops (collection)
+  /groopId1 (document)
+    - name: "Nick's Bachelor Party"
+    - createdAt: timestamp
+    - createdBy: userId
+    - description: "..."
+    - photoURL: "..."
+    - members: [userId1, userId2, userId3, userId4]
+    - organizers: [userId1] 
+    
+    /itinerary (subcollection)
+      /dayId1 (document)
+        - date: "2024-06-05"
+        - formattedDate: "Thursday June 5th"
+        /events (subcollection)
+          /eventId1 (document)
+            - title: "..."
+            - description: "..."
+            - etc...
+    
+    /messages (subcollection)
+      /messageId1 (document)
+        - text: "..."
+        - senderId: userId
+        - createdAt: timestamp
+        - etc...
+    
+    /payments (subcollection)
+      /paymentId1 (document)
+        - description: "..."
+        - amount: 100
+        - paidBy: userId
+        - splitWith: [userId2, userId3, userId4]
+        - etc...
+
+/users (collection)
+  /userId1 (document)
+    - displayName: "..."
+    - email: "..."
+    - photoURL: "..."
+    - avatarColor: "..."
+    - groops: [groopId1, groopId3]  // Reference to groups this user belongs to
