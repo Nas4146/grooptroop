@@ -25,8 +25,8 @@
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="com.nick.grooptroop"/>
-        <data android:scheme="exp+grooptroop"/>
         <data android:scheme="com.nick.grooptroop"/>
+        <data android:scheme="exp+grooptroop"/>
       </intent-filter>
     </activity>
   </application>

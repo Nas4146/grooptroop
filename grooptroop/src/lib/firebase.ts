@@ -190,54 +190,130 @@ export const signInWithGoogle = async () => {
     console.log('[GOOGLE_AUTH] Starting Google sign-in flow');
     const userInfo = await GoogleSignin.signIn();
     console.log('[GOOGLE_AUTH] Google sign-in successful, got user info');
+    console.log('[GOOGLE_AUTH] Full response:', JSON.stringify(userInfo, null, 2));
     
-    // Get the ID token from the user info
-    // In newer versions, it's in userInfo.idToken
-    if (!userInfo.idToken) {
-      throw new Error('No ID token received from Google');
+    if (userInfo.type === 'success' && userInfo.data) {
+      console.log('[GOOGLE_AUTH] Detected Expo-specific response structure');
+      // Log the data structure to understand what's inside
+      console.log('[GOOGLE_AUTH] Data structure:', Object.keys(userInfo.data).join(', '));
+      
+      // Try to find tokens in the data object
+      if (userInfo.data.idToken) {
+        console.log('[GOOGLE_AUTH] Found ID token in userInfo.data');
+        const idToken = userInfo.data.idToken;
+        console.log('[GOOGLE_AUTH] Got ID token, length:', idToken.length);
+        
+        // Create a credential with the token
+        const credential = GoogleAuthProvider.credential(idToken);
+        console.log('[GOOGLE_AUTH] Firebase credential created');
+        
+        // Sign in with Firebase using the credential
+        const userCredential = await signInWithCredential(auth, credential);
+        console.log('[GOOGLE_AUTH] Successfully signed in with Firebase');
+        
+        // Create or update the user document
+        await createUserDocument(userCredential.user);
+        
+        return userCredential.user;
+      } else if (userInfo.data.auth && userInfo.data.auth.idToken) {
+        // Try another possible location
+        console.log('[GOOGLE_AUTH] Found ID token in userInfo.data.auth');
+        const idToken = userInfo.data.auth.idToken;
+        // Proceed with the token...
+        const credential = GoogleAuthProvider.credential(idToken);
+        const userCredential = await signInWithCredential(auth, credential);
+        await createUserDocument(userCredential.user);
+        return userCredential.user;
+      } else {
+        // If there's no idToken but we have an access token
+        if (userInfo.data.accessToken) {
+          console.log('[GOOGLE_AUTH] Using accessToken instead of idToken');
+          const credential = GoogleAuthProvider.credential(null, userInfo.data.accessToken);
+          const userCredential = await signInWithCredential(auth, credential);
+          await createUserDocument(userCredential.user);
+          return userCredential.user;
+        }
+      }
     }
     
-    console.log('[GOOGLE_AUTH] Got ID token, length:', userInfo.idToken.length);
-    
-    // Create a credential with the token
-    const credential = GoogleAuthProvider.credential(userInfo.idToken);
+    // Fall back to your existing flow if the above doesn't work
+    // Get the ID token from the user info
+    let idToken = null;
+
+    // Check all possible locations where the ID token might be
+    if (userInfo.idToken) {
+      console.log('[GOOGLE_AUTH] Found ID token directly in userInfo');
+      idToken = userInfo.idToken;
+    } else if (userInfo.user?.idToken) {
+      console.log('[GOOGLE_AUTH] Found ID token in userInfo.user');
+      idToken = userInfo.user.idToken;
+    } else if (userInfo.serverAuthCode) {
+      console.log('[GOOGLE_AUTH] Got serverAuthCode, need to exchange for tokens');
+      throw new Error('Server auth code flow not implemented');
+    } else {
+      // Add more detailed logging to see what we're actually receiving
+      console.log('[GOOGLE_AUTH] Response structure:', 
+        Object.keys(userInfo).join(', '));
+      
+      // If we have an auth object or authentication object, log its structure
+      if (userInfo.auth) {
+        console.log('[GOOGLE_AUTH] Auth object keys:', Object.keys(userInfo.auth).join(', '));
+      }
+      if (userInfo.authentication) {
+        console.log('[GOOGLE_AUTH] Authentication object keys:', 
+          Object.keys(userInfo.authentication).join(', '));
+        
+        // If there's an accessToken but no idToken, we can use it
+        if (userInfo.authentication.accessToken && !userInfo.authentication.idToken) {
+          console.log('[GOOGLE_AUTH] Using accessToken instead of idToken');
+          const credential = GoogleAuthProvider.credential(
+            null, 
+            userInfo.authentication.accessToken
+          );
+          
+          const userCredential = await signInWithCredential(auth, credential);
+          console.log('[GOOGLE_AUTH] Successfully signed in with Firebase using accessToken');
+          await createUserDocument(userCredential.user);
+          return userCredential.user;
+        }
+        
+        // If there's an idToken in the authentication object
+        if (userInfo.authentication.idToken) {
+          console.log('[GOOGLE_AUTH] Found ID token in authentication object');
+          idToken = userInfo.authentication.idToken;
+        }
+      }
+      
+      // If still no token found, throw error
+      if (!idToken) {
+        throw new Error('No ID token received from Google');
+      }
+    }
+
+    // Rest of your existing code...
+    console.log('[GOOGLE_AUTH] Got ID token, length:', idToken.length);
+    const credential = GoogleAuthProvider.credential(idToken);
     console.log('[GOOGLE_AUTH] Firebase credential created');
-    
-    // Sign in with Firebase using the credential
     const userCredential = await signInWithCredential(auth, credential);
     console.log('[GOOGLE_AUTH] Successfully signed in with Firebase');
-    
-    // Create or update the user document
     await createUserDocument(userCredential.user);
-    
     return userCredential.user;
+    
   } catch (error: any) {
     console.error('[GOOGLE_AUTH] Error during Google authentication:', error);
-    
-    // Provide more detailed error messages based on error type
-    if (error.code === 'SIGN_IN_CANCELLED') {
-      console.log('[GOOGLE_AUTH] User cancelled the sign-in flow');
-      throw new Error('Sign in was cancelled');
-    } else if (error.code === 'SIGN_IN_REQUIRED') {
-      console.log('[GOOGLE_AUTH] User needs to sign in again');
-      throw new Error('Please sign in again');
-    } else if (error.code === 'PLAY_SERVICES_NOT_AVAILABLE') {
-      console.log('[GOOGLE_AUTH] Play Services not available or outdated');
-      throw new Error('Google Play Services are not available or outdated');
-    } else {
-      console.log('[GOOGLE_AUTH] Other error:', error.message);
-      throw error;
-    }
-};
+// Provide more detailed error messages based on error type
+if (error.code === 'SIGN_IN_CANCELLED') {
+  console.log('[GOOGLE_AUTH] User cancelled the sign-in flow');
+  throw new Error('Sign in was cancelled');
+} else if (error.code === 'SIGN_IN_REQUIRED') {
+  console.log('[GOOGLE_AUTH] User needs to sign in again');
+  throw new Error('Please sign in again');
+} else if (error.code === 'PLAY_SERVICES_NOT_AVAILABLE') {
+  console.log('[GOOGLE_AUTH] Play Services not available or outdated');
+  throw new Error('Google Play Services are not available or outdated');
+} else {
+  console.log('[GOOGLE_AUTH] Other error:', error.message);
+  throw error;
 }
-
-// Sign out
-export const signOut = async () => {
-  try {
-    await auth.signOut();
-    return true;
-  } catch (error) {
-    console.error('Error signing out:', error);
-    throw error;
-  }
+}
 };
