@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "grooptroop",
-    "scheme": "com.nas4146.grooptroop",
+    "scheme": "com.nick.grooptroop",
     "slug": "grooptroop",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -14,11 +14,21 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "bundleIdentifier": "com.nas4146.grooptroop",
-      "googleServicesFile": "./GoogleService-Info.plist"
+      "bundleIdentifier": "com.nick.grooptroop",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "infoPlist": {
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "com.nick.grooptroop",
+              "com.googleusercontent.apps.1089820677487-7ipmcbfehcdegsges9m0mivuo1os50oj"
+            ]
+          }
+        ]
+      }
     },
     "android": {
-      "package": "com.nas4146.grooptroop",
+      "package": "com.nick.grooptroop",
       "googleServicesFile": "./google-services.json"
     },
     "web": {

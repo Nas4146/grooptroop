@@ -49,7 +49,7 @@ export default ({ config }) => {
     },
     ios: {
       supportsTablet: true,
-      bundleIdentifier: "com.nas4146.grooptroop",
+      bundleIdentifier: "com.nick.grooptroop",
       buildNumber: "1.0.0"
     },
     android: {
@@ -57,7 +57,7 @@ export default ({ config }) => {
         foregroundImage: "./assets/adaptive-icon.png",
         backgroundColor: "#FFFFFF"
       },
-      package: "com.nas4146.grooptroop",
+      package: "com.nick.grooptroop",
       versionCode: 1
     },
     web: {

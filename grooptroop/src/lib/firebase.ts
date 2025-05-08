@@ -5,7 +5,6 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword, 
   GoogleAuthProvider,
-  signInWithPopup,
   signInWithCredential,
   OAuthProvider,
   onAuthStateChanged,
@@ -14,7 +13,7 @@ import {
   User,
   updateProfile,
   initializeAuth,
-  getReactNativePersistence,
+  getReactNativePersistence 
 } from 'firebase/auth';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -230,41 +229,7 @@ export const signInWithGoogle = async () => {
       throw error;
     }
 };
-
-
-// Apple authentication
-export const signInWithApple = async () => {
-  try {
-    const credential = await AppleAuthentication.signInAsync({
-      requestedScopes: [
-        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-        AppleAuthentication.AppleAuthenticationScope.EMAIL,
-      ],
-    });
-    
-    // Create an OAuthProvider for Apple
-    const provider = new OAuthProvider('apple.com');
-    
-    // Create a credential using the token
-    const oAuthCredential = provider.credential({
-      idToken: credential.identityToken,
-    });
-    
-    // Sign in with the credential
-    const userCredential = await signInWithCredential(auth, oAuthCredential);
-    
-    // Get the user's name from the Apple credential
-    const displayName = credential.fullName 
-      ? `${credential.fullName.givenName || ''} ${credential.fullName.familyName || ''}`.trim()
-      : null;
-      
-    await createUserDocument(userCredential.user, { displayName });
-    return userCredential.user;
-  } catch (error) {
-    console.error('Error signing in with Apple:', error);
-    throw error;
-  }
-};
+}
 
 // Sign out
 export const signOut = async () => {
