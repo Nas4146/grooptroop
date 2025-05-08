@@ -16,12 +16,12 @@ import {
   initializeAuth,
   getReactNativePersistence,
 } from 'firebase/auth';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirestore, doc, setDoc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import Constants from 'expo-constants';
-import * as WebBrowser from 'expo-web-browser';
-import * as Google from 'expo-auth-session/providers/google';
-import * as AppleAuthentication from 'expo-apple-authentication';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
+
 
 // Firebase configuration
 const firebaseConfig = {
@@ -33,18 +33,36 @@ const firebaseConfig = {
   appId: Constants.expoConfig?.extra?.firebaseAppId
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-export const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage)
-});export const db = getFirestore(app);
-
-// Google OAuth client IDs
 const GOOGLE_CLIENT_ID = Constants.expoConfig?.extra?.googleClientId;
 const GOOGLE_IOS_CLIENT_ID = Constants.expoConfig?.extra?.googleIosClientId;
 const GOOGLE_ANDROID_CLIENT_ID = Constants.expoConfig?.extra?.googleAndroidClientId;
 
-WebBrowser.maybeCompleteAuthSession();
+console.log('[FIREBASE] Google Auth Config:', {
+  clientId: GOOGLE_CLIENT_ID ? 'Set' : 'Missing',
+  iosClientId: GOOGLE_IOS_CLIENT_ID ? 'Set' : 'Missing',
+  androidClientId: GOOGLE_ANDROID_CLIENT_ID ? 'Set' : 'Missing'
+});
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+export const auth = initializeAuth(app, {
+  persistence: getReactNativePersistence(AsyncStorage)
+});
+export const db = getFirestore(app);
+
+console.log('[GOOGLE_AUTH] Configuring with client IDs:', {
+  web: GOOGLE_CLIENT_ID ? 'Set' : 'Missing',
+  ios: GOOGLE_IOS_CLIENT_ID ? 'Set' : 'Missing',
+  android: GOOGLE_ANDROID_CLIENT_ID ? 'Set' : 'Missing'
+});
+
+// Configure Google Sign In with the extracted client IDs
+GoogleSignin.configure({
+  webClientId: GOOGLE_CLIENT_ID,
+  offlineAccess: true,
+  iosClientId: GOOGLE_IOS_CLIENT_ID, 
+});
+
 
 // Helper function to create/update a user document
 export const createUserDocument = async (user: User, additionalData?: any) => {
@@ -159,37 +177,60 @@ export const sendPasswordReset = async (email: string) => {
 };
 
 // Google authentication
-export const useGoogleAuth = () => {
-  const [request, response, promptAsync] =
-    Google.useAuthRequest({
-      clientId:     GOOGLE_CLIENT_ID,
-      iosClientId:  GOOGLE_IOS_CLIENT_ID,
-      androidClientId: GOOGLE_ANDROID_CLIENT_ID,
-      webClientId:  GOOGLE_CLIENT_ID,
-    });
-
-  const signInWithGoogle = async () => {
-    const result = await promptAsync();
-
-    // only proceed on a successful auth and when .authentication is defined
-    if (result.type === 'success' && result.authentication) {
-      const { idToken } = result.authentication;
-
-      if (!idToken) {
-        throw new Error('No ID token received from Google authentication');
-      }
-
-      const credential = GoogleAuthProvider.credential(idToken);
-      const userCredential = await signInWithCredential(auth, credential);
-      await createUserDocument(userCredential.user);
-      return userCredential.user;
+export const signInWithGoogle = async () => {
+  try {
+    console.log('[GOOGLE_AUTH] Starting Google sign-in process with native module');
+    
+    // Check if Play Services are available (Android only)
+    if (Platform.OS === 'android') {
+      await GoogleSignin.hasPlayServices();
     }
-
-    return null;
-  };
-
-  return { signInWithGoogle, request };
+    console.log(`[GOOGLE_AUTH] Running on platform: ${Platform.OS}`);
+    
+    // Sign in with Google
+    console.log('[GOOGLE_AUTH] Starting Google sign-in flow');
+    const userInfo = await GoogleSignin.signIn();
+    console.log('[GOOGLE_AUTH] Google sign-in successful, got user info');
+    
+    // Get the ID token from the user info
+    // In newer versions, it's in userInfo.idToken
+    if (!userInfo.idToken) {
+      throw new Error('No ID token received from Google');
+    }
+    
+    console.log('[GOOGLE_AUTH] Got ID token, length:', userInfo.idToken.length);
+    
+    // Create a credential with the token
+    const credential = GoogleAuthProvider.credential(userInfo.idToken);
+    console.log('[GOOGLE_AUTH] Firebase credential created');
+    
+    // Sign in with Firebase using the credential
+    const userCredential = await signInWithCredential(auth, credential);
+    console.log('[GOOGLE_AUTH] Successfully signed in with Firebase');
+    
+    // Create or update the user document
+    await createUserDocument(userCredential.user);
+    
+    return userCredential.user;
+  } catch (error: any) {
+    console.error('[GOOGLE_AUTH] Error during Google authentication:', error);
+    
+    // Provide more detailed error messages based on error type
+    if (error.code === 'SIGN_IN_CANCELLED') {
+      console.log('[GOOGLE_AUTH] User cancelled the sign-in flow');
+      throw new Error('Sign in was cancelled');
+    } else if (error.code === 'SIGN_IN_REQUIRED') {
+      console.log('[GOOGLE_AUTH] User needs to sign in again');
+      throw new Error('Please sign in again');
+    } else if (error.code === 'PLAY_SERVICES_NOT_AVAILABLE') {
+      console.log('[GOOGLE_AUTH] Play Services not available or outdated');
+      throw new Error('Google Play Services are not available or outdated');
+    } else {
+      console.log('[GOOGLE_AUTH] Other error:', error.message);
+      throw error;
+    }
 };
+
 
 // Apple authentication
 export const signInWithApple = async () => {

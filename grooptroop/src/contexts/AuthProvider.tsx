@@ -10,9 +10,8 @@ import {
   signInAnonymously as firebaseSignInAnonymously,
   updateProfile
 } from 'firebase/auth';
-import { auth, db } from '../lib/firebase';
+import { auth, db, signInWithGoogle } from '../lib/firebase';
 import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
-import { useGoogleAuth, signInWithApple } from '../lib/firebase';
 
 // Define our user type to include Firestore profile data
 export type UserProfile = {
@@ -93,9 +92,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  
-  // Google authentication hook - moved inside the component body
-  const googleAuth = useGoogleAuth();
 
   // Handle auth persistence using SecureStore
   const persistAuthState = async (uid: string | null) => {
@@ -172,11 +168,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // Google sign in
   const handleSignInWithGoogle = async () => {
     try {
+      console.log('[AUTH] Starting Google sign in process');
       setIsLoading(true);
-      await googleAuth.signInWithGoogle();
-      // User's auth state will be updated by the onAuthStateChanged listener
+      
+      // Use the direct signInWithGoogle function instead of googleAuth.signInWithGoogle
+      const user = await signInWithGoogle();
+      console.log('[AUTH] Google sign in successful, user:', user ? 'Received' : 'Null');
+      
+      return user;
     } catch (error) {
-      console.error('Error signing in with Google:', error);
+      console.error('[AUTH] Error in Google sign in:', error);
       throw error;
     } finally {
       setIsLoading(false);

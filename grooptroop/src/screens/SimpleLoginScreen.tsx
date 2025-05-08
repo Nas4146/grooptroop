@@ -120,6 +120,22 @@ useEffect(() => {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    try {
+      console.log('[DEBUG] Starting Google sign in');
+      setIsSigningIn(true);
+      
+      await signInWithGoogle();
+      
+      console.log('[DEBUG] Google sign in successful');
+    } catch (error: any) {
+      console.log('[DEBUG] Google sign in failed:', error.message);
+      Alert.alert('Google Sign In Failed', error.message || 'Please try again');
+    } finally {
+      setIsSigningIn(false);
+    }
+  };
+
 
   
   // Toggle between sign in and sign up
@@ -272,6 +288,27 @@ useEffect(() => {
           >
             <Text style={tw`text-gray-600 text-base`}>Continue as Guest</Text>
           </TouchableOpacity>
+          {/* Social Login Buttons */}
+<View style={tw`mb-5 mt-2`}>
+  <View style={tw`flex-row items-center mb-4`}>
+    <View style={tw`flex-1 h-px bg-gray-200`} />
+    <Text style={tw`px-4 text-gray-500`}>or continue with</Text>
+    <View style={tw`flex-1 h-px bg-gray-200`} />
+  </View>
+  
+  {/* Google Sign In Button */}
+  <TouchableOpacity 
+    style={tw`flex-row bg-white border border-gray-200 p-3.5 rounded-lg items-center justify-center mb-3`}
+    onPress={handleGoogleSignIn}
+    disabled={isSigningIn}
+    testID="google-signin-button"
+  >
+    <Ionicons name="logo-google" size={20} color="#EA4335" />
+    <Text style={tw`text-gray-700 ml-2 text-base font-medium`}>
+      Continue with Google
+    </Text>
+  </TouchableOpacity>
+</View>
           
           {/* Toggle between Sign In and Sign Up */}
           <View style={tw`flex-row justify-center items-center`}>

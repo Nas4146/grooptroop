@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "grooptroop",
+    "scheme": "com.nas4146.grooptroop",
     "slug": "grooptroop",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -14,18 +15,11 @@
     },
     "ios": {
       "bundleIdentifier": "com.nas4146.grooptroop",
-      "infoPlist": {
-        "CFBundleURLTypes": [
-          {
-            "CFBundleURLSchemes": [
-              "com.nas4146.grooptroop"
-            ]
-          }
-        ]
-      }
+      "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
-      "package": "com.nas4146.grooptroop"
+      "package": "com.nas4146.grooptroop",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -46,6 +40,9 @@
         "react-native-screens"
       ],
       [
+        "@react-native-google-signin/google-signin"
+      ],
+      [
         "expo-build-properties",
         {
           "ios": {
@@ -54,7 +51,6 @@
           }
         }
       ]
-    ],
-    "scheme": "com.nas4146.grooptroop"
+    ]
   }
 }

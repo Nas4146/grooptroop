@@ -20,6 +20,9 @@ export default ({ config }) => {
       "**/*"
     ],
     plugins: [
+        [
+        "@react-native-google-signin/google-signin"
+        ],
         ['expo-build-properties',
         {
           ios: {

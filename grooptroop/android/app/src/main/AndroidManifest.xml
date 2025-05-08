@@ -26,6 +26,7 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="com.nas4146.grooptroop"/>
         <data android:scheme="exp+grooptroop"/>
+        <data android:scheme="com.nas4146.grooptroop"/>
       </intent-filter>
     </activity>
   </application>
