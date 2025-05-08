@@ -3,6 +3,7 @@ import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Animated, To
 import Clipboard from '@react-native-clipboard/clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { ItineraryService } from '../services/ItineraryService';
 import { ItineraryDay } from '../models/itinerary';
 import DaySection from '../components/itinerary/DaySection';
@@ -10,13 +11,17 @@ import tw from '../utils/tw';
 import { useGroop } from '../contexts/GroopProvider';
 
 export default function ItineraryScreen() {
-  const { currentGroop } = useGroop();
+  const { currentGroop, userGroops, fetchUserGroops, setCurrentGroop } = useGroop();  const navigation = useNavigation();
   const [itinerary, setItinerary] = useState<ItineraryDay[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [budgetExpanded, setBudgetExpanded] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
   const budgetAnimation = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    fetchUserGroops();
+  }, []);
 
   // Animation configs
   const animateBudget = (expand: boolean) => {
@@ -57,13 +62,20 @@ export default function ItineraryScreen() {
       console.log(`[ITINERARY] Fetching itinerary for groop: ${currentGroop.name} (${currentGroop.id})`);
       setLoading(true);
       
+      // Clear cache if refreshing
+      if (refreshing) {
+        console.log('[ITINERARY] Refreshing, clearing cache first');
+        await ItineraryService.clearCache(currentGroop.id);
+      }
+      
       // When refreshing, bypass cache
       const data = await ItineraryService.getItinerary(
         currentGroop.id, 
         !refreshing // Use cache unless refreshing
       );
       
-      console.log("[ITINERARY] Data loaded:", data.length, "days");
+      console.log("[ITINERARY] Data loaded:", data.length, "days", 
+        data.reduce((total, day) => total + day.events.length, 0), "events");
       setItinerary(data);
     } catch (error) {
       console.error('[ITINERARY] Error fetching itinerary:', error);
@@ -71,6 +83,36 @@ export default function ItineraryScreen() {
       setLoading(false);
       setRefreshing(false);
     }
+  };
+
+  const renderGroopSelector = () => {
+    if (userGroops.length <= 1) return null;
+    
+    return (
+      <View style={tw`px-4 mb-4`}>
+        <Text style={tw`text-gray-600 mb-1`}>Select a Groop</Text>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={tw`pb-2`}
+        >
+          {userGroops.map((groop) => (
+            <TouchableOpacity
+              key={groop.id}
+              style={tw`mr-3 p-2 rounded-lg ${currentGroop?.id === groop.id ? 'bg-primary' : 'bg-gray-200'}`}
+              onPress={() => {
+                // Use the setCurrentGroop from your already destructured hook
+                setCurrentGroop(groop);
+              }}
+            >
+              <Text style={tw`${currentGroop?.id === groop.id ? 'text-white' : 'text-gray-700'}`}>
+                {groop.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+    );
   };
 
   const onRefresh = () => {
@@ -81,8 +123,48 @@ export default function ItineraryScreen() {
   useEffect(() => {
     if (currentGroop) {
       fetchItinerary();
+    } else {
+      setLoading(false);
     }
   }, [currentGroop]);
+
+  if (!currentGroop) {
+    return (
+      <SafeAreaView style={tw`flex-1 bg-light`}>
+        <View style={tw`flex-1 justify-center items-center p-6`}>
+          <Ionicons name="people-outline" size={64} color="#CBD5E1" />
+          <Text style={tw`text-xl font-bold text-gray-800 mt-4 text-center`}>
+            You're not in any groops yet
+          </Text>
+          <Text style={tw`text-base text-gray-600 mt-2 mb-6 text-center`}>
+            Create a new groop or ask someone to invite you to join their groop.
+          </Text>
+          <TouchableOpacity
+            style={tw`bg-primary rounded-lg py-4 px-6 w-full items-center mb-4`}
+            onPress={() => navigation.navigate('CreateGroop')}
+          >
+            <Text style={tw`text-white font-bold text-lg`}>Create New Groop</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={tw`border border-gray-300 rounded-lg py-4 px-6 w-full items-center`}
+            onPress={() => navigation.navigate('JoinGroop')}
+          >
+            <Text style={tw`text-gray-700 font-bold text-lg`}>Join a Groop</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (loading) {
+    return (
+      <View style={tw`flex-1 justify-center items-center bg-light`}>
+        <ActivityIndicator size="large" color="#7C3AED" />
+        <Text style={tw`mt-4 font-semibold text-primary`}>Loading your vibe...</Text>
+      </View>
+    );
+  }
 
   // Toggle budget expansion and trigger animation
   const toggleBudget = () => {
@@ -109,7 +191,10 @@ export default function ItineraryScreen() {
 
   return (
     <SafeAreaView style={tw`flex-1 bg-light`}>
-      {/* Smaller header section with better content isolation */}
+      {/* Render groop selector if user has multiple groops */}
+      {renderGroopSelector()}
+      
+      {/* Header section with dynamic groop data */}
       <Animated.View style={[
         tw`px-4 pt-1 pb-4 bg-primary rounded-b-3xl shadow-lg`, 
         { 
@@ -121,38 +206,58 @@ export default function ItineraryScreen() {
         }
       ]}>
         <View style={tw`flex-row justify-between items-center`}>
-          <Text style={tw`text-xl font-bold text-white`}>Nick's Bachelor Party</Text>
+          <Text style={tw`text-xl font-bold text-white`}>{currentGroop.name}</Text>
           <View style={tw`bg-white bg-opacity-20 rounded-full p-1.5`}>
             <Ionicons name="notifications-outline" size={18} color="white" />
           </View>
         </View>
         
-        {/* Date and Mexico City pill on the same row */}
+        {/* Date and location pill on the same row */}
         <View style={tw`flex-row items-center mt-1`}>
-  <Ionicons name="calendar" size={16} color="white" />
-  <Text style={tw`text-white font-medium ml-2 text-sm`}>June 5-8, 2024</Text>
-  
-  {/* Mexico City pill moved to be right next to the date with a small gap */}
-  <View style={tw`bg-white bg-opacity-20 rounded-full px-2.5 py-0.5 ml-3`}>
-    <Text style={tw`text-white font-medium text-xs`}>📍 Mexico City</Text>
-  </View>
+          {currentGroop.dateRange && (
+            <>
+              <Ionicons name="calendar" size={16} color="white" />
+              <Text style={tw`text-white font-medium ml-2 text-sm`}>
+                {currentGroop.dateRange}
+              </Text>
+            </>
+          )}
+          
+          {/* Location pill */}
+          {currentGroop.location && (
+            <View style={tw`bg-white bg-opacity-20 rounded-full px-2.5 py-0.5 ml-3`}>
+              <Text style={tw`text-white font-medium text-xs`}>📍 {currentGroop.location}</Text>
+            </View>
+          )}
+             <View style={tw`flex-row justify-end px-4 mt-2`}>
+  <TouchableOpacity
+    style={tw`bg-gray-200 px-3 py-1 rounded-full flex-row items-center`}
+    onPress={async () => {
+      setLoading(true);
+      // Clear cache and force refresh
+      await ItineraryService.clearCache(currentGroop.id);
+      await fetchItinerary();
+    }}
+  >
+    <Ionicons name="refresh" size={14} color="#333" />
+    <Text style={tw`text-xs font-medium ml-1 text-gray-700`}>Refresh</Text>
+  </TouchableOpacity>
 </View>
-
-  {/* New Mexico City image section */}
-  <View style={tw`items-center mt-3 mb-1`}>
-    <View style={tw`w-full h-20 rounded-lg overflow-hidden`}>
-      <Image
-        source={{ uri: 'https://images.unsplash.com/photo-1518659526054-190340b32735?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1000&q=80' }}
-        style={[tw`w-full h-full`, { resizeMode: 'cover' }]}
-      />
-      {/* Semi-transparent overlay for better text visibility
-      <View style={[tw`absolute inset-0 bg-black bg-opacity-30 items-center justify-center`]}>
-        <Text style={tw`text-white text-lg font-bold`}>Mexico City</Text>
-      </View>*/}
-    </View>
-  </View>
-
+        </View>
+  
+        {/* Location image section */}
+        {currentGroop.photoURL && (
+          <View style={tw`items-center mt-3 mb-1`}>
+            <View style={tw`w-full h-20 rounded-lg overflow-hidden`}>
+              <Image
+                source={{ uri: currentGroop.photoURL }}
+                style={[tw`w-full h-full`, { resizeMode: 'cover' }]}
+              />
+            </View>
+          </View>
+        )}
       </Animated.View>
+
 
       {/* Quick access location info */}
       <View style={[
@@ -199,8 +304,26 @@ export default function ItineraryScreen() {
   </View>
 </View>
         
+            {/* Add this button
+    <TouchableOpacity
+      style={tw`bg-primary mt-4 px-6 py-3 rounded-lg`}
+      onPress={async () => {
+        try {
+          setLoading(true);
+          await ItineraryService.importMockData(currentGroop.id);
+          console.log('[ITINERARY] Successfully imported mock data');
+          
+          // Refresh the itinerary
+          await fetchItinerary();
+        } catch (error) {
+          console.error('[ITINERARY] Error importing mock data:', error);
+        }
+      }}
+    >
+      <Text style={tw`text-white font-bold`}>Import Sample Itinerary</Text>
+    </TouchableOpacity>*/}
 {/* Reorganized and centered button row: Copy, View Map, Message Group */}
-<View style={tw`flex-row justify-left mt-1.5`}>
+<View style={tw`flex-row justify-start mt-1.5`}>
     {/* Copy button */}
     <TouchableOpacity 
       style={tw`bg-gray-100 rounded-lg px-2.5 py-0.5 flex-row items-center mr-2`}
@@ -250,14 +373,15 @@ export default function ItineraryScreen() {
         }
       >
         {itinerary.length === 0 ? (
-          <View style={tw`py-12 items-center`}>
-            <Text style={tw`text-gray-500`}>No itinerary items found</Text>
-          </View>
-        ) : (
-          itinerary.map((day) => (
-            <DaySection key={day.date} day={day} />
-          ))
-        )}
+  <View style={tw`py-12 items-center`}>
+    <Text style={tw`text-gray-500`}>No itinerary items found</Text>
+    
+  </View>
+) : (
+  itinerary.map((day) => (
+    <DaySection key={day.date} day={day} />
+  ))
+)}
       </ScrollView>
       
       {/* NEW: Animated expandable budget button/footer */}

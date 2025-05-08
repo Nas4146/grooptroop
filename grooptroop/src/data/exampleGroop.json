@@ -1,0 +1,90 @@
+accommodationCost
+"150"
+(string)
+
+
+address
+"Calle Roma Norte 123, Mexico City, 06700"
+(string)
+
+
+airbnbUrl
+"https://airbnb.com/rooms/123456"
+(string)
+
+
+createdAt
+May 8, 2025 at 12:11:18 PM UTC-7
+(timestamp)
+
+
+createdBy
+"cSL0j73hjJbonCgm6YKEcHWBNP93"
+(string)
+
+
+dateRange
+"June 5-8, 2024"
+(string)
+
+
+description
+"Weekend celebration in Mexico City"
+(string)
+
+
+endDate
+June 8, 2025 at 12:00:00 AM UTC-7
+(timestamp)
+
+
+location
+"Mexico City"
+(string)
+
+
+mapUrl
+"https://goo.gl/maps/abcdefg"
+(string)
+
+
+
+members
+(array)
+
+
+0
+"cSL0j73hjJbonCgm6YKEcHWBNP93"
+(string)
+
+
+name
+"Nick's Bachelor Party"
+(string)
+
+
+
+organizers
+(array)
+
+
+0
+"cSL0j73hjJbonCgm6YKEcHWBNP93"
+(string)
+
+
+photoURL
+"https://images.unsplash.com/photo-1518659526054-190340b32735?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1000&q=80"
+(string)
+
+
+startDate
+June 5, 2025 at 12:00:00 AM UTC-7
+(timestamp)
+
+
+totalTripCost
+"750"
+(string)
+
+

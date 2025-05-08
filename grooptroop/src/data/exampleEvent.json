@@ -1,0 +1,27 @@
+date
+"2024-06-08"
+(string)
+
+
+description
+"Return home"
+(string)
+
+
+isOptional
+false
+(boolean)
+
+
+isPaymentRequired
+false
+(boolean)
+
+
+time
+"All Day"
+(string)
+
+
+title
+"Depart"

@@ -21,6 +21,15 @@ import {
     name: string;
     description?: string;
     photoURL?: string;
+    location?: string;
+    address?: string;
+    airbnbUrl?: string;
+    mapUrl?: string;
+    startDate?: Date;
+    endDate?: Date;
+    dateRange?: string;
+    accommodationCost?: number;
+    totalTripCost?: number;
     createdAt: Date;
     createdBy: string;
     members: string[];
@@ -83,6 +92,15 @@ import {
             name: groopData.name,
             description: groopData.description,
             photoURL: groopData.photoURL,
+            location: groopData.location,
+            address: groopData.address,
+            airbnbUrl: groopData.airbnbUrl,
+            mapUrl: groopData.mapUrl,
+            startDate: groopData.startDate?.toDate(),
+            endDate: groopData.endDate?.toDate(),
+            dateRange: groopData.dateRange,
+            accommodationCost: groopData.accommodationCost,
+            totalTripCost: groopData.totalTripCost,
             createdAt: groopData.createdAt?.toDate(),
             createdBy: groopData.createdBy,
             members: groopData.members || [],
@@ -102,8 +120,22 @@ import {
     static async getUserGroops(userId: string): Promise<Groop[]> {
       try {
         console.log('[GROOP] Fetching groops for user:', userId);
+        
+        // Get user document to check groops array
+        const userRef = doc(db, 'users', userId);
+        const userDoc = await getDoc(userRef);
+        
+        if (userDoc.exists()) {
+          console.log('[GROOP] User document found, groops array:', userDoc.data().groops);
+        } else {
+          console.log('[GROOP] User document not found!');
+        }
+        
+        // Original query
         const q = query(collection(db, 'groops'), where('members', 'array-contains', userId));
         const querySnapshot = await getDocs(q);
+        
+        console.log('[GROOP] Query returned', querySnapshot.docs.length, 'documents');
         
         const groops: Groop[] = [];
         querySnapshot.forEach((doc) => {
@@ -113,6 +145,15 @@ import {
             name: data.name,
             description: data.description,
             photoURL: data.photoURL,
+            location: data.location,
+            address: data.address,
+            airbnbUrl: data.airbnbUrl,
+            mapUrl: data.mapUrl,
+            startDate: data.startDate?.toDate(),
+            endDate: data.endDate?.toDate(),
+            dateRange: data.dateRange,
+            accommodationCost: data.accommodationCost,
+            totalTripCost: data.totalTripCost,
             createdAt: data.createdAt?.toDate(),
             createdBy: data.createdBy,
             members: data.members || [],
