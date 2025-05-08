@@ -13,15 +13,23 @@ export interface ChatGroup {
 export interface ChatMessage {
   id: string;
   text: string;
-  createdAt: Timestamp;
   senderId: string;
   senderName: string;
   senderAvatar: string;
-  reactions?: Record<string, string[]>;
+  createdAt: Timestamp;
+  reactions: { [key: string]: string[] };
   replyTo?: string;
+  imageUrl?: string;
+  read: string[];
   attachments?: {
     type: 'image' | 'video' | 'file';
     url: string;
     thumbnailUrl?: string;
   }[];
+}
+
+export interface ReplyingToMessage {
+  id: string;
+  text: string;
+  senderName: string;
 }
