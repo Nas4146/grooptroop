@@ -12,18 +12,17 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-"ios": {
-  "bundleIdentifier": "com.nas4146.grooptroop",
-  "infoPlist": {
-    "CFBundleURLTypes": [
-      {
-        "CFBundleURLSchemes": [
-          "com.nas4146.grooptroop"
+    "ios": {
+      "bundleIdentifier": "com.nas4146.grooptroop",
+      "infoPlist": {
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "com.nas4146.grooptroop"
+            ]
+          }
         ]
       }
-    ]
-  }
-}
     },
     "android": {
       "package": "com.nas4146.grooptroop"
@@ -44,8 +43,9 @@
     },
     "plugins": [
       [
-        "react-native-screens",
-
+        "react-native-screens"
+      ],
+      [
         "expo-build-properties",
         {
           "ios": {
@@ -54,6 +54,7 @@
           }
         }
       ]
-    ]
+    ],
+    "scheme": "com.nas4146.grooptroop"
   }
 }

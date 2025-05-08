@@ -36,7 +36,7 @@ type AuthContextType = {
   signInAnonymously: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<User>;
   signUp: (email: string, password: string, displayName?: string) => Promise<void>;
-  signInWithGoogle: () => Promise<User | null>;
+  signInWithGoogle: () => Promise<void>;
   signInWithApple: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -169,31 +169,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
   
-  const handleGoogleSignIn = async () => {
+  // Google sign in
+  const handleSignInWithGoogle = async () => {
     try {
-      console.log('[AUTH] Starting Google sign in process');
       setIsLoading(true);
-      
-      if (!googleAuth || typeof googleAuth.signInWithGoogle !== 'function') {
-        console.error('[AUTH] Google auth not properly initialized');
-        throw new Error('Google authentication is not available right now');
-      }
-      
-      const result = await googleAuth.signInWithGoogle();
-      
-      if (!result) {
-        console.error('[AUTH] Google sign in failed - no user returned');
-        throw new Error('Google sign in failed. No user was returned.');
-      }
-      
-      console.log('[AUTH] Google sign in completed successfully:', result.uid);
-      
-      // Manually set the user while waiting for the auth state to update
-      setUser(result);
-      
-      return result;
+      await googleAuth.signInWithGoogle();
+      // User's auth state will be updated by the onAuthStateChanged listener
     } catch (error) {
-      console.error('[AUTH] Error in Google sign in:', error);
+      console.error('Error signing in with Google:', error);
       throw error;
     } finally {
       setIsLoading(false);
@@ -238,7 +221,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     
     return onAuthStateChanged(auth, async (user) => {
       console.log('[AUTH] Auth state changed, user:', user ? `${user.uid} (${user.isAnonymous ? 'anonymous' : 'authenticated'})` : 'null');
-      console.log('[AUTH] User provider data:', user?.providerData?.map(p => p.providerId) || 'none');
       
           // Skip auto-login for anonymous users during development
     if (user && user.isAnonymous && SKIP_AUTO_LOGIN) {
@@ -246,11 +228,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       await auth.signOut();
       return;
     }
-
       if (user) {
         try {
-          // Make sure you're setting the user object here
-          setUser(user);
           console.log('[AUTH] Fetching user profile');
           const userData = await createUserDocument(user);
           console.log('[AUTH] User profile loaded:', userData ? 'success' : 'failed');
@@ -277,26 +256,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     });
   }, []);
 
-const value = {
-  user,
-  profile,
-  isLoading,
-  isAuthenticated,
-  signInAnonymously,
-  signIn,
-  signUp,
-  signInWithGoogle: handleGoogleSignIn,
-  signInWithApple: handleSignInWithApple,
-  resetPassword: handleResetPassword,
-  signOut: handleSignOut,
-  refreshProfile
-};
+  const value = {
+    isAuthenticated,
+    isLoading,
+    user,
+    profile,
+    signInAnonymously,
+    signIn,
+    signUp,
+    signInWithGoogle: handleSignInWithGoogle,
+    signInWithApple: handleSignInWithApple,
+    resetPassword: handleResetPassword,
+    signOut: handleSignOut,
+    refreshProfile
+  };
 
-return (
-  <AuthContext.Provider value={value}>
-    {children}
-  </AuthContext.Provider>
-);
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
 // Create and export the hook to use this context

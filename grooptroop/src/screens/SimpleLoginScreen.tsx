@@ -103,41 +103,6 @@ useEffect(() => {
     }
   };
 
-  // Handle Google sign in
-  const handleGoogleSignIn = async () => {
-    try {
-      console.log('[DEBUG] Starting Google sign in');
-      setIsSigningIn(true);
-      
-      // Use signInWithGoogle, not handleSignInWithGoogle
-      await signInWithGoogle();
-      
-      console.log('[DEBUG] Google sign in successful');
-    } catch (error: any) {
-      console.log('[DEBUG] Google sign in failed:', error.message);
-      Alert.alert('Google Sign In Failed', error.message || 'Please try again');
-    } finally {
-      setIsSigningIn(false);
-    }
-  };
-  
-  // Handle Apple sign in
-  const handleAppleSignIn = async () => {
-    try {
-      console.log('[DEBUG] Starting Apple sign in');
-      setIsSigningIn(true);
-      
-      await signInWithApple();
-      
-      console.log('[DEBUG] Apple sign in successful');
-    } catch (error: any) {
-      console.log('[DEBUG] Apple sign in failed:', error.message);
-      Alert.alert('Apple Sign In Failed', error.message || 'Please try again');
-    } finally {
-      setIsSigningIn(false);
-    }
-  };
-
   // Handle anonymous sign in
   const handleAnonymousSignIn = async () => {
     try {
@@ -186,27 +151,27 @@ useEffect(() => {
           showsVerticalScrollIndicator={false}
           extraScrollHeight={120}
           enableOnAndroid={true}
-        >
-          <ScrollView 
-            ref={scrollViewRef}
-            contentContainerStyle={tw`flex-grow p-5 justify-center`}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            {/* Header */}
-            <View style={tw`items-center mb-8`}>
-              <View style={tw`bg-primary bg-opacity-10 rounded-full p-6 mb-4`}>
-                <Ionicons name={isSignUp ? "person-add" : "airplane"} size={48} color="#7C3AED" />
-              </View>
-              <Text style={tw`text-2xl font-bold mb-2 text-neutral`}>
-                {isSignUp ? 'Create Account' : 'Welcome Back'}
-              </Text>
-              <Text style={tw`text-base text-gray-500 text-center`}>
-                {isSignUp
-                  ? 'Sign up to start planning trips with friends'
-                  : 'Sign in to continue planning your trips'}
-              </Text>
-            </View>
+    >
+      <ScrollView 
+        ref={scrollViewRef}
+        contentContainerStyle={tw`flex-grow p-5 justify-center`}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View style={tw`items-center mb-8`}>
+          <View style={tw`bg-primary bg-opacity-10 rounded-full p-6 mb-4`}>
+            <Ionicons name={isSignUp ? "person-add" : "airplane"} size={48} color="#7C3AED" />
+          </View>
+          <Text style={tw`text-2xl font-bold mb-2 text-neutral`}>
+            {isSignUp ? 'Create Account' : 'Welcome Back'}
+          </Text>
+          <Text style={tw`text-base text-gray-500 text-center`}>
+            {isSignUp
+              ? 'Sign up to start planning trips with friends'
+              : 'Sign in to continue planning your trips'}
+          </Text>
+        </View>
         
         {/* Form */}
         <View style={tw`bg-white rounded-xl p-4 shadow-sm`}>
@@ -283,8 +248,8 @@ useEffect(() => {
             </>
           )}
           
- {/* Action Button */}
- <TouchableOpacity 
+          {/* Action Button */}
+          <TouchableOpacity 
             style={tw`bg-primary p-3.5 rounded-lg items-center mb-3`}
             onPress={isSignUp ? handleEmailSignUp : handleEmailSignIn}
             disabled={isSigningIn}
@@ -298,38 +263,6 @@ useEffect(() => {
               </Text>
             )}
           </TouchableOpacity>
-          
-          {/* Social login divider */}
-          <View style={tw`flex-row items-center my-4`}>
-            <View style={tw`flex-1 h-px bg-gray-200`} />
-            <Text style={tw`mx-4 text-gray-500 text-sm`}>OR CONTINUE WITH</Text>
-            <View style={tw`flex-1 h-px bg-gray-200`} />
-          </View>
-          
-          {/* Social login buttons */}
-          <View style={tw`flex-row justify-center mb-4`}>
-            {/* Google Login Button */}
-            <TouchableOpacity 
-              style={tw`bg-white flex-row justify-center items-center p-3 rounded-lg border border-gray-200 mx-2 flex-1`}
-              onPress={handleGoogleSignIn}
-              disabled={isSigningIn}
-            >
-              <Ionicons name="logo-google" size={18} color="#4285F4" style={tw`mr-2`} />
-              <Text style={tw`text-neutral font-medium`}>Google</Text>
-            </TouchableOpacity>
-            
-            {/* Apple Login Button - only on iOS */}
-            {Platform.OS === 'ios' && isAppleAuthAvailable && (
-              <TouchableOpacity 
-                style={tw`bg-black flex-row justify-center items-center p-3 rounded-lg mx-2 flex-1`}
-                onPress={handleAppleSignIn}
-                disabled={isSigningIn}
-              >
-                <Ionicons name="logo-apple" size={18} color="white" style={tw`mr-2`} />
-                <Text style={tw`text-white font-medium`}>Apple</Text>
-              </TouchableOpacity>
-            )}
-          </View>
           
           {/* Anonymous Sign In */}
           <TouchableOpacity 
