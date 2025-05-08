@@ -1,4 +1,4 @@
-package com.nas4146.grooptroop
+package com.nick.grooptroop
 
 import android.app.Application
 import android.content.res.Configuration

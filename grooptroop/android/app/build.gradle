@@ -86,9 +86,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.nas4146.grooptroop'
+    namespace 'com.nick.grooptroop'
     defaultConfig {
-        applicationId 'com.nas4146.grooptroop'
+        applicationId 'com.nick.grooptroop'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

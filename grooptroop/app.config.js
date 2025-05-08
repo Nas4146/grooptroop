@@ -50,7 +50,17 @@ export default ({ config }) => {
     ios: {
       supportsTablet: true,
       bundleIdentifier: "com.nick.grooptroop",
-      buildNumber: "1.0.0"
+      buildNumber: "1.0.0",
+      infoPlist: {
+        CFBundleURLTypes: [
+          {
+            CFBundleURLSchemes: [
+              "com.nick.grooptroop",
+              "com.googleusercontent.apps.1089820677487-7ipmcbfehcdegsges9m0mivuo1os50oj"
+            ]
+          }
+        ]
+      }
     },
     android: {
       adaptiveIcon: {
