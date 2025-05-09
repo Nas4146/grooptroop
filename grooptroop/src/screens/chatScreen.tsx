@@ -19,6 +19,7 @@ import { FlashList } from '@shopify/flash-list';
 import MessageBubble from '../components/chat/MessageBubble';
 import MessageInput from '../components/chat/MessageInput';
 import tw from '../utils/tw';
+import { KeyExchangeService } from '../services/KeyExchangeService';
 
 export default function ChatScreen() {
   const { profile } = useAuth();
@@ -35,6 +36,43 @@ export default function ChatScreen() {
   useEffect(() => {
     console.log(`[CHAT_DEBUG] Current groop ID: ${currentGroop?.id}`);
   }, [currentGroop]);
+
+  useEffect(() => {
+    const initializeEncryption = async () => {
+      if (profile && currentGroop) {
+        // Check if encryption is already set up
+        const groopRef = doc(db, 'groops', currentGroop.id);
+        const groopSnap = await getDoc(groopRef);
+        
+        if (!groopSnap.data()?.encryptionEnabled) {
+          // Set up encryption for this group
+          await ChatService.initializeGroupEncryption(currentGroop.id, profile.uid);
+          console.log('[CHAT] Encryption initialized for group:', currentGroop.id);
+        }
+      }
+    };
+    
+    initializeEncryption();
+  }, [profile, currentGroop]);
+
+  useEffect(() => {
+    // Process key exchanges whenever the screen is focused
+    const checkForKeyExchanges = async () => {
+      if (profile && currentGroop) {
+        await KeyExchangeService.processPendingKeyExchanges(profile.uid);
+      }
+    };
+    
+    // Run on mount
+    checkForKeyExchanges();
+    
+    // Set up an interval to check periodically
+    const interval = setInterval(checkForKeyExchanges, 60000); // Check every minute
+    
+    return () => {
+      clearInterval(interval);
+    };
+  }, [profile, currentGroop]);
 
   useEffect(() => {
     if (currentGroop) {

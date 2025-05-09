@@ -106,9 +106,14 @@ export default function MessageBubble({
           )}
           
           {/* Message text */}
-          <Text style={tw`${isFromCurrentUser ? 'text-white' : 'text-gray-800'}`}>
-            {message.text}
-          </Text>
+          <View style={tw`flex-row items-center`}>
+  {message.isEncrypted && (
+    <Ionicons name="lock-closed" size={12} color="#78c0e1" style={tw`mr-1`} />
+  )}
+  <Text>
+    {message.text}
+  </Text>
+</View>
           
           {/* Image if present */}
           {message.imageUrl && (

@@ -14,7 +14,8 @@ import {
   } from 'firebase/firestore';
   import { db } from '../lib/firebase';
   import { UserProfile } from '../contexts/AuthProvider';
-  
+  import { KeyExchangeService } from './KeyExchangeService';
+
   // Define our Groop type
   export interface Groop {
     id: string;
@@ -38,12 +39,7 @@ import {
   
   export class GroopService {
     // Create a new groop
-    static async createGroop(
-      name: string, 
-      userId: string, 
-      description?: string,
-      photoURL?: string
-    ): Promise<string> {
+    static async createGroop(groopData: GroopData, userId: string): Promise<string> {
       try {
         console.log('[GROOP] Creating new groop:', name);
         
@@ -67,8 +63,11 @@ import {
         await updateDoc(userRef, {
           groops: arrayUnion(groopId)
         });
-        
+
+        await KeyExchangeService.setupGroopEncryption(groopId, userId);
+
         console.log('[GROOP] Successfully created groop with ID:', groopId);
+
         return groopId;
       } catch (error) {
         console.error('[GROOP] Error creating groop:', error);
@@ -174,21 +173,21 @@ import {
       try {
         console.log('[GROOP] Adding user', userId, 'to groop', groopId);
         
-        // Add user to groop members
+        // Check if the group exists and get current members
         const groopRef = doc(db, 'groops', groopId);
-        await updateDoc(groopRef, {
-          members: arrayUnion(userId)
-        });
+        const groopSnap = await getDoc(groopRef);
         
-        // Add groop to user's groops
-        const userRef = doc(db, 'users', userId);
-        await updateDoc(userRef, {
-          groops: arrayUnion(groopId)
-        });
-        
-        console.log('[GROOP] Successfully added member to groop');
+        if (!groopSnap.exists()) {
+          throw new Error(`Groop ${groopId} does not exist`);
+        }
+
+        if (groopSnap.exists() && groopSnap.data().encryptionEnabled) {
+          // Get current members to find someone who can share the key
+          const existingMembers = groopSnap.data().members || [];
+          await KeyExchangeService.handleNewMemberJoined(groopId, userId, existingMembers);
+        }
       } catch (error) {
-        console.error('[GROOP] Error adding member to groop:', error);
+        console.error('[GROOP] Error adding member:', error);
         throw error;
       }
     }

@@ -15,7 +15,7 @@ import SimpleAuthNavigator from './src/navigation/SimpleAuthNavigator';
 import TestAuth from './src/screens/TestAuth';
 import MinimalTabNavigator from './src/navigation/MinimalTabNavigator';
 import { GroopProvider } from './src/contexts/GroopProvider';
-
+import { KeyExchangeService } from './src/services/KeyExchangeService';
 
 // Function to enable/disable debug navigation
 const useDebugNavigation = () => {
@@ -32,6 +32,7 @@ const useDebugNavigation = () => {
 const AppContent = () => {
   const { isAuthenticated, isLoading } = useAuth();
   const { debugMode, toggleDebugMode } = useDebugNavigation();
+  const { profile } = useAuth();
   
   console.log('[DEBUG] AppContent rendering. Auth status:', isAuthenticated ? 'logged in' : 'not logged in');
   
@@ -45,6 +46,17 @@ const AppContent = () => {
     );
   }
 
+  useEffect(() => {
+    const checkEncryption = async () => {
+      if (profile) {
+        console.log('[APP] Checking encryption setup for user:', profile.uid);
+        await KeyExchangeService.processPendingKeyExchanges(profile.uid);
+      }
+    };
+    
+    checkEncryption();
+  }, [profile]);
+  
   // Regular app content with debug button
   return (
     <NavigationContainer onStateChange={(state) => console.log('[DEBUG] Navigation state changed:', state?.routes?.[state.index]?.name)}>

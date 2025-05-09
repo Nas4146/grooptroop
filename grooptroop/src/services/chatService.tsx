@@ -19,6 +19,8 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { ChatMessage } from '../models/chat';
+import { EncryptionService } from './EncryptionService';
+
 
 export class ChatService {
   // Subscribe to messages with pagination
@@ -27,13 +29,38 @@ export class ChatService {
     const messagesRef = collection(db, `groops/${groopId}/messages`);
     const q = query(messagesRef, orderBy('createdAt', 'desc'), limit(maxMessages));
     
-    return onSnapshot(q, (snapshot) => {
+    return onSnapshot(q, async (snapshot) => {
       const messages: ChatMessage[] = [];
-      snapshot.forEach(doc => {
+      
+      // Process messages one by one for decryption
+      for (const doc of snapshot.docs) {
         const data = doc.data();
+        
+        // Determine if this message needs decryption
+        let messageText = data.text || '';
+        
+        if (data.isEncrypted) {
+          try {
+            // Try to decrypt the message
+            const decryptedText = await EncryptionService.decryptMessage(messageText, groopId);
+            
+            if (decryptedText) {
+              // Successfully decrypted
+              messageText = decryptedText;
+            } else {
+              // Failed to decrypt
+              messageText = "[Cannot decrypt - missing key]";
+            }
+          } catch (error) {
+            console.error('[CHAT] Error decrypting message:', error);
+            messageText = "[Decryption error]";
+          }
+        }
+        
+        // Create the message object with decrypted text
         messages.push({
           id: doc.id,
-          text: data.text || '',
+          text: messageText,
           senderId: data.senderId,
           senderName: data.senderName,
           senderAvatar: data.senderAvatar || '',
@@ -42,10 +69,12 @@ export class ChatService {
           replyTo: data.replyTo,
           imageUrl: data.imageUrl,
           read: data.read || [],
+          isEncrypted: data.isEncrypted || false,
           attachments: data.attachments || []
         });
-      });
-      console.log(`[CHAT] Received ${messages.length} messages from subscription`);
+      }
+      
+      console.log(`[CHAT] Received and processed ${messages.length} messages from subscription`);
       callback(messages);
     }, error => {
       console.error("[CHAT] Error listening to messages:", error);
@@ -72,12 +101,20 @@ export class ChatService {
         return false;
       }
       
+      // Encrypt message text
+      const encryptedText = await EncryptionService.encryptMessage(message.text, groopId);
+      if (!encryptedText) {
+        console.error('[CHAT] Error encrypting message');
+        return false;
+      }
+      
       // Create a new message document in the messages subcollection
       const messagesRef = collection(db, `groops/${groopId}/messages`);
       
-      // Prepare message data - filter out undefined values
+      // Prepare message data with encrypted text
       const messageData = {
-        text: message.text,
+        text: encryptedText,  // Store encrypted text
+        isEncrypted: true,    // Flag to indicate encryption
         senderId: message.senderId,
         senderName: message.senderName,
         senderAvatar: message.senderAvatar,
@@ -92,29 +129,32 @@ export class ChatService {
       }
       
       if (message.imageUrl) {
+        // For now, we're not encrypting image URLs
+        // In a full implementation, you'd encrypt file content too
         messageData['imageUrl'] = message.imageUrl;
       }
       
       // Create a new message document
       const newMessageRef = await addDoc(messagesRef, messageData);
       
-      // Update groop's lastActivity field
+      // Update groop's lastActivity field - Use placeholder for preview
       await updateDoc(groopRef, {
         lastActivity: serverTimestamp(),
         lastMessage: {
           id: newMessageRef.id,
-          text: message.text.substring(0, 50) + (message.text.length > 50 ? '...' : ''),
+          text: "🔒 Encrypted message",  // Don't show actual content in preview
           senderId: message.senderId,
           senderName: message.senderName,
           timestamp: serverTimestamp(),
-          hasImage: !!message.imageUrl
+          hasImage: !!message.imageUrl,
+          isEncrypted: true
         }
       });
       
-      console.log('[CHAT] Message sent successfully');
+      console.log('[CHAT] Encrypted message sent successfully');
       return true;
     } catch (error) {
-      console.error("[CHAT] Error sending message:", error);
+      console.error("[CHAT] Error sending encrypted message:", error);
       throw error;
     }
   }
@@ -211,42 +251,82 @@ export class ChatService {
     }
   }
   
+  // Set up encryption for a new group
+static async initializeGroupEncryption(groopId: string, userId: string): Promise<boolean> {
+  try {
+    console.log(`[CHAT] Initializing encryption for group: ${groopId}`);
+    
+    // Generate a new symmetric key for the group
+    await EncryptionService.generateGroopKey(groopId);
+    
+    // Update group metadata to indicate encryption is enabled
+    const groopRef = doc(db, 'groops', groopId);
+    await updateDoc(groopRef, {
+      encryptionEnabled: true,
+      encryptionInitiatedBy: userId,
+      encryptionInitiatedAt: serverTimestamp()
+    });
+    
+    return true;
+  } catch (error) {
+    console.error('[CHAT] Error initializing group encryption:', error);
+    return false;
+  }
+}
   // Search messages
-  static async searchMessages(groopId: string, searchText: string, maxResults = 20): Promise<ChatMessage[]> {
+  static async searchMessages(groopId: string, searchText: string, maxResults = 100): Promise<ChatMessage[]> {
     try {
       console.log(`[CHAT] Searching messages in groop ${groopId} for: ${searchText}`);
       
-      // Firestore doesn't support full-text search natively
-      // This is a simple solution that searches only the beginning of messages
+      // For encrypted messages, we need to get a larger set and filter client-side
       const messagesRef = collection(db, `groops/${groopId}/messages`);
       const q = query(
         messagesRef,
-        orderBy('text'),
-        // Use >= and < for prefix search
-        where('text', '>=', searchText),
-        where('text', '<', searchText + '\uf8ff'),
-        limit(maxResults)  // Use the imported 'limit' function with our renamed parameter
+        orderBy('createdAt', 'desc'),
+        limit(maxResults)
       );
       
       const snapshot = await getDocs(q);
       const messages: ChatMessage[] = [];
       
-      snapshot.forEach(doc => {
+      // Process and decrypt messages
+      for (const doc of snapshot.docs) {
         const data = doc.data();
-        messages.push({
-          id: doc.id,
-          text: data.text || '',
-          senderId: data.senderId,
-          senderName: data.senderName,
-          senderAvatar: data.senderAvatar || '',
-          createdAt: data.createdAt,
-          reactions: data.reactions || {},
-          replyTo: data.replyTo,
-          imageUrl: data.imageUrl,
-          read: data.read || [],
-          attachments: data.attachments || []
-        });
-      });
+        let messageText = data.text || '';
+        
+        // Decrypt if encrypted
+        if (data.isEncrypted) {
+          try {
+            const decryptedText = await EncryptionService.decryptMessage(messageText, groopId);
+            if (decryptedText) {
+              messageText = decryptedText;
+            } else {
+              messageText = "[Cannot decrypt]";
+            }
+          } catch (error) {
+            console.error('[CHAT] Error decrypting message during search:', error);
+            messageText = "[Decryption error]";
+          }
+        }
+        
+        // Add to results only if it contains the search text
+        if (messageText.toLowerCase().includes(searchText.toLowerCase())) {
+          messages.push({
+            id: doc.id,
+            text: messageText,
+            senderId: data.senderId,
+            senderName: data.senderName,
+            senderAvatar: data.senderAvatar || '',
+            createdAt: data.createdAt,
+            reactions: data.reactions || {},
+            replyTo: data.replyTo,
+            imageUrl: data.imageUrl,
+            read: data.read || [],
+            isEncrypted: data.isEncrypted || false,
+            attachments: data.attachments || []
+          });
+        }
+      }
       
       return messages;
     } catch (error) {

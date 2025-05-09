@@ -21,6 +21,7 @@ export interface ChatMessage {
   replyTo?: string;
   imageUrl?: string;
   read: string[];
+  isEncrypted?: boolean; // New field to indicate encryption status
   attachments?: {
     type: 'image' | 'video' | 'file';
     url: string;
