@@ -10,6 +10,7 @@ interface GroopContextType {
   setCurrentGroop: (groop: Groop | null) => void;
   createNewGroop: (name: string, description?: string, photoURL?: string) => Promise<Groop | null>;
   fetchUserGroops: () => Promise<void>;
+  isMember: boolean; // Add this to expose the membership status
 }
 
 const GroopContext = createContext<GroopContextType | undefined>(undefined);
@@ -20,6 +21,21 @@ export const GroopProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [userGroops, setUserGroops] = useState<Groop[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Calculate if the current user is a member of the current groop
+  const isMember = currentGroop?.members.includes(profile?.uid || '') || false;
+
+  // For debugging - you can remove this if not needed
+  useEffect(() => {
+    if (currentGroop && profile) {
+      console.log('[GROOP_CONTEXT] Membership status:', {
+        id: currentGroop.id,
+        name: currentGroop.name,
+        membersCount: currentGroop.members.length,
+        isMember: currentGroop.members.some(memberId => memberId === profile.uid)
+      });
+    }
+  }, [currentGroop, profile]);
 
   // Fetch user's groops when profile changes
   useEffect(() => {
@@ -104,7 +120,8 @@ export const GroopProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         error,
         setCurrentGroop, 
         createNewGroop, 
-        fetchUserGroops 
+        fetchUserGroops,
+        isMember  // Expose the membership status
       }}
     >
       {children}

@@ -163,9 +163,9 @@ export default function MessageInput({ onSend, replyingTo, onCancelReply }: Mess
             disabled={(!text.trim() && !image) || uploading}
           >
             {uploading ? (
-              <ActivityIndicator size="small" color="#7C3AED" />
+              <ActivityIndicator size="small" color="#78c0e1" />
             ) : (
-              <Ionicons name="send" size={24} color="#7C3AED" />
+              <Ionicons name="send" size={24} color="#78c0e1" />
             )}
           </TouchableOpacity>
         </Animated.View>

@@ -16,7 +16,7 @@ export default function SimpleTabNavigator() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#7C3AED',
+        tabBarActiveTintColor: '#78c0e1',
         tabBarInactiveTintColor: '#6B7280',
       }}
     >

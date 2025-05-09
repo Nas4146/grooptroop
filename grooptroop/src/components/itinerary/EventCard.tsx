@@ -49,8 +49,8 @@ export default function EventCard({
         };
       default:
         return {
-          bg: 'bg-violet-100',
-          border: 'border-violet-300',
+          bg: 'bg-sky-100',
+          border: 'border-sky-300',
           icon: 'calendar',
           color: '#7C3AED',
           emoji: '📅'

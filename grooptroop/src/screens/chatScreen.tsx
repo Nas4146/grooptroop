@@ -151,7 +151,7 @@ export default function ChatScreen() {
   if (loading) {
     return (
       <SafeAreaView style={tw`flex-1 justify-center items-center bg-light`}>
-        <ActivityIndicator size="large" color="#7C3AED" />
+        <ActivityIndicator size="large" color="#78c0e1" />
         <Text style={tw`mt-4 font-semibold text-primary`}>Loading your chat...</Text>
       </SafeAreaView>
     );

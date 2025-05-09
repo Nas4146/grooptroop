@@ -14,7 +14,8 @@ import {
   startAfter,
   where,
   Timestamp,
-  getDoc
+  getDoc,
+  writeBatch
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { ChatMessage } from '../models/chat';
@@ -173,7 +174,7 @@ export class ChatService {
     try {
       console.log(`[CHAT] Marking ${messageIds.length} messages as read`);
       
-      const batch = db.batch();
+      const batch = writeBatch(db);
       
       messageIds.forEach(messageId => {
         const messageRef = doc(db, `groops/${groopId}/messages`, messageId);

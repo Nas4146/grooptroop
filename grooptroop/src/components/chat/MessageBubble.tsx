@@ -71,7 +71,7 @@ export default function MessageBubble({
             ) : (
               <View style={[
                 tw`w-full h-full items-center justify-center`, 
-                { backgroundColor: message.senderAvatar || '#7C3AED' }
+                { backgroundColor: message.senderAvatar || '#78c0e1' }
               ]}>
                 <Text style={tw`text-white font-bold`}>
                   {message.senderName?.charAt(0) || '?'}
