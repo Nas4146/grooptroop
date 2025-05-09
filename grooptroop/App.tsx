@@ -1,3 +1,4 @@
+import './src/utils/cryptoPolyfill';
 import React, {useEffect, useState} from 'react';
 import 'react-native-gesture-handler';
 import './src/styles/global.css';
@@ -16,6 +17,8 @@ import TestAuth from './src/screens/TestAuth';
 import MinimalTabNavigator from './src/navigation/MinimalTabNavigator';
 import { GroopProvider } from './src/contexts/GroopProvider';
 import { KeyExchangeService } from './src/services/KeyExchangeService';
+import 'react-native-gesture-handler';
+
 
 // Function to enable/disable debug navigation
 const useDebugNavigation = () => {
@@ -34,6 +37,17 @@ const AppContent = () => {
   const { debugMode, toggleDebugMode } = useDebugNavigation();
   const { profile } = useAuth();
   
+  useEffect(() => {
+    const checkEncryption = async () => {
+      if (profile) {
+        console.log('[APP] Checking encryption setup for user:', profile.uid);
+        await KeyExchangeService.processPendingKeyExchanges(profile.uid);
+      }
+    };
+    
+    checkEncryption();
+  }, [profile]);
+
   console.log('[DEBUG] AppContent rendering. Auth status:', isAuthenticated ? 'logged in' : 'not logged in');
   
   // Show loading state
@@ -45,17 +59,6 @@ const AppContent = () => {
       </View>
     );
   }
-
-  useEffect(() => {
-    const checkEncryption = async () => {
-      if (profile) {
-        console.log('[APP] Checking encryption setup for user:', profile.uid);
-        await KeyExchangeService.processPendingKeyExchanges(profile.uid);
-      }
-    };
-    
-    checkEncryption();
-  }, [profile]);
   
   // Regular app content with debug button
   return (

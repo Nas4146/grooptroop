@@ -11,7 +11,7 @@ import {
   updateProfile
 } from 'firebase/auth';
 import { auth, db, signInWithGoogle } from '../lib/firebase';
-import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { EncryptionService } from '../services/EncryptionService';
 import { KeyExchangeService } from '../services/KeyExchangeService';
 
@@ -45,35 +45,6 @@ type AuthContextType = {
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 };
-
-useEffect(() => {
-  const initializeEncryption = async () => {
-    if (!profile) return;
-    
-    console.log('[AUTH] Initializing encryption for user:', profile.uid);
-    
-    // Check if user has keys, if not generate them
-    let userKeys = await EncryptionService.getUserKeys(profile.uid);
-    if (!userKeys) {
-      console.log('[AUTH] Generating new keys for user');
-      userKeys = await EncryptionService.generateAndStoreUserKeys(profile.uid);
-      
-      // Store public key in Firestore for key exchange
-      const userRef = doc(db, 'users', profile.uid);
-      await updateDoc(userRef, {
-        publicKey: userKeys.publicKey,
-        needsKeyGeneration: false
-      });
-    }
-    
-    // Process any pending key exchanges
-    await KeyExchangeService.processPendingKeyExchanges(profile.uid);
-  };
-  
-  if (profile) {
-    initializeEncryption();
-  }
-}, [profile]);
 
 const SKIP_AUTO_LOGIN = true; // Set to false in production
 
@@ -119,14 +90,12 @@ const getRandomColor = () => {
   return colors[Math.floor(Math.random() * colors.length)];
 };
 
-
-const [isAuthenticated, setIsAuthenticated] = useState(false);
-
 // Create the provider component
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);  
+  const [isAuthenticated, setIsAuthenticated] = useState(false);  
 
   // Handle auth persistence using SecureStore
   const persistAuthState = async (uid: string | null) => {

@@ -12,6 +12,8 @@ import {
   } from 'firebase/firestore';
   import { db } from '../lib/firebase';
   import { EncryptionService } from './EncryptionService';
+  import nacl from 'tweetnacl';
+  import util from 'tweetnacl-util';
   
   /**
    * Service for managing encryption key exchange between users in a group
@@ -26,8 +28,13 @@ import {
      */
     static async setupGroopEncryption(groopId: string, creatorId: string): Promise<boolean> {
       try {
+        if (!EncryptionService.checkPRNG()) {
+          console.error('[KEY_EXCHANGE] PRNG not available for setup encryption');
+          return false;
+        }
+
         console.log('[KEY_EXCHANGE] Setting up initial encryption for groop:', groopId);
-        
+
         // Generate a new symmetric key for the groop
         const groopKey = await EncryptionService.generateGroopKey(groopId);
         
@@ -90,6 +97,11 @@ import {
           newMemberPublicKey,
           currentUserKeys.secretKey
         );
+
+        if (!encryptedKey) {
+          console.error('[KEY_EXCHANGE] Failed to encrypt group key for sharing');
+          return false;
+        }
         
         // Store the encrypted key for the new member
         const keyExchangeRef = collection(db, `groops/${groopId}/keyExchanges`);
@@ -117,22 +129,34 @@ import {
       try {
         console.log('[KEY_EXCHANGE] Processing pending key exchanges for user:', userId);
         
+        // Check if PRNG is available before attempting key operations
+        if (!EncryptionService.checkPRNG()) {
+          console.error('[KEY_EXCHANGE] Secure random number generator not available');
+          return;
+        }
+        
         // Get user's keys
-        const userKeys = await EncryptionService.getUserKeys(userId);
-        if (!userKeys) {
-          console.log('[KEY_EXCHANGE] User keys not found. Generating new keys.');
-          await EncryptionService.generateAndStoreUserKeys(userId);
-          
-          // Update user's public key in Firestore for future key exchanges
-          const userRef = doc(db, 'users', userId);
-          const newKeys = await EncryptionService.getUserKeys(userId);
-          if (newKeys) {
+        let userKeys: { publicKey: string, secretKey: string } | null = null;
+    
+        try {
+          userKeys = await EncryptionService.getUserKeys(userId);
+          if (!userKeys) {
+            console.log('[KEY_EXCHANGE] User keys not found. Generating new keys.');
+            userKeys = await EncryptionService.generateAndStoreUserKeys(userId);
+            
+            // Update user's public key in Firestore
+            const userRef = doc(db, 'users', userId);
             await updateDoc(userRef, {
-              publicKey: newKeys.publicKey,
+              publicKey: userKeys.publicKey,
               needsKeyGeneration: false
             });
           }
-          return;
+        } catch (error) {
+          if (error instanceof Error && error.message === 'Secure random number generator not available') {
+            console.error('[KEY_EXCHANGE] Cannot process key exchanges: secure random generator not available');
+            return;
+          }
+          throw error;
         }
         
         // Find all groups the user is a member of
@@ -199,6 +223,7 @@ import {
               });
             }
           }
+        
         }
         
         console.log(`[KEY_EXCHANGE] Completed processing. Successfully processed ${processedKeys} keys.`);
@@ -206,14 +231,17 @@ import {
         console.error('[KEY_EXCHANGE] Error processing key exchanges:', error);
       }
     }
-    
+
     /**
      * Handle new user joining a group by triggering key sharing
      * This should be called when a new user joins a group
      */
     static async handleNewMemberJoined(groopId: string, newMemberId: string, existingMemberIds: string[]): Promise<boolean> {
       try {
-        console.log(`[KEY_EXCHANGE] Handling new member ${newMemberId} joining group ${groopId}`);
+        if (!groopId || !newMemberId || !Array.isArray(existingMemberIds)) {
+          console.error('[KEY_EXCHANGE] Invalid parameters');
+          return false;
+        }
         
         // Find a member who already has the key to share it
         for (const memberId of existingMemberIds) {
@@ -246,24 +274,28 @@ import {
      */
     static async rotateGroopKey(groopId: string, initiatorId: string): Promise<boolean> {
       try {
-        console.log(`[KEY_EXCHANGE] Rotating encryption key for group ${groopId}`);
+        if (!EncryptionService.checkPRNG()) {
+          console.error('[KEY_EXCHANGE] PRNG not available for key rotation');
+          return false;
+        }
         
         // Generate a new key
         const newKey = await EncryptionService.generateGroopKey(groopId);
         
         // Get all group members
-        const groopRef = doc(db, 'groops', currentGroop.id);
+        const groopRef = doc(db, 'groops', groopId);
         const groopSnap = await getDoc(groopRef);
         
-        if (!groopSnap.data()?.encryptionEnabled) {
-          // Set up encryption for this group
-          await ChatService.initializeGroupEncryption(currentGroop.id, profile.uid);
-          console.log('[CHAT] Encryption initialized for group:', currentGroop.id);
+        if (!groopSnap.exists()) {
+          console.error('[KEY_EXCHANGE] Group not found');
+          return false;
         }
-      } catch (error) {
-        console.error('[CHAT] Error initializing encryption:', error);
-        // Consider adding user feedback here
-      }
+        
+        if (!groopSnap.data()?.encryptionEnabled) {
+          // Set up encryption for this group before rotating keys
+          await this.setupGroopEncryption(groopId, initiatorId);
+          console.log('[KEY_EXCHANGE] Encryption initialized for group:', groopId);
+        }
         
         const members = groopSnap.data().members || [];
         
@@ -279,15 +311,23 @@ import {
           console.error('[KEY_EXCHANGE] Initiator keys not found');
           return false;
         }
+
+            // Create an array of promises for sharing keys with all members (except initiator)
+            const keySharePromises = members
+            .filter((memberId: string) => memberId !== initiatorId)
+            .map((memberId: string) => this.shareGroopKeyWithMember(groopId, memberId, initiatorId));
         
-        for (const memberId of members) {
-          if (memberId !== initiatorId) {
-            await this.shareGroopKeyWithMember(groopId, memberId, initiatorId);
-          }
-        }
-        
-        console.log('[KEY_EXCHANGE] Successfully rotated group key');
+         // Wait for all key sharing operations to complete
+        const results = await Promise.all(keySharePromises);
+        const allSucceeded = results.every(result => result === true);
+
+        if (!allSucceeded) {
+          console.warn('[KEY_EXCHANGE] Some key sharing operations failed');
+        return false;
+        } else {
+          console.log('[KEY_EXCHANGE] Successfully rotated group key for all members');
         return true;
+        }   
       } catch (error) {
         console.error('[KEY_EXCHANGE] Error rotating group key:', error);
         return false;

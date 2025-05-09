@@ -20,7 +20,7 @@ import {
 import { db } from '../lib/firebase';
 import { ChatMessage } from '../models/chat';
 import { EncryptionService } from './EncryptionService';
-
+import { KeyExchangeService } from './KeyExchangeService';
 
 export class ChatService {
   // Subscribe to messages with pagination
@@ -112,15 +112,28 @@ export class ChatService {
       const messagesRef = collection(db, `groops/${groopId}/messages`);
       
       // Prepare message data with encrypted text
-      const messageData = {
-        text: encryptedText,  // Store encrypted text
-        isEncrypted: true,    // Flag to indicate encryption
+      type MessageDataType = {
+        text: string;
+        isEncrypted: boolean;
+        senderId: string;
+        senderName: string;
+        senderAvatar: string;
+        createdAt: ReturnType<typeof serverTimestamp>;
+        reactions: Record<string, string[]>;
+        read: string[];
+        replyTo?: string;
+        imageUrl?: string;
+      };
+
+      const messageData: MessageDataType = {
+        text: encryptedText,
+        isEncrypted: true,
         senderId: message.senderId,
         senderName: message.senderName,
         senderAvatar: message.senderAvatar,
         createdAt: serverTimestamp(),
         reactions: {},
-        read: [message.senderId] // Mark as read by sender
+        read: [message.senderId]
       };
       
       // Only add these fields if they have values
