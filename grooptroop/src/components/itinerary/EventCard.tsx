@@ -69,35 +69,35 @@ export default function EventCard({
       
       <View style={tw`flex-row`}>
         {/* Event time bubble - smaller size and moved left */}
-        <View style={tw`w-10 h-10 rounded-full ${mood.bg} items-center justify-center mr-2 z-10`}>
+        <View style={tw`w-11 h-10 rounded-full ${mood.bg} items-center justify-center mr-1.5 z-10`}>
           <Text style={tw`text-xs font-bold text-gray-700`}>{event.time || ''}</Text>
         </View>
         
         <TouchableOpacity
-  onPress={handlePress}
-  style={tw`flex-1 rounded-2xl px-3 py-2.5 shadow-sm ${
-    isSelected 
-      ? 'bg-sky-100 border border-sky-300' 
-      : `bg-white border ${mood.border}`
-  } ${event.isOptional ? 'opacity-80' : 'opacity-100'}`}
->
-<View style={tw`flex-row justify-between items-start pr-0.5`}>
-<View style={tw`flex-1`}>
+          onPress={handlePress}
+          style={tw`flex-1 rounded-2xl px-3 py-2.5 shadow-sm ${
+            isSelected 
+            ? 'bg-sky-100 border border-sky-300' 
+            : `bg-white border ${mood.border}`
+          } ${event.isOptional ? 'opacity-80' : 'opacity-100'}`}
+        >
+          <View style={tw`flex-row justify-between items-start pr-1.5`}>
+            <View style={tw`flex-1 pr-1`}>
               {/* Row with title and mood emoji */}
-              <View style={tw`flex-row items-center`}>
-                <Text style={tw`text-lg font-bold ${  
+              <View style={tw`flex-row items-center flex-wrap`}>
+                <Text style={tw`text-base font-bold ${  // Reduced further from text-lg to text-base
                   event.isOptional ? 'text-gray-500' : 'text-gray-800'
                 }`}>
                   {event.title || ''}
                 </Text>
                 <Text style={tw`ml-1.5 text-base`}>{mood.emoji}</Text>
-                
-                {event.isOptional && (
-                  <View style={tw`ml-auto px-2 py-0.5 bg-gray-200 rounded-full`}>
-                    <Text style={tw`text-xs font-semibold text-gray-600`}>skip?</Text>
-                  </View>
-                )}
               </View>
+              
+              {/*{event.isOptional && (
+                <View style={tw`ml-auto px-2 py-0.5 bg-gray-200 rounded-full`}>
+                  <Text style={tw`text-xs font-semibold text-gray-600`}>interested?</Text>
+                </View>
+              )}*/}
               
               {/* Location with modern icon - more space-efficient */}
               {event.location && (
@@ -110,7 +110,11 @@ export default function EventCard({
               )}
               
               {/* Description - more compact */}
-              <Text numberOfLines={2} style={tw`text-sm text-gray-600 mt-1.5`}>
+              <Text 
+                numberOfLines={2} 
+                ellipsizeMode="tail"
+                style={tw`text-sm text-gray-600 mt-1.5`}
+              >
                 {event.description || ''}
               </Text>
               
@@ -128,23 +132,23 @@ export default function EventCard({
             
             {/* Payment indicator - more compact */}
             {event.isPaymentRequired && (
-  <View style={tw`items-center ml-2 mr-1`}>  
-    <View style={tw`rounded-full p-1.5 ${  
-      event.paid ? 'bg-green-100' : 'bg-amber-100'
-    }`}>
-      <Ionicons 
-        name={event.paid ? "checkmark-circle" : "card-outline"} 
-        size={16}  
-        color={event.paid ? "#10B981" : "#F59E0B"} 
-      />
-    </View>
-    <View style={tw`${event.paid ? 'bg-green-100' : 'bg-amber-100'} px-2 py-0.5 rounded-full mt-0.5`}>
-      <Text style={tw`text-xs font-bold ${event.paid ? 'text-green-700' : 'text-amber-700'}`}>
-        {costDisplay}
-      </Text>
-    </View>
-  </View>
-)}
+              <View style={tw`items-center ml-1.5 mr-0.5`}>  
+                <View style={tw`rounded-full p-1 ${  
+                  event.paid ? 'bg-green-100' : 'bg-amber-100'
+                }`}>
+                  <Ionicons 
+                    name={event.paid ? "checkmark-circle" : "card-outline"} 
+                    size={15}  
+                    color={event.paid ? "#10B981" : "#F59E0B"} 
+                  />
+                </View>
+                <View style={tw`${event.paid ? 'bg-green-100' : 'bg-amber-100'} px-1.5 py-0.5 rounded-full mt-0.5`}>
+                  <Text style={tw`text-xs font-bold ${event.paid ? 'text-green-700' : 'text-amber-700'}`}>
+                    {costDisplay}
+                  </Text>
+                </View>
+              </View>
+            )}
           </View>
           
           {/* People attending indicators - more compact */}
