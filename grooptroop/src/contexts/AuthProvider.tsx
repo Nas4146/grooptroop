@@ -14,6 +14,8 @@ import { auth, db, signInWithGoogle } from '../lib/firebase';
 import { doc, setDoc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { EncryptionService } from '../services/EncryptionService';
 import { KeyExchangeService } from '../services/KeyExchangeService';
+import { NotificationService } from '../services/NotificationService';
+import { arrayUnion, serverTimestamp } from 'firebase/firestore';
 
 // Define our user type to include Firestore profile data
 export type UserProfile = {
@@ -39,7 +41,7 @@ type AuthContextType = {
   signInAnonymously: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<User>;
   signUp: (email: string, password: string, displayName?: string) => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: () => Promise<User>; // Changed from Promise<void> to Promise<User>
   signInWithApple: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -201,6 +203,34 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    const registerPushToken = async () => {
+      if (profile?.uid) {
+        console.log('[AUTH] Registering push token for user:', profile.uid);
+        
+        try {
+          // Get token
+          const token = await NotificationService.getExpoPushToken();
+          
+          if (token) {
+            console.log('[AUTH] Storing push token in user profile');
+            
+            // Store in user document
+            const userRef = doc(db, 'users', profile.uid);
+            await updateDoc(userRef, {
+              pushTokens: arrayUnion(token),
+              pushTokenUpdated: serverTimestamp()
+            });
+          }
+        } catch (error) {
+          console.error('[AUTH] Error registering push token:', error);
+        }
+      }
+    };
+    
+    registerPushToken();
+  }, [profile?.uid]);
   
   // Password reset
   const handleResetPassword = async (email: string) => {

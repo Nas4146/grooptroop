@@ -1,7 +1,9 @@
 import './src/utils/cryptoPolyfill';
-import React, {useEffect, useState} from 'react';
+import * as Notifications from 'expo-notifications';
+import React, {useEffect, useState, useRef} from 'react';
 import 'react-native-gesture-handler';
 import './src/styles/global.css';
+import { useNavigation } from '@react-navigation/native';
 import { AppState, AppStateStatus } from 'react-native';
 import { AuthProvider, useAuth } from './src/contexts/AuthProvider';
 import { StatusBar } from 'expo-status-bar';
@@ -92,9 +94,47 @@ const AppContent = () => {
 
 // Main App component
 export default function App() {
-  useEffect(() => {
-    console.log('[DEBUG] App component MOUNTED');
-    return () => console.log('[DEBUG] App component UNMOUNTED');
+  const notificationListener = useRef<any>();
+  const responseListener = useRef<any>();
+
+ useEffect(() => {
+    // Set up notification handlers
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+    
+    // Listen for notifications received while app is foregrounded
+    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+      console.log('[APP] Notification received in foreground:', notification);
+    });
+    
+    // Listen for user interaction with notification
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log('[APP] Notification response received:', response);
+      
+      // Extract data from notification
+      const data = response.notification.request.content.data;
+      
+      if (data.groopId && data.messageId) {
+        console.log(`[APP] Navigating to chat: ${data.groopId}`);
+        // You'll need to set up navigation to the proper groop
+        // This will depend on your navigation structure
+      }
+    });
+    
+    return () => {
+      // Clean up listeners
+      if (notificationListener.current) {
+        Notifications.removeNotificationSubscription(notificationListener.current);
+      }
+      if (responseListener.current) {
+        Notifications.removeNotificationSubscription(responseListener.current);
+      }
+    };
   }, []);
 
   const requestNotificationPermissions = async () => {
@@ -133,7 +173,7 @@ useEffect(() => {
       // When app goes to background, set badge to current unread count
       // This ensures the badge is visible when the app is closed
       // Get the current unread count from NotificationContext
-      const notificationContext = require('./src/contexts/NotificationContext');
+      const notificationContext = require('./src/contexts/NotificationProvider');
       const unreadCount = notificationContext?.getUnreadCount() || 0;
       NotificationService.setBadgeCount(unreadCount);
     }

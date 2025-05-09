@@ -255,6 +255,34 @@ static subscribeToUnreadMessages(userId: string, callback: (count: number) => vo
         }
       });
       
+      try {
+        // Get members of this groop
+        const membersToNotify = groopSnap.data()?.members || [];
+                
+        if (membersToNotify.length > 0) {
+          console.log(`[CHAT] Sending notifications to ${membersToNotify.length} members`);
+          
+          // Don't notify the sender
+          const recipientsToNotify = membersToNotify.filter(
+            (memberId: string) => memberId !== message.senderId
+          );
+          
+          if (recipientsToNotify.length > 0) {
+            await this.sendChatNotification(
+              groopId, 
+              groopSnap.data()?.name || 'Group Chat',
+              message.senderName,
+              isEncrypted ? "New encrypted message" : message.text,
+              recipientsToNotify,
+              newMessageRef.id
+            );
+          }
+        }
+      } catch (notifError) {
+        console.error('[CHAT] Error sending notifications:', notifError);
+        // Don't fail the message send if notification fails
+      }
+
       console.log(`[CHAT] Message sent successfully (encrypted: ${isEncrypted})`);
       return true;
     } catch (error) {
@@ -263,6 +291,69 @@ static subscribeToUnreadMessages(userId: string, callback: (count: number) => vo
     }
   }
   
+  // Send chat notification
+static async sendChatNotification(
+  groopId: string,
+  groopName: string,
+  senderName: string,
+  messageText: string,
+  recipientIds: string[],
+  messageId: string
+) {
+  try {
+    console.log(`[CHAT] Preparing notification for ${recipientIds.length} recipients`);
+    
+    // Get push tokens for all recipients
+    const userRefs = recipientIds.map(uid => doc(db, 'users', uid));
+    const userSnapshots = await Promise.all(userRefs.map(ref => getDoc(ref)));
+    
+    let pushTokens: string[] = [];
+    
+    userSnapshots.forEach(snap => {
+      if (snap.exists()) {
+        const userData = snap.data();
+        if (userData.pushTokens && Array.isArray(userData.pushTokens)) {
+          pushTokens = pushTokens.concat(userData.pushTokens);
+        }
+      }
+    });
+    
+    if (pushTokens.length === 0) {
+      console.log('[CHAT] No push tokens found for recipients');
+      return;
+    }
+    
+    // Limit message preview length
+    const previewText = messageText.length > 100 
+      ? messageText.substring(0, 97) + '...' 
+      : messageText;
+    
+    console.log(`[CHAT] Sending notification to ${pushTokens.length} devices`);
+    
+    // Store notification in database for tracking
+    const notificationRef = collection(db, 'notifications');
+    await addDoc(notificationRef, {
+      type: 'chat_message',
+      groopId,
+      messageId,
+      recipientIds,
+      senderName,
+      message: previewText,
+      createdAt: serverTimestamp(),
+      tokens: pushTokens,
+      delivered: false
+    });
+    
+    console.log('[CHAT] Notification record created');
+    
+    // In a real-world scenario, you'd have a server component send the actual push notification
+    // This is where you'd call your cloud function or backend API
+    console.log('[CHAT] Server would now send push notifications to tokens:', pushTokens);
+  } catch (error) {
+    console.error('[CHAT] Error preparing notification:', error);
+  }
+}
+
   // Add reaction to a message
   static async addReaction(
     groopId: string, 
