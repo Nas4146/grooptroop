@@ -86,6 +86,87 @@ export class ChatService {
     });
   }
 
+  // Get total count of unread messages across all groops
+static async getTotalUnreadMessagesCount(userId: string): Promise<number> {
+  try {
+    console.log(`[CHAT] Getting total unread count for user: ${userId}`);
+    
+    // First, get the user's groop memberships
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    if (!userDoc.exists()) {
+      console.log(`[CHAT] User ${userId} not found`);
+      return 0;
+    }
+    
+    const userData = userDoc.data();
+    const userGroops = userData.groops || [];
+    
+    console.log(`[CHAT] User is a member of ${userGroops.length} groops`);
+    
+    // Count unread messages across all groops
+    let totalUnread = 0;
+    
+    for (const groopId of userGroops) {
+      try {
+        const messagesRef = collection(db, `groops/${groopId}/messages`);
+        // Query for messages NOT sent by this user AND NOT read by this user
+        const messagesQuery = query(
+          messagesRef,
+          where('senderId', '!=', userId)
+        );
+        
+        const snapshot = await getDocs(messagesQuery);
+        
+        // Need to filter client-side since Firestore doesn't support
+        // "array-does-not-contain" queries directly
+        const unreadCount = snapshot.docs.filter(doc => {
+          const data = doc.data();
+          const readArray = data.read || [];
+          return !readArray.includes(userId);
+        }).length;
+        
+        console.log(`[CHAT] Groop ${groopId} has ${unreadCount} unread messages`);
+        totalUnread += unreadCount;
+      } catch (error) {
+        console.error(`[CHAT] Error counting unread for groop ${groopId}:`, error);
+      }
+    }
+    
+    console.log(`[CHAT] Total unread messages across all groops: ${totalUnread}`);
+    return totalUnread;
+  } catch (error) {
+    console.error('[CHAT] Error calculating total unread count:', error);
+    return 0;
+  }
+}
+
+// Subscribe to changes in unread message counts
+static subscribeToUnreadMessages(userId: string, callback: (count: number) => void) {
+  console.log(`[CHAT] Setting up unread messages subscription for ${userId}`);
+  
+  // Get the user doc to monitor their groop memberships
+  const userRef = doc(db, 'users', userId);
+  
+  return onSnapshot(userRef, async (userSnap) => {
+    if (!userSnap.exists()) {
+      console.log(`[CHAT] User document not found for ${userId}`);
+      callback(0);
+      return;
+    }
+    
+    try {
+      // When user doc changes, recalculate total unread count
+      const totalUnread = await this.getTotalUnreadMessagesCount(userId);
+      callback(totalUnread);
+    } catch (error) {
+      console.error('[CHAT] Error in unread subscription handler:', error);
+      callback(0);
+    }
+  }, (error) => {
+    console.error('[CHAT] Error in unread messages subscription:', error);
+  });
+}
+
   // Send message to a specific groop
   static async sendMessage(groopId: string, message: {
     text: string;

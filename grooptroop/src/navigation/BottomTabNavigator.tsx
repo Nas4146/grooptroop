@@ -1,29 +1,47 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-
+import { View, Text } from 'react-native';
 import ItineraryScreen from '../screens/itineraryScreen';
 import MapScreen from '../screens/mapScreen';
 import PaymentsScreen from '../screens/paymentsScreen';
 import ChatScreen from '../screens/chatScreen';
 import ProfileScreen from '../screens/profileScreen';
+import { useNotification } from '../contexts/NotificationProvider';
+import tw from '../utils/tw';
 
 const Tab = createBottomTabNavigator();
 
 export default function BottomTabNavigator() {
+  const { unreadCount, resetUnreadCount } = useNotification();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarIcon: ({ color, size }) => {
           let iconName: keyof typeof Ionicons.glyphMap = 'home';
-          switch (route.name) {
-            case 'Itinerary': iconName = 'calendar'; break;
-            case 'Map':       iconName = 'map'; break;
-            case 'Payments':  iconName = 'card'; break;
-            case 'Chat':      iconName = 'chatbubbles'; break;
-            case 'Profile':   iconName = 'person'; break;
+          
+          if (route.name === 'Itinerary') iconName = 'calendar';
+          else if (route.name === 'Map') iconName = 'map';
+          else if (route.name === 'Payments') iconName = 'card';
+          else if (route.name === 'Chat') iconName = 'chatbubbles';
+          else if (route.name === 'Profile') iconName = 'person';
+          
+          // Special handling for Chat tab to show badge
+          if (route.name === 'Chat' && unreadCount > 0) {
+            return (
+              <View>
+                <Ionicons name={iconName} size={size} color={color} />
+                <View style={tw`absolute -top-1 -right-1 bg-red-500 rounded-full min-w-[18px] h-[18px] items-center justify-center`}>
+                  <Text style={tw`text-white text-xs font-bold`}>
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </Text>
+                </View>
+              </View>
+            );
           }
+          
           return <Ionicons name={iconName} size={size} color={color} />;
         },
         tabBarActiveTintColor: '#78c0e1',
@@ -39,6 +57,15 @@ export default function BottomTabNavigator() {
           fontSize: 11,
           fontWeight: '500',
           paddingBottom: 4,
+        },
+      })}
+      screenListeners={({ route }) => ({
+        tabPress: (e) => {
+          // When Chat tab is pressed, reset unread count
+          if (route.name === 'Chat') {
+            console.log('[NAVIGATION] Chat tab pressed, resetting unread count');
+            resetUnreadCount();
+          }
         },
       })}
     >

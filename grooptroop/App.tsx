@@ -18,7 +18,7 @@ import MinimalTabNavigator from './src/navigation/MinimalTabNavigator';
 import { GroopProvider } from './src/contexts/GroopProvider';
 import { KeyExchangeService } from './src/services/KeyExchangeService';
 import 'react-native-gesture-handler';
-
+import { NotificationProvider } from './src/contexts/NotificationProvider'
 
 // Function to enable/disable debug navigation
 const useDebugNavigation = () => {
@@ -100,7 +100,9 @@ export default function App() {
       <SafeAreaProvider>
         <AuthProvider>
           <GroopProvider>
-            <AppContent />
+            <NotificationProvider>
+              <AppContent />
+            </NotificationProvider>
           </GroopProvider>
         </AuthProvider>
       </SafeAreaProvider>

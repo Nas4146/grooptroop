@@ -28,6 +28,8 @@ import { KeyExchangeService } from '../services/KeyExchangeService';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import EncryptionInfoModal from '../components/chat/EncryptionInfoModal';
+import { useNotification } from '../contexts/NotificationProvider';
+import { useFocusEffect } from '@react-navigation/native';
 
 type ChatScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -43,6 +45,7 @@ export default function ChatScreen() {
   const inputRef = useRef<TextInput>(null);
   const [showEncryptionInfo, setShowEncryptionInfo] = useState(false);
   const [encryptionLoading, setEncryptionLoading] = useState(false);
+  const { refreshUnreadCount } = useNotification();
 
   // Debug log
   useEffect(() => {
@@ -114,6 +117,16 @@ export default function ChatScreen() {
     }
   }, [currentGroop, profile]);
   
+  // Reset notifications when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('[CHAT] Chat screen focused, refreshing unread count');
+      if (profile?.uid) {
+        refreshUnreadCount();
+      }
+      return () => {};
+    }, [refreshUnreadCount, profile])
+  );
   // Load messages
   useEffect(() => {
     if (!profile || !currentGroop) return;
@@ -137,8 +150,15 @@ export default function ChatScreen() {
         const unreadIds = newMessages
           .filter(msg => !msg.read.includes(profile.uid) && msg.senderId !== profile.uid)
           .map(msg => msg.id);
-          
-        ChatService.markAsRead(currentGroop.id, unreadIds, profile.uid);
+        
+        console.log(`[CHAT] Marking ${unreadIds.length} messages as read`);
+        ChatService.markAsRead(currentGroop.id, unreadIds, profile.uid)
+          .then(success => {
+            if (success) {
+              console.log('[CHAT] Messages marked as read, refreshing unread count');
+              refreshUnreadCount(); // Update the global unread count
+            }
+          });
       }
     });
     
