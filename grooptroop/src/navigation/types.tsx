@@ -18,6 +18,8 @@ export type RootStackParamList = {
   Chat: undefined;
   Profile: undefined;
   EventDetails: { eventId: string };
+  GroupMembers: { groopId?: string };
+
 }; 
 //& AuthStackParamList; // Merge with auth types for easier navigation
 

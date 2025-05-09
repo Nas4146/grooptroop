@@ -54,6 +54,14 @@ export default function MessageBubble({
   
   const reactionCounts = getReactionCounts();
   const hasReactions = Object.keys(reactionCounts).length > 0;
+
+  if (message.isEncrypted && message.text === "[Cannot decrypt - missing key]") {
+    return <View style={tw`bg-amber-100 p-3 rounded-lg mb-2`}>
+      <Text style={tw`text-amber-700`}>
+        <Ionicons name="key" size={16} /> Waiting for encryption key...
+      </Text>
+    </View>;
+  }
   
   return (
     <View style={tw`mb-3 ${isFromCurrentUser ? 'items-end' : 'items-start'}`}>
@@ -114,6 +122,7 @@ export default function MessageBubble({
     {message.text}
   </Text>
 </View>
+
           
           {/* Image if present */}
           {message.imageUrl && (

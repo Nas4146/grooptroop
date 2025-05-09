@@ -252,13 +252,18 @@ import {
         const newKey = await EncryptionService.generateGroopKey(groopId);
         
         // Get all group members
-        const groopRef = doc(db, 'groops', groopId);
+        const groopRef = doc(db, 'groops', currentGroop.id);
         const groopSnap = await getDoc(groopRef);
         
-        if (!groopSnap.exists()) {
-          console.error('[KEY_EXCHANGE] Group not found');
-          return false;
+        if (!groopSnap.data()?.encryptionEnabled) {
+          // Set up encryption for this group
+          await ChatService.initializeGroupEncryption(currentGroop.id, profile.uid);
+          console.log('[CHAT] Encryption initialized for group:', currentGroop.id);
         }
+      } catch (error) {
+        console.error('[CHAT] Error initializing encryption:', error);
+        // Consider adding user feedback here
+      }
         
         const members = groopSnap.data().members || [];
         

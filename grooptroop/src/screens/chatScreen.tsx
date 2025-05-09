@@ -2,13 +2,17 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   View, 
   Text, 
+  TextInput,
   KeyboardAvoidingView, 
   Platform,
   SafeAreaView,
   ActivityIndicator,
   TouchableOpacity,
-  Image
+  Image,
+  Alert
 } from 'react-native';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthProvider';
@@ -20,18 +24,22 @@ import MessageBubble from '../components/chat/MessageBubble';
 import MessageInput from '../components/chat/MessageInput';
 import tw from '../utils/tw';
 import { KeyExchangeService } from '../services/KeyExchangeService';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../navigation/types';
+
+type ChatScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ChatScreen() {
   const { profile } = useAuth();
   const { currentGroop } = useGroop();
-  const navigation = useNavigation();
+  const navigation = useNavigation<ChatScreenNavigationProp>();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState<ReplyingToMessage | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const inputRef = useRef(null);
-  
+  const inputRef = useRef<TextInput>(null);
+
   // Debug log
   useEffect(() => {
     console.log(`[CHAT_DEBUG] Current groop ID: ${currentGroop?.id}`);
@@ -40,7 +48,7 @@ export default function ChatScreen() {
   useEffect(() => {
     const initializeEncryption = async () => {
       if (profile && currentGroop) {
-        // Check if encryption is already set up
+        // Create groopRef here when you know currentGroop exists
         const groopRef = doc(db, 'groops', currentGroop.id);
         const groopSnap = await getDoc(groopRef);
         
@@ -276,8 +284,23 @@ export default function ChatScreen() {
           </View>
         </View>
         
-        <Text style={tw`text-gray-600 text-xs mb-1.5`}>All messages are encrypted and private to your group</Text>
-        
+        <View style={tw`flex-row items-center justify-between mb-1.5`}>
+  <View style={tw`flex-row items-center`}>
+    <Ionicons name="lock-closed" size={12} color="#78c0e1" style={tw`mr-1`} />
+    <Text style={tw`text-gray-600 text-xs`}>
+      End-to-end encrypted
+    </Text>
+  </View>
+  <TouchableOpacity
+    onPress={() => Alert.alert(
+      "End-to-End Encryption",
+      "Your messages are secured with end-to-end encryption. This means only you and the people in this chat can read the messages - no one else, including our servers.",
+      [{ text: "Got it" }]
+    )}
+  >
+    <Ionicons name="information-circle-outline" size={16} color="#78c0e1" />
+  </TouchableOpacity>
+</View>        
         {/* Actions row */}
         <View style={tw`flex-row justify-center`}>
           <TouchableOpacity 
