@@ -356,7 +356,7 @@ export default function ItineraryScreen() {
 </View>
       
       <ScrollView
-        style={tw`flex-1 mt-3`}
+        style={tw`flex-1 mt-2`}
         contentContainerStyle={tw`px-4 pb-20`}
         showsVerticalScrollIndicator={false}
         onScroll={Animated.event(
@@ -373,7 +373,7 @@ export default function ItineraryScreen() {
         }
       >
         {itinerary.length === 0 ? (
-  <View style={tw`py-12 items-center`}>
+  <View style={tw`py-8 items-center`}>
     <Text style={tw`text-gray-500`}>No itinerary items found</Text>
     
   </View>

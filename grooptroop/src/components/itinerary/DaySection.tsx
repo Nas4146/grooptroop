@@ -7,11 +7,11 @@ import tw from '../../utils/tw';
 
 export default function DaySection({ day }: DaySectionProps) {
   return (
-    <View style={tw`mb-8`}>
+    <View style={tw`mb-6`}>
       {/* Modern day header with blob-shaped background - Gen Z loves asymmetrical shapes */}
-      <View style={tw`mb-3 flex-row items-center`}>
+      <View style={tw`mb-2 flex-row items-center`}>
         <View style={tw`bg-secondary rounded-l-full rounded-tr-3xl rounded-br-lg px-4 py-2 shadow-sm`}>
-          <Text style={tw`text-lg font-bold text-white`}>
+          <Text style={tw`text-base font-bold text-white`}>
             {day.formattedDate}
           </Text>
         </View>
