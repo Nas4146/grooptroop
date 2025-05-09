@@ -234,6 +234,8 @@ PODS:
     - ExpoModulesCore
   - ExpoAsset (11.0.5):
     - ExpoModulesCore
+  - ExpoBlur (14.0.3):
+    - ExpoModulesCore
   - ExpoCrypto (14.0.2):
     - ExpoModulesCore
   - ExpoFileSystem (18.0.12):
@@ -1987,6 +1989,7 @@ DEPENDENCIES:
   - "ExpoAdapterGoogleSignIn (from `../node_modules/.pnpm/@react-native-google-signin+google-signin@13.2.0_expo@52.0.46_@babel+core@7.27.1_@babel_05b1e344a40e165fbf8b60036774e07c/node_modules/@react-native-google-signin/google-signin/expo/ios`)"
   - "ExpoAppleAuthentication (from `../node_modules/.pnpm/expo-apple-authentication@7.1.3_expo@52.0.46_@babel+core@7.27.1_@babel+preset-env@7.27._e120825413311c65ec755a4d93d8d879/node_modules/expo-apple-authentication/ios`)"
   - "ExpoAsset (from `../node_modules/.pnpm/expo-asset@11.0.5_expo@52.0.46_@babel+core@7.27.1_@babel+preset-env@7.27.1_@babel+core@_21b5b058865cac1fe331c1f66c798c49/node_modules/expo-asset/ios`)"
+  - "ExpoBlur (from `../node_modules/.pnpm/expo-blur@14.0.3_expo@52.0.46_@babel+core@7.27.1_@babel+preset-env@7.27.1_@babel+core@7_0775c796458beb45bfc068cfcba36043/node_modules/expo-blur/ios`)"
   - "ExpoCrypto (from `../node_modules/.pnpm/expo-crypto@14.0.2_expo@52.0.46_@babel+core@7.27.1_@babel+preset-env@7.27.1_@babel+core_46c6bcf5f4563a3c4ecfae21b5767d44/node_modules/expo-crypto/ios`)"
   - "ExpoFileSystem (from `../node_modules/.pnpm/expo-file-system@18.0.12_expo@52.0.46_@babel+core@7.27.1_@babel+preset-env@7.27.1_@babe_008a0a5890ed717a6862863b1f65d034/node_modules/expo-file-system/ios`)"
   - "ExpoFont (from `../node_modules/.pnpm/expo-font@13.3.0_expo@52.0.46_@babel+core@7.27.1_@babel+preset-env@7.27.1_@babel+core@7_f2aa5504f0a70245acd42e08f48a5611/node_modules/expo-font/ios`)"
@@ -2112,6 +2115,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/.pnpm/expo-apple-authentication@7.1.3_expo@52.0.46_@babel+core@7.27.1_@babel+preset-env@7.27._e120825413311c65ec755a4d93d8d879/node_modules/expo-apple-authentication/ios"
   ExpoAsset:
     :path: "../node_modules/.pnpm/expo-asset@11.0.5_expo@52.0.46_@babel+core@7.27.1_@babel+preset-env@7.27.1_@babel+core@_21b5b058865cac1fe331c1f66c798c49/node_modules/expo-asset/ios"
+  ExpoBlur:
+    :path: "../node_modules/.pnpm/expo-blur@14.0.3_expo@52.0.46_@babel+core@7.27.1_@babel+preset-env@7.27.1_@babel+core@7_0775c796458beb45bfc068cfcba36043/node_modules/expo-blur/ios"
   ExpoCrypto:
     :path: "../node_modules/.pnpm/expo-crypto@14.0.2_expo@52.0.46_@babel+core@7.27.1_@babel+preset-env@7.27.1_@babel+core_46c6bcf5f4563a3c4ecfae21b5767d44/node_modules/expo-crypto/ios"
   ExpoFileSystem:
@@ -2297,6 +2302,7 @@ SPEC CHECKSUMS:
   ExpoAdapterGoogleSignIn: f5ca2b67502442629d99dbe202b6ae821d77c75d
   ExpoAppleAuthentication: 52631ed9dcb71c65712a447bbb9a5667bb8fcf0c
   ExpoAsset: 48386d40d53a8c1738929b3ed509bcad595b5516
+  ExpoBlur: 392c1207f71d0ecf22371621c1fbd44ba84d9742
   ExpoCrypto: e97e864c8d7b9ce4a000bca45dddb93544a1b2b4
   ExpoFileSystem: 42d363d3b96f9afab980dcef60d5657a4443c655
   ExpoFont: db9293b9c4585e60e30602ea4d939ad9705fe963

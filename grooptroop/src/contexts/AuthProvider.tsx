@@ -222,40 +222,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   useEffect(() => {
-    const initializeEncryption = async () => {
-      if (!profile) return;
-      
-      console.log('[AUTH] Initializing encryption for user:', profile.uid);
-      
-      try {
-        // Check if user has keys, if not generate them
-        let userKeys = await EncryptionService.getUserKeys(profile.uid);
-        if (!userKeys) {
-          console.log('[AUTH] Generating new keys for user');
-          userKeys = await EncryptionService.generateAndStoreUserKeys(profile.uid);
-          
-          // Store public key in Firestore for key exchange
-          const userRef = doc(db, 'users', profile.uid);
-          await updateDoc(userRef, {
-            publicKey: userKeys.publicKey,
-            needsKeyGeneration: false
-          });
-        }
-        
-        // Process any pending key exchanges
-        await KeyExchangeService.processPendingKeyExchanges(profile.uid);
-        console.log('[AUTH] Encryption initialization completed');
-      } catch (error) {
-        console.error('[AUTH] Error initializing encryption:', error);
-      }
-    };
-    
-    if (profile) {
-      initializeEncryption();
-    }
-  }, [profile]);
-
-  useEffect(() => {
     console.log('[AUTH] Setting up auth state listener');
     
     return onAuthStateChanged(auth, async (user) => {

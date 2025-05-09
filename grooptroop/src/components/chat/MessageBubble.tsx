@@ -52,15 +52,58 @@ export default function MessageBubble({
            message.reactions[emoji].includes(message.senderId);
   };
   
+  // Render encryption indicator based on message status
+  const renderEncryptionIndicator = () => {
+    if (message.isEncrypted) {
+      if (message.isDecrypted) {
+        return (
+          <Ionicons 
+            name="lock-closed" 
+            size={14} 
+            color={isFromCurrentUser ? "#ffffff" : "#78c0e1"} 
+            style={tw`mr-1`} 
+          />
+        );
+      } else {
+        return (
+          <Ionicons 
+            name="alert-circle" 
+            size={14} 
+            color="#F59E0B" 
+            style={tw`mr-1`} 
+          />
+        );
+      }
+    } else {
+      return (
+        <Ionicons 
+          name="lock-open" 
+          size={14} 
+          color={isFromCurrentUser ? "#e6e6e6" : "#9ca3af"} 
+          style={tw`mr-1 opacity-50`} 
+        />
+      );
+    }
+  };
+  
   const reactionCounts = getReactionCounts();
   const hasReactions = Object.keys(reactionCounts).length > 0;
 
+  // Special handling for encrypted messages that couldn't be decrypted
   if (message.isEncrypted && message.text === "[Cannot decrypt - missing key]") {
-    return <View style={tw`bg-amber-100 p-3 rounded-lg mb-2`}>
-      <Text style={tw`text-amber-700`}>
-        <Ionicons name="key" size={16} /> Waiting for encryption key...
-      </Text>
-    </View>;
+    return (
+      <View style={tw`bg-amber-100 p-3 rounded-lg mb-3 ${isFromCurrentUser ? 'self-end' : 'self-start'} max-w-[80%]`}>
+        <View style={tw`flex-row items-center`}>
+          <Ionicons name="key-outline" size={16} color="#B45309" style={tw`mr-2`} />
+          <Text style={tw`text-amber-800 font-medium`}>
+            Waiting for encryption key...
+          </Text>
+        </View>
+        <Text style={tw`text-xs text-amber-700 mt-1`}>
+          This message will be decrypted when keys are exchanged.
+        </Text>
+      </View>
+    );
   }
   
   return (
@@ -114,15 +157,9 @@ export default function MessageBubble({
           )}
           
           {/* Message text */}
-          <View style={tw`flex-row items-center`}>
-  {message.isEncrypted && (
-    <Ionicons name="lock-closed" size={12} color="#78c0e1" style={tw`mr-1`} />
-  )}
-  <Text>
-    {message.text}
-  </Text>
-</View>
-
+          <Text style={tw`${isFromCurrentUser ? 'text-white' : 'text-gray-800'}`}>
+            {message.text}
+          </Text>
           
           {/* Image if present */}
           {message.imageUrl && (
@@ -133,12 +170,15 @@ export default function MessageBubble({
             />
           )}
           
-          {/* Time */}
-          <Text 
-            style={tw`text-xs mt-1 text-right ${isFromCurrentUser ? 'text-gray-200' : 'text-gray-500'}`}
-          >
-            {formatTime(message.createdAt)}
-          </Text>
+          {/* Time and encryption indicator */}
+          <View style={tw`flex-row items-center justify-end mt-1`}>
+            {renderEncryptionIndicator()}
+            <Text 
+              style={tw`text-xs ${isFromCurrentUser ? 'text-gray-200' : 'text-gray-500'}`}
+            >
+              {formatTime(message.createdAt)}
+            </Text>
+          </View>
         </TouchableOpacity>
       </View>
       

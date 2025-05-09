@@ -79,6 +79,11 @@ export class EncryptionService {
   static async getGroopKey(groopId: string): Promise<string | null> {
     return AsyncStorage.getItem(`groop_key_${groopId}`);
   }
+
+  static async hasGroopKey(groopId: string): Promise<boolean> {
+  const key = await this.getGroopKey(groopId);
+  return !!key;
+}
   
   // Encrypt a message using the groop key
   static async encryptMessage(message: string, groopId: string): Promise<string | null> {

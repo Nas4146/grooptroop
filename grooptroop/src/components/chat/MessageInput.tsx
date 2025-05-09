@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
   TextInput, 
@@ -15,26 +15,53 @@ import { Ionicons } from '@expo/vector-icons';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import tw from '../../utils/tw';
 import { ReplyingToMessage } from '../../models/chat'; 
+import { useGroop } from '../../contexts/GroopProvider';
+import { EncryptionService } from '../../services/EncryptionService';
 
 interface MessageInputProps {
-  onSend: (text: string, imageUrl?: string) => void;
+  onSend: (text: string, imageUrl?: string) => Promise<void> | void;
   replyingTo: ReplyingToMessage | null;
   onCancelReply: () => void;
 }
 
 export default function MessageInput({ onSend, replyingTo, onCancelReply }: MessageInputProps) {
   const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [hasEncryptionKey, setHasEncryptionKey] = useState(false);
+  const [encryptionLoading, setEncryptionLoading] = useState(true);
   const [image, setImage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const { currentGroop } = useGroop();
   const inputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    const checkEncryptionKey = async () => {
+      if (currentGroop?.id) {
+        setEncryptionLoading(true); // Add this line
+        try {
+          const hasKey = await EncryptionService.hasGroopKey(currentGroop.id);
+          setHasEncryptionKey(hasKey);
+        } catch (error) {
+          console.error('[CHAT] Error checking encryption key:', error);
+        } finally {
+          setEncryptionLoading(false); // Add this line
+        }
+      }
+    };
+    
+    checkEncryptionKey();
+  }, [currentGroop]);
   
   // Animation values
   const buttonScale = useRef(new Animated.Value(1)).current;
   
   const handleSend = async () => {
-    if ((!text.trim() && !image) || uploading) return;
+    if ((!text.trim() && !image) || uploading || encryptionLoading) return;
     
-    let imageUrl;
+    setSending(true); // Add this to show sending indicator
+    
+    try {
+      let imageUrl;
     
     if (image) {
       try {
@@ -64,18 +91,23 @@ export default function MessageInput({ onSend, replyingTo, onCancelReply }: Mess
     }
     
     // Send message
-    onSend(text, imageUrl);
+    await onSend(text, imageUrl);
     
     // Clear input
     setText('');
     setImage(null);
-  };
+  } catch (error) {
+    console.error('[CHAT] Error sending message:', error);
+  } finally {
+    setSending(false); // Make sure to reset the sending state
+  }
+};
   
-  const pickImage = async () => {
-    console.log('[CHAT] Image picker not available in this build');
-    // Alert the user that this feature isn't available
-    alert('Image uploading is not available in this build.');
-  };
+const pickImage = async () => {
+  console.log('[CHAT] Image picker not available in this build');
+  // Alert the user that this feature isn't available
+  alert('Image uploading is not available in this build.');
+};
   
   // Animation for send button
   const animateSendButton = () => {
@@ -95,16 +127,20 @@ export default function MessageInput({ onSend, replyingTo, onCancelReply }: Mess
   };
   
   return (
-    <View style={tw`pb-2 px-2`}>
-      {/* Reply UI */}
+    <View style={tw`bg-white px-4 py-2 border-t border-gray-200`}>
+      {/* Reply UI if replyingTo exists */}
       {replyingTo && (
-        <View style={tw`flex-row items-center bg-gray-100 mx-2 p-2 rounded-t-lg border-l-4 border-primary`}>
+        <View style={tw`flex-row items-center bg-gray-100 rounded-lg p-2 mb-2`}>
           <View style={tw`flex-1`}>
-            <Text style={tw`text-xs text-gray-500`}>Replying to {replyingTo.senderName}</Text>
-            <Text numberOfLines={1} style={tw`text-sm text-gray-700`}>{replyingTo.text}</Text>
+            <Text style={tw`text-xs text-gray-500`}>
+              Replying to {replyingTo.senderName}
+            </Text>
+            <Text numberOfLines={1} style={tw`text-sm text-gray-800`}>
+              {replyingTo.text}
+            </Text>
           </View>
           <TouchableOpacity onPress={onCancelReply}>
-            <Ionicons name="close-circle" size={20} color="#6B7280" />
+            <Ionicons name="close" size={18} color="#64748B" />
           </TouchableOpacity>
         </View>
       )}
@@ -125,50 +161,49 @@ export default function MessageInput({ onSend, replyingTo, onCancelReply }: Mess
           </View>
         </View>
       )}
-      
-      {/* Input bar */}
-      <View style={tw`flex-row items-end bg-white border border-gray-200 rounded-${replyingTo || image ? 'b' : ''}2xl px-2 py-1.5 mx-2`}>
-        <TouchableOpacity
-          style={tw`p-2 mr-1`}
-          onPress={pickImage}
-        >
-          <Ionicons name="image-outline" size={24} color="#6B7280" />
+  
+      <View style={tw`flex-row items-end`}>
+        {/* Add attachment button */}
+        <TouchableOpacity style={tw`mr-2 mb-1.5`} onPress={pickImage}>
+          <Ionicons name="add-circle-outline" size={24} color="#64748B" />
         </TouchableOpacity>
         
-        <TextInput
-          ref={inputRef}
-          style={tw`flex-1 max-h-32 bg-gray-100 rounded-2xl px-3 py-2 text-base ${Platform.OS === 'ios' ? 'mb-0' : 'mb-0'}`}
-          placeholder="Message"
-          value={text}
-          onChangeText={setText}
-          multiline
-          onFocus={() => {
-            // Scroll to bottom when input is focused
-            setTimeout(() => {
-              inputRef.current?.focus();
-            }, 100);
-          }}
-        />
-        
-        <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
+        <View style={tw`flex-1 flex-row items-center border border-gray-300 rounded-full pl-3 pr-1 py-1`}>
+          {/* Encryption status indicator */}
+          {encryptionLoading ? (
+            <ActivityIndicator size="small" color="#7C3AED" style={tw`mr-2`} />
+          ) : (
+            <Ionicons 
+              name={hasEncryptionKey ? "lock-closed" : "lock-open"} 
+              size={18} 
+              color={hasEncryptionKey ? "#78c0e1" : "#9CA3AF"} 
+              style={tw`mr-2`} 
+            />
+          )}
+          
+          <TextInput
+            ref={inputRef}
+            style={tw`flex-1 max-h-32`}
+            placeholder="Type a message..."
+            multiline
+            value={text}
+            onChangeText={setText}
+            placeholderTextColor="#9CA3AF"
+          />
+          
+          {/* Send button */}
           <TouchableOpacity
-            style={tw`p-2 ml-1 ${text.trim() || image ? 'opacity-100' : 'opacity-50'}`}
-            onPress={() => {
-              if (text.trim() || image) {
-                animateSendButton();
-                Keyboard.dismiss();
-                handleSend();
-              }
-            }}
-            disabled={(!text.trim() && !image) || uploading}
+            style={tw`bg-primary h-8 w-8 rounded-full items-center justify-center ${!text.trim() ? 'opacity-50' : ''}`}
+            onPress={handleSend}
+            disabled={!text.trim() || sending || encryptionLoading}
           >
-            {uploading ? (
-              <ActivityIndicator size="small" color="#78c0e1" />
+            {sending ? (
+              <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Ionicons name="send" size={24} color="#78c0e1" />
+              <Ionicons name="send" size={16} color="#fff" />
             )}
           </TouchableOpacity>
-        </Animated.View>
+        </View>
       </View>
     </View>
   );

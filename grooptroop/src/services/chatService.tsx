@@ -38,6 +38,7 @@ export class ChatService {
         
         // Determine if this message needs decryption
         let messageText = data.text || '';
+        let isDecrypted = false; // Add this to track decryption status
         
         if (data.isEncrypted) {
           try {
@@ -47,29 +48,33 @@ export class ChatService {
             if (decryptedText) {
               // Successfully decrypted
               messageText = decryptedText;
+              isDecrypted = true; // Set to true when decryption succeeds
             } else {
               // Failed to decrypt
               messageText = "[Cannot decrypt - missing key]";
+              isDecrypted = false;
             }
           } catch (error) {
             console.error('[CHAT] Error decrypting message:', error);
             messageText = "[Decryption error]";
+            isDecrypted = false;
           }
         }
         
-        // Create the message object with decrypted text
+        // Create the message object with decryption status
         messages.push({
           id: doc.id,
           text: messageText,
           senderId: data.senderId,
           senderName: data.senderName,
           senderAvatar: data.senderAvatar || '',
-          createdAt: data.createdAt,
+          createdAt: data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt),
           reactions: data.reactions || {},
           replyTo: data.replyTo,
           imageUrl: data.imageUrl,
           read: data.read || [],
           isEncrypted: data.isEncrypted || false,
+          isDecrypted: data.isEncrypted ? isDecrypted : null, // Only relevant for encrypted messages
           attachments: data.attachments || []
         });
       }
@@ -80,6 +85,7 @@ export class ChatService {
       console.error("[CHAT] Error listening to messages:", error);
     });
   }
+
   // Send message to a specific groop
   static async sendMessage(groopId: string, message: {
     text: string;
@@ -95,39 +101,44 @@ export class ChatService {
       // First verify that the groop exists
       const groopRef = doc(db, 'groops', groopId);
       const groopSnap = await getDoc(groopRef);
+  
+      let encryptedText = message.text;
+      let isEncrypted = false;
       
-      if (!groopSnap.exists()) {
-        console.error(`[CHAT] Error: Groop ${groopId} does not exist`);
-        return false;
-      }
-      
-      // Encrypt message text
-      const encryptedText = await EncryptionService.encryptMessage(message.text, groopId);
-      if (!encryptedText) {
-        console.error('[CHAT] Error encrypting message');
-        return false;
+      // If encryption is enabled, encrypt the message
+      if (groopSnap.exists() && groopSnap.data().encryptionEnabled) {
+        try {
+          // Add more detailed logging here
+          console.log('[CHAT] Encryption enabled, attempting to encrypt message');
+          
+          // Check if we have a group key
+          const hasKey = await EncryptionService.hasGroopKey(groopId);
+          console.log(`[CHAT] Group key exists: ${hasKey}`);
+          
+          const encrypted = await EncryptionService.encryptMessage(message.text, groopId);
+          if (encrypted) {
+            encryptedText = encrypted;
+            isEncrypted = true;
+            console.log('[CHAT] Message encrypted successfully');
+          } else {
+            console.warn('[CHAT] Failed to encrypt message, sending in plaintext');
+            // If possible, try to regenerate the key
+            console.log('[CHAT] Attempting to initialize encryption again');
+            await KeyExchangeService.setupGroopEncryption(groopId, message.senderId);
+          }
+        } catch (error) {
+          console.error('[CHAT] Encryption error:', error);
+          console.warn('[CHAT] Failed to encrypt message, sending in plaintext');
+        }
       }
       
       // Create a new message document in the messages subcollection
       const messagesRef = collection(db, `groops/${groopId}/messages`);
       
       // Prepare message data with encrypted text
-      type MessageDataType = {
-        text: string;
-        isEncrypted: boolean;
-        senderId: string;
-        senderName: string;
-        senderAvatar: string;
-        createdAt: ReturnType<typeof serverTimestamp>;
-        reactions: Record<string, string[]>;
-        read: string[];
-        replyTo?: string;
-        imageUrl?: string;
-      };
-
-      const messageData: MessageDataType = {
+      const messageData = {
         text: encryptedText,
-        isEncrypted: true,
+        isEncrypted: isEncrypted, // Set proper encryption flag
         senderId: message.senderId,
         senderName: message.senderName,
         senderAvatar: message.senderAvatar,
@@ -143,31 +154,30 @@ export class ChatService {
       
       if (message.imageUrl) {
         // For now, we're not encrypting image URLs
-        // In a full implementation, you'd encrypt file content too
         messageData['imageUrl'] = message.imageUrl;
       }
       
       // Create a new message document
       const newMessageRef = await addDoc(messagesRef, messageData);
       
-      // Update groop's lastActivity field - Use placeholder for preview
+      // Update groop's lastActivity field - Use placeholder for preview if encrypted
       await updateDoc(groopRef, {
         lastActivity: serverTimestamp(),
         lastMessage: {
           id: newMessageRef.id,
-          text: "🔒 Encrypted message",  // Don't show actual content in preview
+          text: isEncrypted ? "🔒 Encrypted message" : message.text.substring(0, 50),
           senderId: message.senderId,
           senderName: message.senderName,
           timestamp: serverTimestamp(),
           hasImage: !!message.imageUrl,
-          isEncrypted: true
+          isEncrypted: isEncrypted
         }
       });
       
-      console.log('[CHAT] Encrypted message sent successfully');
+      console.log(`[CHAT] Message sent successfully (encrypted: ${isEncrypted})`);
       return true;
     } catch (error) {
-      console.error("[CHAT] Error sending encrypted message:", error);
+      console.error("[CHAT] Error sending message:", error);
       throw error;
     }
   }
@@ -269,23 +279,37 @@ static async initializeGroupEncryption(groopId: string, userId: string): Promise
   try {
     console.log(`[CHAT] Initializing encryption for group: ${groopId}`);
     
+    // Check if encryption is already enabled
+    const groopRef = doc(db, 'groops', groopId);
+    const groopSnap = await getDoc(groopRef);
+    
+    if (groopSnap.exists() && groopSnap.data().encryptionEnabled) {
+      console.log('[CHAT] Encryption already enabled for this group');
+      return true;
+    }
+    
     // Generate a new symmetric key for the group
-    await EncryptionService.generateGroopKey(groopId);
+    const key = await EncryptionService.generateGroopKey(groopId);
+    if (!key) {
+      console.error('[CHAT] Failed to generate group key');
+      return false;
+    }
     
     // Update group metadata to indicate encryption is enabled
-    const groopRef = doc(db, 'groops', groopId);
     await updateDoc(groopRef, {
       encryptionEnabled: true,
       encryptionInitiatedBy: userId,
       encryptionInitiatedAt: serverTimestamp()
     });
     
+    console.log('[CHAT] Encryption successfully initialized for group');
     return true;
   } catch (error) {
     console.error('[CHAT] Error initializing group encryption:', error);
     return false;
   }
 }
+
   // Search messages
   static async searchMessages(groopId: string, searchText: string, maxResults = 100): Promise<ChatMessage[]> {
     try {

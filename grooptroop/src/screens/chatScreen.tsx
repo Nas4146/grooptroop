@@ -18,6 +18,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthProvider';
 import { useGroop } from '../contexts/GroopProvider';
 import { ChatService } from '../services/chatService';
+import { EncryptionService } from '../services/EncryptionService';
 import { ChatMessage, ReplyingToMessage } from '../models/chat';
 import { FlashList } from '@shopify/flash-list';
 import MessageBubble from '../components/chat/MessageBubble';
@@ -26,6 +27,7 @@ import tw from '../utils/tw';
 import { KeyExchangeService } from '../services/KeyExchangeService';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
+import EncryptionInfoModal from '../components/chat/EncryptionInfoModal';
 
 type ChatScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -39,6 +41,8 @@ export default function ChatScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const inputRef = useRef<TextInput>(null);
+  const [showEncryptionInfo, setShowEncryptionInfo] = useState(false);
+  const [encryptionLoading, setEncryptionLoading] = useState(false);
 
   // Debug log
   useEffect(() => {
@@ -47,18 +51,35 @@ export default function ChatScreen() {
 
   useEffect(() => {
     const initializeEncryption = async () => {
+      setEncryptionLoading(true);
+      try {
       if (profile && currentGroop) {
+        console.log('[CHAT] Checking encryption status for group:', currentGroop.id);
+        
         // Create groopRef here when you know currentGroop exists
         const groopRef = doc(db, 'groops', currentGroop.id);
         const groopSnap = await getDoc(groopRef);
         
         if (!groopSnap.data()?.encryptionEnabled) {
+          console.log('[CHAT] Setting up encryption for group');
           // Set up encryption for this group
-          await ChatService.initializeGroupEncryption(currentGroop.id, profile.uid);
-          console.log('[CHAT] Encryption initialized for group:', currentGroop.id);
+          await KeyExchangeService.setupGroopEncryption(currentGroop.id, profile.uid);
+          console.log('[CHAT] Encryption setup complete');
+        } else {
+          console.log('[CHAT] Encryption already set up for this group');
+          
+          // Check if we have the key locally - THIS IS THE CRITICAL PART
+          const hasKey = await EncryptionService.hasGroopKey(currentGroop.id);
+          if (!hasKey) {
+            console.log('[CHAT] Group key not found locally, generating new key');
+            await EncryptionService.generateGroopKey(currentGroop.id);
+          }
         }
       }
-    };
+    } finally {
+      setEncryptionLoading(false);
+    }
+  };
     
     initializeEncryption();
   }, [profile, currentGroop]);
@@ -224,43 +245,29 @@ export default function ChatScreen() {
   
   return (
     <SafeAreaView style={tw`flex-1 bg-light`}>
-      {/* Header - Styled like your itinerary screen */}
-      <View style={tw`px-4 pt-2 pb-4 bg-primary rounded-b-3xl shadow-lg relative`}>
-        <View style={tw`flex-row justify-between items-center`}>
-          <Text style={tw`text-xl font-bold text-white`}>{currentGroop.name}</Text>
-          <View style={tw`flex-row`}>
-            <TouchableOpacity 
-              style={tw`bg-white bg-opacity-20 rounded-full p-1.5 mr-2`}
-              onPress={navigateToMembers}
-            >
-              <Ionicons name="people" size={18} color="white" />
-            </TouchableOpacity>
-            <TouchableOpacity style={tw`bg-white bg-opacity-20 rounded-full p-1.5`}>
-              <Ionicons name="notifications-outline" size={18} color="white" />
-            </TouchableOpacity>
-          </View>
-        </View>
+      {/* Header
+      <View style={tw`flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200`}>
+        <TouchableOpacity 
+          style={tw`flex-row items-center`} 
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="chevron-back" size={24} color="#7C3AED" />
+          <Text style={tw`text-lg font-medium ml-1 text-neutral`}>Back</Text>
+        </TouchableOpacity>
         
-        <View style={tw`flex-row items-center mt-2`}>
-          <Ionicons name="chatbubble-ellipses" size={16} color="white" />
-          <Text style={tw`text-white font-medium ml-2 text-sm`}>
-            Group Chat
-          </Text>
-          
-          {/* Member count pill */}
-          <View style={tw`bg-white bg-opacity-20 rounded-full px-2.5 py-0.5 ml-3`}>
-            <Text style={tw`text-white font-medium text-xs`}>👥 {currentGroop.members.length} Members</Text>
+        <Text style={tw`text-lg font-medium text-neutral`}>
+          {currentGroop?.name}
+        </Text>
+        
+        <TouchableOpacity onPress={navigateToMembers}>
+          <View style={tw`flex-row items-center`}>
+            <Ionicons name="people" size={20} color="#7C3AED" />
+            <Text style={tw`text-sm ml-1 text-primary font-medium`}>
+              {currentGroop.members.length}
+            </Text>
           </View>
-          
-          {/* Location pill if available */}
-          {currentGroop.location && (
-            <View style={tw`bg-white bg-opacity-20 rounded-full px-2.5 py-0.5 ml-2`}>
-              <Text style={tw`text-white font-medium text-xs`}>📍 {currentGroop.location}</Text>
-            </View>
-          )}
-        </View>
-      </View>
-      
+        </TouchableOpacity>
+      </View>*/}
       {/* Status card - similar to Trip Home Base in itinerary */}
       <View style={[
         tw`mx-4 -mt-2 bg-white rounded-xl px-3 py-2.5 shadow-md`, 
@@ -285,22 +292,19 @@ export default function ChatScreen() {
         </View>
         
         <View style={tw`flex-row items-center justify-between mb-1.5`}>
-  <View style={tw`flex-row items-center`}>
-    <Ionicons name="lock-closed" size={12} color="#78c0e1" style={tw`mr-1`} />
-    <Text style={tw`text-gray-600 text-xs`}>
-      End-to-end encrypted
-    </Text>
-  </View>
-  <TouchableOpacity
-    onPress={() => Alert.alert(
-      "End-to-End Encryption",
-      "Your messages are secured with end-to-end encryption. This means only you and the people in this chat can read the messages - no one else, including our servers.",
-      [{ text: "Got it" }]
-    )}
-  >
-    <Ionicons name="information-circle-outline" size={16} color="#78c0e1" />
-  </TouchableOpacity>
-</View>        
+          <View style={tw`flex-row items-center`}>
+            <Ionicons name="lock-closed" size={12} color="#78c0e1" style={tw`mr-1`} />
+            <Text style={tw`text-gray-600 text-xs`}>
+              End-to-end encrypted
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => setShowEncryptionInfo(true)}
+            style={tw`p-1`} // Larger touch target
+          >
+            <Ionicons name="information-circle-outline" size={16} color="#78c0e1" />
+          </TouchableOpacity>
+        </View>    
         {/* Actions row */}
         <View style={tw`flex-row justify-center`}>
           <TouchableOpacity 
@@ -357,6 +361,10 @@ export default function ChatScreen() {
           onCancelReply={() => setReplyingTo(null)}
         />
       </KeyboardAvoidingView>
+      <EncryptionInfoModal 
+        isVisible={showEncryptionInfo}
+        onClose={() => setShowEncryptionInfo(false)}
+      />
     </SafeAreaView>
   );
 }
