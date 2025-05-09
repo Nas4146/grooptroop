@@ -2,6 +2,7 @@ import './src/utils/cryptoPolyfill';
 import React, {useEffect, useState} from 'react';
 import 'react-native-gesture-handler';
 import './src/styles/global.css';
+import { AppState, AppStateStatus } from 'react-native';
 import { AuthProvider, useAuth } from './src/contexts/AuthProvider';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -19,6 +20,7 @@ import { GroopProvider } from './src/contexts/GroopProvider';
 import { KeyExchangeService } from './src/services/KeyExchangeService';
 import 'react-native-gesture-handler';
 import { NotificationProvider } from './src/contexts/NotificationProvider'
+import { NotificationService } from './src/services/NotificationService';
 
 // Function to enable/disable debug navigation
 const useDebugNavigation = () => {
@@ -94,6 +96,53 @@ export default function App() {
     console.log('[DEBUG] App component MOUNTED');
     return () => console.log('[DEBUG] App component UNMOUNTED');
   }, []);
+
+  const requestNotificationPermissions = async () => {
+    try {
+      const permissionResult = await NotificationService.requestPermission();
+      console.log(`[APP] Notification permission ${permissionResult ? 'granted' : 'denied'}`);
+      return permissionResult;
+    } catch (error) {
+      console.error('[APP] Error requesting notification permissions:', error);
+      return false;
+    }
+  };
+
+useEffect(() => {
+  // Request permissions and reset badge when app opens
+  const initializeNotifications = async () => {
+    // First request permissions
+    await requestNotificationPermissions();
+    
+    // Then reset badge count
+    console.log('[APP] Resetting badge count on app open');
+    const success = await NotificationService.setBadgeCount(0);
+    console.log(`[APP] Badge reset ${success ? 'successful' : 'failed'}`);
+  };
+  
+  // Run initialization
+  initializeNotifications();
+  
+  // Subscribe to app state changes
+  const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+    if (nextAppState === 'active') {
+      console.log('[APP] App came to foreground');
+      NotificationService.setBadgeCount(0);
+    } else if (nextAppState === 'background') {
+      console.log('[APP] App went to background');
+      // When app goes to background, set badge to current unread count
+      // This ensures the badge is visible when the app is closed
+      // Get the current unread count from NotificationContext
+      const notificationContext = require('./src/contexts/NotificationContext');
+      const unreadCount = notificationContext?.getUnreadCount() || 0;
+      NotificationService.setBadgeCount(unreadCount);
+    }
+  });
+  
+  return () => {
+    subscription.remove();
+  };
+}, []);
   
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
