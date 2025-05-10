@@ -48,6 +48,7 @@ export default function ChatScreen() {
   const [showEncryptionInfo, setShowEncryptionInfo] = useState(false);
   const [encryptionLoading, setEncryptionLoading] = useState(false);
   const { refreshUnreadCount } = useNotification();
+  const flashListRef = useRef<FlashList<ChatItemType>>(null);
 
     // Process messages to include date separators
   const processMessagesWithDateSeparators = useCallback(() => {
@@ -184,6 +185,17 @@ export default function ChatScreen() {
       return () => {};
     }, [refreshUnreadCount, profile])
   );
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      // Short timeout to ensure the list is rendered before scrolling
+      const timer = setTimeout(() => {
+        flashListRef.current?.scrollToEnd();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [messages]);
+
   // Load messages
   useEffect(() => {
     if (!profile || !currentGroop) return;
@@ -246,6 +258,11 @@ export default function ChatScreen() {
       
       // Clear reply state
       if (replyingTo) setReplyingTo(null);
+      
+      // Scroll to the bottom after sending
+      setTimeout(() => {
+        flashListRef.current?.scrollToEnd();
+      }, 200);
     } catch (error) {
       console.error('[CHAT] Error in sendMessage:', error);
     }
@@ -416,6 +433,7 @@ export default function ChatScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
       <FlashList
+        ref={flashListRef}
         data={processMessagesWithDateSeparators()}
         renderItem={({ item }) => {
           // Check if item is a date separator
