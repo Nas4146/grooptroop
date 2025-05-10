@@ -49,7 +49,18 @@ export default function ChatScreen() {
   const [encryptionLoading, setEncryptionLoading] = useState(false);
   const { refreshUnreadCount } = useNotification();
   const flashListRef = useRef<FlashList<ChatItemType>>(null);
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
+      // Handle scroll events
+      const handleScroll = (event: any) => {
+        const offsetY = event.nativeEvent.contentOffset.y;
+        const contentHeight = event.nativeEvent.contentSize.height;
+        const layoutHeight = event.nativeEvent.layoutMeasurement.height;
+      
+        // Show button when user has scrolled up a bit
+        setShowScrollButton(offsetY < contentHeight - layoutHeight - 100);
+    };
+    
     // Process messages to include date separators
   const processMessagesWithDateSeparators = useCallback(() => {
   if (!messages.length) return [];
@@ -457,7 +468,18 @@ export default function ChatScreen() {
         onRefresh={handleRefresh}
         refreshing={refreshing}
         ListEmptyComponent={<EmptyChat />}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
       />
+
+    {showScrollButton && (
+  <TouchableOpacity
+    style={tw`absolute right-4 bottom-16 bg-primary rounded-full w-10 h-10 items-center justify-center shadow-md z-10`}
+    onPress={() => flashListRef.current?.scrollToEnd({ animated: true })}
+  >
+    <Ionicons name="arrow-down" size={24} color="white" />
+  </TouchableOpacity>
+)}
         
         <MessageInput 
           onSend={sendMessage} 
