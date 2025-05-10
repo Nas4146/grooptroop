@@ -12,7 +12,7 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export class NotificationService {
+/*export class NotificationService {
   // Request permission for notifications
   static async requestPermission() {
     console.log('[NOTIFICATION] Requesting permission');
@@ -105,3 +105,21 @@ export class NotificationService {
     }
   }
 }
+  */
+
+export class NotificationService {
+    static async requestPermission() {
+      console.log('[NOTIFICATION] Permission disabled for development');
+      return false;
+    }
+    
+    static async setBadgeCount(count: number) {
+      console.log(`[NOTIFICATION] Badge count set to ${count} (development mode)`);
+      return true;
+    }
+    
+    static async getExpoPushToken() {
+      console.log('[NOTIFICATION] Getting push token (development mode)');
+      return "DEVELOPMENT-MOCK-TOKEN";
+    }
+  }

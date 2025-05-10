@@ -148,7 +148,7 @@ export default function App() {
     }
   };
 
-useEffect(() => {
+/*useEffect(() => {
   // Request permissions and reset badge when app opens
   const initializeNotifications = async () => {
     // First request permissions
@@ -183,7 +183,8 @@ useEffect(() => {
     subscription.remove();
   };
 }, []);
-  
+  */
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>

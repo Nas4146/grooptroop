@@ -30,6 +30,12 @@ export interface ChatMessage {
   }[];
 }
 
+export type ChatItemType = ChatMessage | {
+  id: string;
+  type: 'dateSeparator';
+  date: Date;
+};
+
 export interface ReplyingToMessage {
   id: string;
   text: string;
