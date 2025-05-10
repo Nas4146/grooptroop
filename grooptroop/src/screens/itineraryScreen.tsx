@@ -406,7 +406,7 @@ export default function ItineraryScreen() {
             <View style={tw`flex-row justify-between items-center`}>
               <View style={tw`flex-row items-center`}>
                 <View style={tw`w-2 h-2 rounded-full bg-accent mr-2`}></View>
-                <Text style={tw`text-sm font-bold text-neutral`}>Trip $$</Text>
+                <Text style={tw`text-sm font-bold text-neutral`}>$$</Text>
                 
                 {/* Only show in collapsed state */}
                 {!budgetExpanded && (

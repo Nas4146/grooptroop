@@ -31,6 +31,7 @@ import EncryptionInfoModal from '../components/chat/EncryptionInfoModal';
 import { useNotification } from '../contexts/NotificationProvider';
 import { useFocusEffect } from '@react-navigation/native';
 import DateSeparator from '../components/chat/DateSeparator';
+import { ChatItemType } from '../models/chat';
 
 type ChatScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -47,6 +48,61 @@ export default function ChatScreen() {
   const [showEncryptionInfo, setShowEncryptionInfo] = useState(false);
   const [encryptionLoading, setEncryptionLoading] = useState(false);
   const { refreshUnreadCount } = useNotification();
+
+    // Process messages to include date separators
+  const processMessagesWithDateSeparators = useCallback(() => {
+  if (!messages.length) return [];
+
+  // First, sort messages by date if they aren't already
+  const sortedMessages = [...messages].sort((a, b) => {
+    // Safe way to convert to Date, handling all possible types
+    const getDateValue = (createdAt: any): Date => {
+      if (!createdAt) return new Date();
+      if (createdAt?.toDate) return createdAt.toDate();
+      if (createdAt instanceof Date) return createdAt;
+      return new Date(createdAt);
+    };
+
+    const dateA = getDateValue(a.createdAt);
+    const dateB = getDateValue(b.createdAt);
+    
+    return dateA.getTime() - dateB.getTime();  // Oldest first (for non-inverted list)
+  });
+    
+  // Then, create a new array with date separators
+  const result: ChatItemType[] = [];
+  let lastDateStr: string | null = null;
+        
+  sortedMessages.forEach(message => {
+    // Reuse the same helper function for consistent date handling
+    const getDateValue = (createdAt: any): Date => {
+      if (!createdAt) return new Date();
+      if (createdAt?.toDate) return createdAt.toDate();
+      if (createdAt instanceof Date) return createdAt;
+      return new Date(createdAt);
+    };
+    
+    const messageDate = getDateValue(message.createdAt);
+    
+    // Get just the date portion for comparison (year, month, day)
+    const dateStr = messageDate.toDateString();
+    
+    // If this is a new date, add a separator
+    if (dateStr !== lastDateStr) {
+      lastDateStr = dateStr;
+      result.push({
+        id: `date-${dateStr}`,
+        type: 'dateSeparator',
+        date: messageDate
+      });
+    }
+    
+    // Add the message
+    result.push(message);
+  });
+  
+  return result;
+}, [messages]);
 
   // Debug log
   useEffect(() => {
@@ -264,46 +320,7 @@ export default function ChatScreen() {
     </View>
   );
 
-  // Process messages to include date separators
-const processMessagesWithDateSeparators = useCallback(() => {
-  if (!messages.length) return [];
-  
-  // First, sort messages by date if they aren't already
-  const sortedMessages = [...messages].sort((a, b) => {
-    const dateA = a.createdAt instanceof Date ? a.createdAt : new Date(a.createdAt);
-    const dateB = b.createdAt instanceof Date ? b.createdAt : new Date(b.createdAt);
-    // For inverted list (newest at the top), we want descending order
-    return dateB.getTime() - dateA.getTime();
-  });
-  
-  // Then, we create a new array with date separators
-  const result: (ChatMessage | { id: string; type: 'dateSeparator'; date: Date })[] = [];
-  let lastDateStr: string | null = null;
-  
-  sortedMessages.forEach(message => {
-    const messageDate = message.createdAt instanceof Date 
-      ? message.createdAt 
-      : new Date(message.createdAt);
-    
-    // Get just the date portion for comparison (year, month, day)
-    const dateStr = messageDate.toDateString();
-    
-    // If this is a new date, add a separator
-    if (dateStr !== lastDateStr) {
-      lastDateStr = dateStr;
-      result.push({
-        id: `date-${dateStr}`,
-        type: 'dateSeparator',
-        date: new Date(messageDate)
-      });
-    }
-    
-    // Add the message
-    result.push(message);
-  });
-  
-  return result;
-}, [messages]);
+
   
   return (
     <SafeAreaView style={tw`flex-1 bg-light`}>
@@ -398,32 +415,31 @@ const processMessagesWithDateSeparators = useCallback(() => {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        <FlashList
-          data={processMessagesWithDateSeparators()}
-            renderItem={({ item }) => {
-    // Check if item is a date separator
-    if ('type' in item && item.type === 'dateSeparator') {
-      return <DateSeparator date={item.date} />;
-    }
-    
-    // Regular message
-        return (
-          <MessageBubble 
-        message={item as ChatMessage}
-        isFromCurrentUser={(item as ChatMessage).senderId === profile?.uid}
-        onReactionPress={handleReaction}
-        onReplyPress={() => handleReply(item as ChatMessage)}
-      />
+      <FlashList
+        data={processMessagesWithDateSeparators()}
+        renderItem={({ item }) => {
+          // Check if item is a date separator
+          if ('type' in item && item.type === 'dateSeparator') {
+            return <DateSeparator date={item.date} />;
+          }
+          
+          // Regular message (using type assertion)
+          return (
+            <MessageBubble 
+              message={item as ChatMessage}
+              isFromCurrentUser={(item as ChatMessage).senderId === profile?.uid}
+              onReactionPress={handleReaction}
+              onReplyPress={() => handleReply(item as ChatMessage)}
+            />
     );
         }}
         keyExtractor={(item) => item.id}
         estimatedItemSize={80}
-        inverted
         contentContainerStyle={tw`px-4 pt-4 pb-2`}
         onRefresh={handleRefresh}
         refreshing={refreshing}
         ListEmptyComponent={<EmptyChat />}
-        />
+      />
         
         <MessageInput 
           onSend={sendMessage} 
