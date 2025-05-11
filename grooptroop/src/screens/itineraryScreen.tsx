@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Animated, TouchableOpacity, Linking, Image } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Animated, TouchableOpacity, Linking, Image, Platform } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +9,9 @@ import { ItineraryDay } from '../models/itinerary';
 import DaySection from '../components/itinerary/DaySection';
 import tw from '../utils/tw';
 import { useGroop } from '../contexts/GroopProvider';
+import PaymentSheet from '../components/payments/PaymentSheet';
+import { PaymentService } from '../services/PaymentService';
+import { useAuth } from '../contexts/AuthProvider';
 
 export default function ItineraryScreen() {
   const { currentGroop, userGroops, fetchUserGroops, setCurrentGroop } = useGroop();  const navigation = useNavigation();
@@ -18,10 +21,16 @@ export default function ItineraryScreen() {
   const [budgetExpanded, setBudgetExpanded] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
   const budgetAnimation = useRef(new Animated.Value(0)).current;
+  const [accommodationPaymentVisible, setAccommodationPaymentVisible] = useState(false);
+  const [totalOwed, setTotalOwed] = useState(0);
+  const [totalPaid, setTotalPaid] = useState(0);
+  const [totalTripCost, setTotalTripCost] = useState(0);
+  const { profile } = useAuth();
 
   useEffect(() => {
     fetchUserGroops();
   }, []);
+
 
   // Animation configs
   const animateBudget = (expand: boolean) => {
@@ -34,10 +43,10 @@ export default function ItineraryScreen() {
   };
 
   // Derived animated values
-  const budgetWidth = budgetAnimation.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['20%', '100%']
-  });
+const budgetWidth = budgetAnimation.interpolate({
+  inputRange: [0, 1],
+  outputRange: ['20%', '100%'] 
+});
   
   const budgetRight = budgetAnimation.interpolate({
     inputRange: [0, 1],
@@ -85,6 +94,25 @@ export default function ItineraryScreen() {
     }
   };
 
+
+
+      const fetchPaymentSummary = async () => {
+      try {
+        const summary = await PaymentService.getUserPaymentSummary(currentGroop.id, profile.uid);
+        setTotalOwed(summary.totalOwed);
+        setTotalPaid(summary.totalPaid);
+        setTotalTripCost(currentGroop.totalTripCost ? parseFloat(currentGroop.totalTripCost) : 0);
+      } catch (error) {
+        console.error('[ITINERARY_SCREEN] Error loading payment data:', error);
+      }
+    };
+
+  useEffect(() => {
+  if (currentGroop && profile) {
+    fetchPaymentSummary();
+  }
+  }, [currentGroop, profile]);
+
   const renderGroopSelector = () => {
     if (userGroops.length <= 1) return null;
     
@@ -118,6 +146,9 @@ export default function ItineraryScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     fetchItinerary();
+    if (currentGroop && profile) {
+    fetchPaymentSummary(); // You'll need to extract this function from the useEffect
+    }
   };
 
   useEffect(() => {
@@ -173,15 +204,6 @@ export default function ItineraryScreen() {
     animateBudget(newState);
   };
 
-  if (loading) {
-    return (
-      <View style={tw`flex-1 justify-center items-center bg-light`}>
-        <ActivityIndicator size="large" color="#7C3AED" />
-        <Text style={tw`mt-4 font-semibold text-primary`}>Loading your vibe...</Text>
-      </View>
-    );
-  }
-
   // Make header collapse to a smaller size
   const headerHeight = scrollY.interpolate({
     inputRange: [0, 120],
@@ -190,6 +212,10 @@ export default function ItineraryScreen() {
   });
 
   return (
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={tw`flex-1`}
+      >
     <SafeAreaView style={tw`flex-1 bg-light`}>
       {/* Render groop selector if user has multiple groops */}
       {renderGroopSelector()}
@@ -271,83 +297,66 @@ export default function ItineraryScreen() {
         <View style={tw`flex-row justify-between items-center mb-1`}>
           <Text style={tw`font-bold text-neutral text-sm`}>Trip Home Base</Text>
           
-          <View style={tw`flex-row`}>
-    {/* View on Airbnb with payment indicator */}
-    <TouchableOpacity 
-      style={tw`bg-gray-100 rounded-full px-2 py-0.5 flex-row items-center`}
-      onPress={() => Linking.openURL('https://airbnb.com/rooms/123456')}
-    >
-      <Ionicons name="home" size={12} color="#7C3AED" />
-      <Text style={tw`text-xs text-primary ml-1`}>Airbnb</Text>
-    </TouchableOpacity>
+          <View style={tw`flex-row items-center`}>
+  <View style={tw`rounded-full p-1.5 bg-amber-100 mr-1.5`}>
+    <Ionicons 
+      name="card-outline" 
+      size={16} 
+      color="#F59E0B" 
+    />
   </View>
+  
+  {/* This should be a TouchableOpacity to open the payment sheet */}
+  <TouchableOpacity
+    style={tw`bg-amber-100 px-2 py-0.5 rounded-full`}
+    onPress={() => setAccommodationPaymentVisible(true)}
+  >
+    <Text style={tw`text-xs font-bold text-amber-700`}>
+      ${currentGroop?.accommodation?.costPerPerson || 0}
+    </Text>
+  </TouchableOpacity>
+</View>
 </View>
 
 {/* Add payment information row */}
 <View style={tw`flex-row items-center justify-between mb-0.5`}>
   <View>
-    <Text style={tw`text-gray-600 text-xs`}>Calle Roma Norte 123</Text>
-    <Text style={tw`text-gray-600 text-xs`}>Mexico City, 06700</Text>
+    <Text style={tw`text-gray-600 text-xs`}>{currentGroop?.accommodation?.address1 || 'Address not available'}</Text>
+    <Text style={tw`text-gray-600 text-xs`}>{currentGroop?.accommodation?.address2 || ''}</Text>
   </View>
-  
-  <View style={tw`flex-row items-center`}>
-    <View style={tw`rounded-full p-1.5 bg-amber-100 mr-1.5`}>
-      <Ionicons 
-        name="card-outline" 
-        size={16} 
-        color="#F59E0B" 
-      />
-    </View>
-    <View style={tw`bg-amber-100 px-2 py-0.5 rounded-full`}>
-      <Text style={tw`text-xs font-bold text-amber-700`}>$150</Text>
-    </View>
-  </View>
+
 </View>
         
-            {/* Add this button
-    <TouchableOpacity
-      style={tw`bg-primary mt-4 px-6 py-3 rounded-lg`}
-      onPress={async () => {
-        try {
-          setLoading(true);
-          await ItineraryService.importMockData(currentGroop.id);
-          console.log('[ITINERARY] Successfully imported mock data');
-          
-          // Refresh the itinerary
-          await fetchItinerary();
-        } catch (error) {
-          console.error('[ITINERARY] Error importing mock data:', error);
-        }
-      }}
-    >
-      <Text style={tw`text-white font-bold`}>Import Sample Itinerary</Text>
-    </TouchableOpacity>*/}
 {/* Reorganized and centered button row: Copy, View Map, Message Group */}
 <View style={tw`flex-row justify-start mt-1.5`}>
     {/* Copy button */}
     <TouchableOpacity 
       style={tw`bg-gray-100 rounded-lg px-2.5 py-0.5 flex-row items-center mr-2`}
       onPress={() => {
-        Clipboard.setString('Calle Roma Norte 123, Mexico City, 06700');
+      const address = `${currentGroop?.accommodation?.address1 || ''}, ${currentGroop?.accommodation?.address2 || ''}`.trim();
+      Clipboard.setString(address);
       }}
-    >
-      <Ionicons name="copy-outline" size={12} color="#1F2937" />
-      <Text style={tw`text-xs text-neutral ml-1`}>Copy</Text>
+      >
+    <Ionicons name="copy-outline" size={12} color="#1F2937" />
+    <Text style={tw`text-xs text-neutral ml-1`}>Copy</Text>
     </TouchableOpacity>
     
     {/* View Map button */}
     <TouchableOpacity 
       style={tw`bg-gray-100 rounded-lg px-2.5 py-0.5 flex-row items-center mr-2`}
-      onPress={() => Linking.openURL('https://goo.gl/maps/abcdefg')}
+      onPress={() => {
+  const mapUrl = currentGroop?.accommodation?.mapUrl || 
+                `https://maps.google.com/?q=${currentGroop?.accommodation?.address1},${currentGroop?.accommodation?.city}`;
+  Linking.openURL(mapUrl);
+}}
     >
       <Ionicons name="map" size={12} color="#1F2937" />
       <Text style={tw`text-xs text-neutral ml-1`}>View Map</Text>
     </TouchableOpacity>
     
-    {/* Message Group button */}
     <TouchableOpacity 
       style={tw`bg-gray-100 rounded-lg px-2.5 py-0.5 flex-row items-center`}
-      onPress={() => Linking.openURL('sms:?addresses=1235551234,1235556789&body=Hey%20bachelor%20party%20crew!')}
+      onPress={() => navigation.navigate('Chat')}
     >
       <Ionicons name="chatbubble-ellipses-outline" size={12} color="#1F2937" />
       <Text style={tw`text-xs text-neutral ml-1`}>Message Group</Text>
@@ -411,7 +420,7 @@ export default function ItineraryScreen() {
                 {/* Only show in collapsed state */}
                 {!budgetExpanded && (
                   <View style={tw`bg-secondary rounded-full ml-2 px-2`}>
-                    <Text style={tw`text-xs font-bold text-white`}>$475</Text>
+                    <Text style={tw`text-base font-bold text-secondary`}>${totalOwed.toFixed(2)}</Text>
                   </View>
                 )}
               </View>
@@ -439,37 +448,53 @@ export default function ItineraryScreen() {
                 <View style={tw`flex-row justify-between items-center`}>
                   <View>
                     <Text style={tw`text-xs text-gray-500`}>You owe</Text>
-                    <Text style={tw`text-base font-bold text-secondary`}>$475</Text>
+                    <Text style={tw`text-base font-bold text-secondary`}>${totalOwed.toFixed(2)}</Text>
                   </View>
                   
                   <View>
                     <Text style={tw`text-xs text-gray-500`}>You've paid</Text>
-                    <Text style={tw`text-base font-bold text-accent`}>$275</Text>
+                      <Text style={tw`text-base font-bold text-accent`}>${totalPaid.toFixed(2)}</Text>
                   </View>
                   
                   <View>
                     <Text style={tw`text-xs text-gray-500`}>Total trip</Text>
-                    <Text style={tw`text-base font-bold text-neutral`}>$750</Text>
+                    <Text style={tw`text-base font-bold text-neutral`}>${totalTripCost.toFixed(2)}</Text>
                   </View>
                 </View>
                 
                 {/* Progress bar for payment */}
                 <View style={tw`mt-2 h-1.5 bg-gray-200 rounded-full overflow-hidden`}>
-                  <View style={tw`h-full bg-gradient-to-r from-accent to-primary rounded-full`} style={{width: '36%'}}></View>
+                  <View style={tw`h-full bg-gradient-to-r from-accent to-primary rounded-full`} style={{width: `${totalOwed > 0 ? Math.min(100, (totalPaid / totalOwed) * 100) : 0}%`}}></View>
                 </View>
                 
                 {/* Pay now button - only shows in expanded state */}
                 <TouchableOpacity 
                   style={tw`bg-primary rounded-full py-2 mt-3 items-center`}
-                  onPress={() => {/* Navigate to payment screen */}}
+                  onPress={() => {
+                  const remaining = totalOwed - totalPaid;
+                    if (remaining > 0) {
+                  setAccommodationPaymentVisible(true);
+                  } else {
+                  alert('You have already paid for this accommodation.');
+                  }
+                }}
                 >
-                  <Text style={tw`text-white font-bold text-sm`}>Pay now</Text>
-                </TouchableOpacity>
+  <Text style={tw`text-white font-bold text-sm`}>Pay Now</Text>
+</TouchableOpacity>
               </View>
             )}
           </View>
         </TouchableOpacity>
       </Animated.View>
+        <PaymentSheet
+  visible={accommodationPaymentVisible}
+  onClose={() => setAccommodationPaymentVisible(false)}
+  groopId={currentGroop?.id || ''}
+  amount={currentGroop?.accommodation?.costPerPerson || 0}
+  description={`Payment for Accommodation: ${currentGroop?.accommodation?.description || 'Stay'}`}
+  title="Pay for Accommodation"
+/>
     </SafeAreaView>
   );
+  </KeyboardAvoidingView>
 }

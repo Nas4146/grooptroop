@@ -23,8 +23,9 @@ export const GroopProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [error, setError] = useState<string | null>(null);
   
   // Calculate if the current user is a member of the current groop
-  const isMember = currentGroop?.members.includes(profile?.uid || '') || false;
-
+const isMember = !!currentGroop && !!profile && 
+  currentGroop.members.some(memberId => memberId === profile.uid);
+  
   // For debugging - you can remove this if not needed
   useEffect(() => {
     if (currentGroop && profile) {

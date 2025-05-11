@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "grooptroop",
-    "scheme": "com.nick.grooptroop",
+    "scheme": "grooptroop",
     "slug": "grooptroop",
     "version": "1.0.0",
     "orientation": "portrait",

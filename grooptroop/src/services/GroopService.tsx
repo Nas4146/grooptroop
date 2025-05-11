@@ -23,18 +23,28 @@ import {
     description?: string;
     photoURL?: string;
     location?: string;
-    address?: string;
     airbnbUrl?: string;
-    mapUrl?: string;
     startDate?: Date;
     endDate?: Date;
+    ownerId: string;
     dateRange?: string;
-    accommodationCost?: number;
     totalTripCost?: number;
     createdAt: Date;
     createdBy: string;
     members: string[];
     organizers: string[];
+    accommodation?: {
+    address1?: string;
+    address2?: string;
+    city?: string;
+    description?: string;
+    costPerPerson: number;
+    totalCost: number;
+    mapUrl?: string;
+    };
+    paymentSettings?: {
+      venmoUsername?: string;
+    };
   }
   
   export class GroopService {
