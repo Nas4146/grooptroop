@@ -3,7 +3,6 @@ import { View, Text, Modal, TouchableOpacity, ScrollView, Image, Linking } from 
 import { Ionicons } from '@expo/vector-icons';
 import { ItineraryEvent } from '../../models/itinerary';
 import tw from '../../utils/tw';
-import PaymentSheet from '../payments/PaymentSheet';
 
 interface EventDetailsModalProps {
   visible: boolean;
@@ -114,7 +113,7 @@ export default function EventDetailsModal({
             )}
 
             {/* People attending section */}
-            {event.attendees && event.attendees > 0 && (
+            {typeof event.attendees === 'number' && event.attendees > 0 && (
               <View style={tw`mt-4 bg-gray-50 p-2 rounded-lg`}>
                 <View style={tw`flex-row items-center justify-between`}>
                   <Text style={tw`text-sm font-medium text-gray-600`}>Attending</Text>
@@ -131,7 +130,7 @@ export default function EventDetailsModal({
                         />
                       </View>
                     ))}
-                    {event.attendees > 3 && (
+                    {typeof event.attendees === 'number' && event.attendees > 3 && (
                       <View style={tw`w-7 h-7 rounded-full bg-primary border-2 border-white items-center justify-center`}>
                         <Text style={tw`text-xs text-white font-bold`}>+{event.attendees - 3}</Text>
                       </View>
