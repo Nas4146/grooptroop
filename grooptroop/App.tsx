@@ -1,32 +1,26 @@
 import './src/utils/cryptoPolyfill';
 import * as Notifications from 'expo-notifications';
-import React, {useEffect, useState, useRef} from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import 'react-native-gesture-handler';
 import './src/styles/global.css';
-import { useNavigation } from '@react-navigation/native';
 import { AppState, AppStateStatus } from 'react-native';
 import { AuthProvider, useAuth } from './src/contexts/AuthProvider';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { NavigationContainer } from '@react-navigation/native';
-import { View, Text, ActivityIndicator, Button } from 'react-native';
+import { NavigationContainer, LinkingOptions } from '@react-navigation/native';
+import { View, Text, ActivityIndicator, Button, Linking } from 'react-native';
 import BottomTabNavigator from './src/navigation/BottomTabNavigator';
 import AuthNavigator from './src/navigation/AuthNavigator';
 import tw from './src/utils/tw';
-import SimpleTabNavigator from './src/navigation/SimpleTabNavigator';
-import SimpleAuthNavigator from './src/navigation/SimpleAuthNavigator';
-import TestAuth from './src/screens/TestAuth';
-import MinimalTabNavigator from './src/navigation/MinimalTabNavigator';
 import { GroopProvider } from './src/contexts/GroopProvider';
 import { KeyExchangeService } from './src/services/KeyExchangeService';
-import 'react-native-gesture-handler';
-import { NotificationProvider } from './src/contexts/NotificationProvider'
+import { NotificationProvider } from './src/contexts/NotificationProvider';
 import { NotificationService } from './src/services/NotificationService';
 
 // Function to enable/disable debug navigation
 const useDebugNavigation = () => {
-  const [debugMode, setDebugMode] = useState(false);
+  const [debugMode, setDebugMode] = useState(__DEV__ ? false : false); // Default to false
   
   // Log changes to debug mode
   useEffect(() => {
@@ -34,6 +28,75 @@ const useDebugNavigation = () => {
   }, [debugMode]);
   
   return { debugMode, toggleDebugMode: () => setDebugMode(prev => !prev) };
+};
+
+// Define the type for our navigation structure
+type RootParamList = {
+  Chat: { groopId?: string };
+  Itinerary: { groopId?: string };
+  Payments: { groopId?: string };
+  Map: undefined;
+  Profile: undefined;
+  Admin: undefined;
+  SignIn: { groopId?: string };
+  SignUp: undefined;
+};
+
+// Fixed typing for the linking configuration
+const linking: LinkingOptions<RootParamList> = {
+  prefixes: ['grooptroop://', 'https://grooptroop.app', 'https://grp.trp'],
+  config: {
+    screens: {
+      Chat: 'chat/:groopId?',
+      Itinerary: 'itinerary/:groopId?',
+      Payments: 'payments/:groopId?',
+      Map: 'map',
+      Profile: 'profile',
+      SignIn: 'signin',
+      SignUp: 'signup'
+    }
+  },
+  // Handle short invite links
+  getInitialURL: async () => {
+    const url = await Linking.getInitialURL();
+    console.log('[LINKING] Initial URL:', url);
+    
+    if (url) {
+      // Handle short links like https://grp.trp/abc123
+      const shortLinkMatch = url.match(/https:\/\/grp\.trp\/([a-zA-Z0-9]+)/);
+      if (shortLinkMatch && shortLinkMatch[1]) {
+        const shortCode = shortLinkMatch[1];
+        console.log('[LINKING] Detected short code:', shortCode);
+        // Convert to the standard Chat URL format with groopId
+        return `grooptroop://chat/${shortCode}`;
+      }
+    }
+    return url;
+  },
+  // Handle incoming links
+  subscribe: (listener) => {
+    const onReceiveURL = ({ url }: { url: string }) => {
+      console.log('[LINKING] Received URL:', url);
+      
+      // Handle short links like https://grp.trp/abc123
+      const shortLinkMatch = url.match(/https:\/\/grp\.trp\/([a-zA-Z0-9]+)/);
+      if (shortLinkMatch && shortLinkMatch[1]) {
+        const shortCode = shortLinkMatch[1];
+        console.log('[LINKING] Detected short code:', shortCode);
+        // Convert to the standard Chat URL format with groopId
+        listener(`grooptroop://chat/${shortCode}`);
+        return;
+      }
+      listener(url);
+    };
+    
+    // Listen to incoming links
+    const subscription = Linking.addEventListener('url', onReceiveURL);
+    
+    return () => {
+      subscription.remove();
+    };
+  }
 };
 
 const AppContent = () => {
@@ -57,37 +120,36 @@ const AppContent = () => {
   // Show loading state
   if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }}>
+      <View style={tw`flex-1 justify-center items-center bg-gray-100`}>
         <ActivityIndicator size="large" color="#7C3AED" />
-        <Text style={{ marginTop: 10 }}>Loading...</Text>
+        <Text style={tw`mt-3 text-gray-500`}>Loading...</Text>
       </View>
     );
   }
   
-  // Regular app content with debug button
   return (
-    <NavigationContainer onStateChange={(state) => console.log('[DEBUG] Navigation state changed:', state?.routes?.[state.index]?.name)}>
-      <View style={{ flex: 1 }}>
-        {debugMode ? (
-          // Show navigation based on auth state
-          isAuthenticated ? (
-            <BottomTabNavigator />
-          ) : (
-            <TestAuth />
-          )
-        ) : (
-          // Show debug screen in regular mode
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-            <Text style={{ fontSize: 20, marginBottom: 20 }}>App is working!</Text>
-            <Text style={{ marginBottom: 30 }}>Auth status: {isAuthenticated ? 'Logged in' : 'Not logged in'}</Text>
+    <NavigationContainer 
+      linking={linking}
+      onStateChange={(state) => console.log('[DEBUG] Navigation state changed:', state?.routes?.[state.index]?.name)}
+    >
+      <View style={tw`flex-1`}>
+        {__DEV__ && debugMode ? (
+          // Show debug screen in development mode when debug toggle is on
+          <View style={tw`flex-1 justify-center items-center p-5`}>
+            <Text style={tw`text-xl mb-5`}>Development Mode</Text>
+            <Text style={tw`mb-6 text-gray-500`}>Auth status: {isAuthenticated ? 'Logged in' : 'Not logged in'}</Text>
             <Button 
-              title="Toggle Navigation Debug Mode" 
+              title="Show App Navigation" 
               onPress={toggleDebugMode} 
               color="#7C3AED"
             />
           </View>
+        ) : (
+          // Show either the auth navigator or the bottom tab navigator based on auth state
+          isAuthenticated ? <BottomTabNavigator /> : <AuthNavigator />
         )}
       </View>
+      <StatusBar style="auto" />
     </NavigationContainer>
   );
 };
@@ -97,7 +159,7 @@ export default function App() {
   const notificationListener = useRef<any>();
   const responseListener = useRef<any>();
 
- useEffect(() => {
+  useEffect(() => {
     // Set up notification handlers
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
@@ -121,10 +183,12 @@ export default function App() {
       
       if (data.groopId && data.messageId) {
         console.log(`[APP] Navigating to chat: ${data.groopId}`);
-        // You'll need to set up navigation to the proper groop
-        // This will depend on your navigation structure
+        // Navigation will be handled by the notification context
       }
     });
+    
+    // Request notification permissions
+    requestNotificationPermissions();
     
     return () => {
       // Clean up listeners
@@ -148,45 +212,8 @@ export default function App() {
     }
   };
 
-/*useEffect(() => {
-  // Request permissions and reset badge when app opens
-  const initializeNotifications = async () => {
-    // First request permissions
-    await requestNotificationPermissions();
-    
-    // Then reset badge count
-    console.log('[APP] Resetting badge count on app open');
-    const success = await NotificationService.setBadgeCount(0);
-    console.log(`[APP] Badge reset ${success ? 'successful' : 'failed'}`);
-  };
-  
-  // Run initialization
-  initializeNotifications();
-  
-  // Subscribe to app state changes
-  const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
-    if (nextAppState === 'active') {
-      console.log('[APP] App came to foreground');
-      NotificationService.setBadgeCount(0);
-    } else if (nextAppState === 'background') {
-      console.log('[APP] App went to background');
-      // When app goes to background, set badge to current unread count
-      // This ensures the badge is visible when the app is closed
-      // Get the current unread count from NotificationContext
-      const notificationContext = require('./src/contexts/NotificationProvider');
-      const unreadCount = notificationContext?.getUnreadCount() || 0;
-      NotificationService.setBadgeCount(unreadCount);
-    }
-  });
-  
-  return () => {
-    subscription.remove();
-  };
-}, []);
-  */
-
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={tw`flex-1`}>
       <SafeAreaProvider>
         <AuthProvider>
           <GroopProvider>

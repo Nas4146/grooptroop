@@ -12,9 +12,12 @@ import {
 } from 'react-native';
 import { useAuth } from '../contexts/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import { AuthScreenNavigationProp } from '../navigation/types';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { AuthScreenNavigationProp, RootStackParamList } from '../navigation/types';
 import tw from '../utils/tw';
+
+// Define route params type
+type SignInScreenRouteProp = RouteProp<RootStackParamList, 'SignIn'>;
 
 export default function SignInScreen() {
   const [email, setEmail] = useState('');
@@ -22,6 +25,7 @@ export default function SignInScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { signIn, signInWithGoogle, signInWithApple, signInAnonymously } = useAuth();
   const navigation = useNavigation<AuthScreenNavigationProp>();
+  const route = useRoute<SignInScreenRouteProp>();
 
   const handleSignIn = async () => {
     if (!email || !password) {
@@ -32,7 +36,15 @@ export default function SignInScreen() {
     try {
       setIsSubmitting(true);
       await signIn(email, password);
-      // Navigation handled by auth state change in AuthProvider
+      
+      // Check if there's a pending invitation to handle
+      const pendingGroopId = route.params?.groopId;
+      if (pendingGroopId) {
+        console.log('[SIGN_IN] Handling pending invitation for groop:', pendingGroopId);
+        // Navigate back to invitation screen with the groop ID
+        navigation.navigate('Invitation', { groopId: pendingGroopId });
+      }
+      // Otherwise, normal navigation would occur via auth state change
     } catch (error: any) {
       Alert.alert('Sign In Failed', error.message || 'Please try again');
     } finally {
@@ -44,7 +56,16 @@ export default function SignInScreen() {
     try {
       setIsSubmitting(true);
       await signInWithGoogle();
-      // Navigation handled by auth state change in AuthProvider
+      
+      // Check for invitation params even with social sign-ins
+      const pendingGroopId = route.params?.groopId;
+      if (pendingGroopId) {
+        console.log('[SIGN_IN] Google sign in with pending invitation:', pendingGroopId);
+        // Navigate to invitation screen after a short delay to let auth complete
+        setTimeout(() => {
+          navigation.navigate('Invitation', { groopId: pendingGroopId });
+        }, 500);
+      }
     } catch (error: any) {
       Alert.alert('Google Sign In Failed', error.message || 'Please try again');
     } finally {
@@ -56,7 +77,16 @@ export default function SignInScreen() {
     try {
       setIsSubmitting(true);
       await signInWithApple();
-      // Navigation handled by auth state change in AuthProvider
+      
+      // Check for invitation params even with social sign-ins
+      const pendingGroopId = route.params?.groopId;
+      if (pendingGroopId) {
+        console.log('[SIGN_IN] Apple sign in with pending invitation:', pendingGroopId);
+        // Navigate to invitation screen after a short delay to let auth complete
+        setTimeout(() => {
+          navigation.navigate('Invitation', { groopId: pendingGroopId });
+        }, 500);
+      }
     } catch (error: any) {
       Alert.alert('Apple Sign In Failed', error.message || 'Please try again');
     } finally {
@@ -68,7 +98,16 @@ export default function SignInScreen() {
     try {
       setIsSubmitting(true);
       await signInAnonymously();
-      // Navigation handled by auth state change in AuthProvider
+      
+      // Check for invitation params even with anonymous sign-in
+      const pendingGroopId = route.params?.groopId;
+      if (pendingGroopId) {
+        console.log('[SIGN_IN] Anonymous sign in with pending invitation:', pendingGroopId);
+        // Navigate to invitation screen after a short delay to let auth complete
+        setTimeout(() => {
+          navigation.navigate('Invitation', { groopId: pendingGroopId });
+        }, 500);
+      }
     } catch (error: any) {
       Alert.alert('Guest Sign In Failed', error.message || 'Please try again');
     } finally {
@@ -83,7 +122,6 @@ export default function SignInScreen() {
     >
       <ScrollView contentContainerStyle={tw`flex-grow justify-center px-6 py-10`}>
         <View style={tw`items-center mb-8`}>
-          {/* Replace Image with Ionicons */}
           <View style={tw`bg-primary/10 rounded-full p-6 mb-4`}>
             <Ionicons name="airplane" size={48} color="#7C3AED" />
           </View>
@@ -178,4 +216,3 @@ export default function SignInScreen() {
     </KeyboardAvoidingView>
   );
 }
-
