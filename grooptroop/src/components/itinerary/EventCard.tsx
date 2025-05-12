@@ -109,77 +109,77 @@ export default function EventCard({
               : `bg-white border ${mood.border}`
             } ${event.isOptional ? 'opacity-80' : 'opacity-100'}`}
           >
-            <View style={tw`flex-row justify-between items-start pr-1.5`}>
-              <View style={tw`flex-1 pr-1`}>
-                {/* Row with title and mood emoji */}
-                <View style={tw`flex-row items-center flex-wrap`}>
-                  <Text style={tw`text-base font-bold ${
-                    event.isOptional ? 'text-gray-500' : 'text-gray-800'
-                  }`}>
-                    {event.title || ''}
-                  </Text>
-                  <Text style={tw`ml-1.5 text-base`}>{mood.emoji}</Text>
-                </View>
+<View style={tw`flex-row justify-between items-start pr-1.5`}>
+  <View style={tw`flex-1 pr-1`}>
+    {/* Row with title and mood emoji */}
+    <View style={tw`flex-row items-center flex-wrap`}>
+      <Text style={tw`text-base font-bold ${
+        event.isOptional ? 'text-gray-500' : 'text-gray-800'
+      }`}>
+        {event.title || ''}
+      </Text>
+      <Text style={tw`ml-1.5 text-base`}>{mood.emoji}</Text>
+    </View>
+    
+    {/* Optional tag */}
+    {event.isOptional && (
+      <View style={tw`flex-row items-center mt-0.5`}>
+        <View style={tw`bg-gray-100 rounded-full px-1.5 py-0.5`}>
+          <Text style={tw`text-xs font-medium text-gray-500`}>Optional</Text>
+        </View>
+      </View>
+    )}
                 
-                {/* Optional tag */}
-                {event.isOptional && (
-                  <View style={tw`flex-row items-center mt-0.5`}>
-                    <View style={tw`bg-gray-100 rounded-full px-1.5 py-0.5`}>
-                      <Text style={tw`text-xs font-medium text-gray-500`}>Optional</Text>
-                    </View>
-                  </View>
-                )}
+    {/* Location if available */}
+    {event.location && (
+      <View style={tw`flex-row items-center mt-1`}>
+        <Ionicons name="location-outline" size={14} color="#6B7280" />
+        <Text style={tw`text-xs text-gray-500 ml-0.5`}>{event.location}</Text>
+      </View>
+    )}
                 
-                {/* Location if available */}
-                {event.location && (
-                  <View style={tw`flex-row items-center mt-1`}>
-                    <Ionicons name="location-outline" size={14} color="#6B7280" />
-                    <Text style={tw`text-xs text-gray-500 ml-0.5`}>{event.location}</Text>
-                  </View>
-                )}
+    {/* Description with ellipsis if too long */}
+    <Text 
+      numberOfLines={2}
+      ellipsizeMode="tail"
+      style={tw`text-sm text-gray-600 mt-1.5`}
+    >
+      {event.description || ''}
+    </Text>
                 
-                {/* Description with ellipsis if too long */}
-                <Text 
-                  numberOfLines={2}
-                  ellipsizeMode="tail"
-                  style={tw`text-sm text-gray-600 mt-1.5`}
-                >
-                  {event.description || ''}
-                </Text>
-                
-                {/* Trending hashtags - more compact */}
-                {event.tags && event.tags.length > 0 && (
-                  <View style={tw`flex-row flex-wrap mt-1.5`}>
-                    {event.tags.map(tag => (
-                      <Text key={tag} style={tw`mr-1.5 text-xs text-secondary font-medium`}>
-                        #{tag}
-                      </Text>
-                    ))}
-                  </View>
-                )}
-              </View>
+    {/* Trending hashtags - more compact */}
+    {event.tags && event.tags.length > 0 && (
+      <View style={tw`flex-row flex-wrap mt-1.5`}>
+        {event.tags.map(tag => (
+          <Text key={tag} style={tw`mr-1.5 text-xs text-secondary font-medium`}>
+            #{tag}
+          </Text>
+        ))}
+      </View>
+    )}
+  </View>
               
               {/* Payment indicator - more compact */}
-              {event.isPaymentRequired && (
-                <View style={tw`items-center ml-1.5 mr-0.5`}>  
-                  <View style={tw`rounded-full p-1 ${  
-                    event.paid ? 'bg-green-100' : 'bg-amber-100'
-                  }`}>
-                    <Ionicons 
-                      name={event.paid ? "checkmark-circle" : "card-outline"} 
-                      size={15}  
-                      color={event.paid ? "#10B981" : "#F59E0B"} 
-                      testID={event.paid ? "icon-checkmark-circle" : "icon-card-outline"}
-                    />
-                  </View>
-                  <View style={tw`${event.paid ? 'bg-green-100' : 'bg-amber-100'} px-1.5 py-0.5 rounded-full mt-0.5`}>
-                    <Text style={tw`text-xs font-bold ${event.paid ? 'text-green-700' : 'text-amber-700'}`}>
-                      {costDisplay}
-                    </Text>
-                  </View>
-                </View>
-              )}
-            </View>
+  {event.isPaymentRequired && (
+    <TouchableOpacity
+      style={tw`items-center`}
+      onPress={handlePayment}
+    >
+      <Ionicons 
+        name="card-outline" 
+        size={14} 
+        color={event.paid ? "#22c55e" : "#f59e0b"} 
+        style={tw`mb-0.5 self-center`} 
+      />
+      <View style={tw`bg-gray-100 rounded-full px-2.5 py-1 flex-row items-center`}>
+        <View style={tw`h-3.5 w-3.5 rounded-full ${event.paid ? 'bg-green-500' : 'bg-amber-500'} mr-1.5`} />
+        <Text style={tw`text-xs font-medium ${event.paid ? 'text-green-700' : 'text-gray-700'}`}>
+          ${event.costPerPerson || 0}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  )}
+</View>
             
             {/* People attending indicators - more compact */}
             {typeof event.attendees === 'number' && event.attendees > 0 && (
@@ -197,19 +197,6 @@ export default function EventCard({
                     <Text style={tw`text-[10px] text-white font-bold`}>+3</Text>
                   </View>
                 </View>
-              </View>
-            )}
-            
-            {/* Payment Button */}
-            {event.isPaymentRequired && !event.paid && (
-              <View style={tw`mt-2.5 flex items-end`}>
-                <TouchableOpacity
-                  style={tw`bg-primary px-3 py-1.5 rounded-lg flex-row items-center`}
-                  onPress={handlePayment}
-                >
-                  <Ionicons name="wallet-outline" size={14} color="white" style={tw`mr-1.5`} />
-                  <Text style={tw`text-white text-xs font-medium`}>Pay {costDisplay}</Text>
-                </TouchableOpacity>
               </View>
             )}
           </TouchableOpacity>

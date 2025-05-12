@@ -291,223 +291,220 @@ export default function ItineraryScreen() {
         )}
       </Animated.View>
 
-        {/* Quick access location info */}
-        <View style={[
-          tw`mx-4 -mt-2 bg-white rounded-xl px-3 py-2.5 shadow-md`, 
-          {
-            zIndex: 20,
-            elevation: 4,
-            position: 'relative',
-          }
-        ]}>
-          <View style={tw`flex-row justify-between items-center mb-1`}>
-            <Text style={tw`font-bold text-neutral text-sm`}>Trip Home Base</Text>
+      {/* Quick access location info */}
+      <View style={[
+        tw`mx-4 -mt-2 bg-white rounded-xl px-3 py-2.5 shadow-md`, 
+        {
+          zIndex: 20,
+          elevation: 4,
+          position: 'relative',
+        }
+      ]}>
+<View style={tw`flex-row justify-between items-start mb-1`}>
+  <View>
+    <Text style={tw`font-bold text-neutral text-sm`}>Trip Home Base</Text>
+    
+    {/* Address information */}
+    <Text style={tw`text-gray-600 text-xs`}>{currentGroop?.accommodation?.address1 || 'Address not available'}</Text>
+    <Text style={tw`text-gray-600 text-xs`}>{currentGroop?.accommodation?.address2 || ''}</Text>
+  </View>
+
+  {/* Payment indicator moved to top right */}
+  <TouchableOpacity
+    style={tw`items-center`}
+    onPress={() => setAccommodationPaymentVisible(true)}
+  > 
+    <Ionicons 
+      name="card-outline" 
+      size={14} 
+      color={currentGroop?.accommodation?.isPaid ? "#22c55e" : "#f59e0b"} 
+      style={tw`mb-0.5 self-center`} 
+    />
+    <View style={tw`bg-gray-100 rounded-full px-2.5 py-1 flex-row items-center`}>
+      <View style={tw`h-4 w-4 rounded-full ${currentGroop?.accommodation?.isPaid ? 'bg-green-500' : 'bg-amber-500'} mr-1.5`} />
+      <Text style={tw`text-xs font-medium ${currentGroop?.accommodation?.isPaid ? 'text-green-700' : 'text-gray-700'}`}>
+        ${currentGroop?.accommodation?.costPerPerson || 0}
+      </Text>
+    </View>
+  </TouchableOpacity>
+</View>
             
-            <View style={tw`flex-row items-center`}>
-              <View style={tw`rounded-full p-1.5 bg-amber-100 mr-1.5`}>
-                <Ionicons 
-                  name="card-outline" 
-                  size={16} 
-                  color="#F59E0B" 
-                />
+        {/* Reorganized and centered button row: Copy, View Map, Message Group */}
+        <View style={tw`flex-row justify-start mt-1.5`}>
+  {/* Copy button */}
+  <TouchableOpacity 
+    style={tw`bg-gray-100 rounded-lg px-2.5 py-0.5 flex-row items-center mr-2`}
+    onPress={() => {
+      const address = `${currentGroop?.accommodation?.address1 || ''}, ${currentGroop?.accommodation?.address2 || ''}`.trim();
+      Clipboard.setString(address);
+    }}
+  >
+    <Ionicons name="copy-outline" size={12} color="#1F2937" />
+    <Text style={tw`text-xs text-neutral ml-1`}>Copy</Text>
+  </TouchableOpacity>
+          
+          {/* View Map button */}
+          <TouchableOpacity 
+            style={tw`bg-gray-100 rounded-lg px-2.5 py-0.5 flex-row items-center mr-2`}
+            onPress={() => {
+              const mapUrl = currentGroop?.accommodation?.mapUrl || 
+                `https://maps.google.com/?q=${encodeURIComponent(currentGroop?.accommodation?.address1 || '')},${encodeURIComponent(currentGroop?.accommodation?.city || '')}`;
+              Linking.openURL(mapUrl);
+            }}
+          >
+            <Ionicons name="map" size={12} color="#1F2937" />
+            <Text style={tw`text-xs text-neutral ml-1`}>View Map</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={tw`bg-gray-100 rounded-lg px-2.5 py-0.5 flex-row items-center`}
+            onPress={() => navigation.navigate('Chat')}
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={12} color="#1F2937" />
+            <Text style={tw`text-xs text-neutral ml-1`}>Message Group</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      
+      <ScrollView
+        style={tw`flex-1 mt-2`}
+        contentContainerStyle={tw`px-4 pb-20`}
+        showsVerticalScrollIndicator={false}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
+        refreshControl={
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh}
+            colors={['#7C3AED', '#F43F5E']} 
+          />
+        }
+      >
+        {itinerary.length === 0 ? (
+          <View style={tw`py-8 items-center`}>
+            <Text style={tw`text-gray-500`}>No itinerary items found</Text>
+          </View>
+        ) : (
+          itinerary.map((day) => (
+            <DaySection key={day.date} day={day} />
+          ))
+        )}
+      </ScrollView>
+      
+      {/* Animated expandable budget button/footer */}
+      <Animated.View 
+        style={[
+          tw`absolute bottom-4 bg-white shadow-lg border border-gray-200`,
+          {
+            width: budgetWidth,
+            right: budgetRight,
+            borderRadius: budgetBorderRadius,
+            overflow: 'hidden'
+          }
+        ]}
+      >
+        <TouchableOpacity 
+          style={tw`flex-1`} 
+          onPress={toggleBudget}
+          activeOpacity={0.9}
+        >
+          <View style={tw`px-4 py-2.5`}>
+            {/* Always visible budget content */}
+            <View style={tw`flex-row justify-between items-center`}>
+              <View style={tw`flex-row items-center`}>
+                <View style={tw`w-2 h-2 rounded-full bg-accent mr-2`}></View>
+                <Text style={tw`text-sm font-bold text-neutral`}>$$</Text>
+                
+                {/* Only show in collapsed state */}
+                {!budgetExpanded && (
+                  <View style={tw`bg-secondary bg-opacity-10 rounded-full ml-2 px-2`}>
+                    <Text style={tw`text-base font-bold text-secondary`}>${totalOwed.toFixed(2)}</Text>
+                  </View>
+                )}
               </View>
               
-              {/* This should be a TouchableOpacity to open the payment sheet */}
-              <TouchableOpacity
-                style={tw`bg-amber-100 px-2 py-0.5 rounded-full`}
-                onPress={() => setAccommodationPaymentVisible(true)}
-              >
-                <Text style={tw`text-xs font-bold text-amber-700`}>
-                  ${currentGroop?.accommodation?.costPerPerson || 0}
-                </Text>
-              </TouchableOpacity>
+              {/* Arrow indicator that rotates */}
+              <Animated.View style={{
+                transform: [{
+                  rotate: budgetAnimation.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0deg', '180deg']
+                  })
+                }]
+              }}>
+                <Ionicons 
+                  name="chevron-up" 
+                  size={18} 
+                  color="#1F2937" 
+                />
+              </Animated.View>
             </View>
-          </View>
-
-          {/* Add payment information row */}
-          <View style={tw`flex-row items-center justify-between mb-0.5`}>
-            <View>
-              <Text style={tw`text-gray-600 text-xs`}>{currentGroop?.accommodation?.address1 || 'Address not available'}</Text>
-              <Text style={tw`text-gray-600 text-xs`}>{currentGroop?.accommodation?.address2 || ''}</Text>
-            </View>
-          </View>
-              
-          {/* Reorganized and centered button row: Copy, View Map, Message Group */}
-          <View style={tw`flex-row justify-start mt-1.5`}>
-            {/* Copy button */}
-            <TouchableOpacity 
-              style={tw`bg-gray-100 rounded-lg px-2.5 py-0.5 flex-row items-center mr-2`}
-              onPress={() => {
-                const address = `${currentGroop?.accommodation?.address1 || ''}, ${currentGroop?.accommodation?.address2 || ''}`.trim();
-                Clipboard.setString(address);
-              }}
-            >
-              <Ionicons name="copy-outline" size={12} color="#1F2937" />
-              <Text style={tw`text-xs text-neutral ml-1`}>Copy</Text>
-            </TouchableOpacity>
             
-            {/* View Map button */}
-            <TouchableOpacity 
-              style={tw`bg-gray-100 rounded-lg px-2.5 py-0.5 flex-row items-center mr-2`}
-              onPress={() => {
-                const mapUrl = currentGroop?.accommodation?.mapUrl || 
-                  `https://maps.google.com/?q=${encodeURIComponent(currentGroop?.accommodation?.address1 || '')},${encodeURIComponent(currentGroop?.accommodation?.city || '')}`;
-                Linking.openURL(mapUrl);
-              }}
-            >
-              <Ionicons name="map" size={12} color="#1F2937" />
-              <Text style={tw`text-xs text-neutral ml-1`}>View Map</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={tw`bg-gray-100 rounded-lg px-2.5 py-0.5 flex-row items-center`}
-              onPress={() => navigation.navigate('Chat')}
-            >
-              <Ionicons name="chatbubble-ellipses-outline" size={12} color="#1F2937" />
-              <Text style={tw`text-xs text-neutral ml-1`}>Message Group</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        
-        <ScrollView
-          style={tw`flex-1 mt-2`}
-          contentContainerStyle={tw`px-4 pb-20`}
-          showsVerticalScrollIndicator={false}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-            { useNativeDriver: false }
-          )}
-          scrollEventThrottle={16}
-          refreshControl={
-            <RefreshControl 
-              refreshing={refreshing} 
-              onRefresh={onRefresh}
-              colors={['#7C3AED', '#F43F5E']} 
-            />
-          }
-        >
-          {itinerary.length === 0 ? (
-            <View style={tw`py-8 items-center`}>
-              <Text style={tw`text-gray-500`}>No itinerary items found</Text>
-            </View>
-          ) : (
-            itinerary.map((day) => (
-              <DaySection key={day.date} day={day} />
-            ))
-          )}
-        </ScrollView>
-        
-        {/* Animated expandable budget button/footer */}
-        <Animated.View 
-          style={[
-            tw`absolute bottom-4 bg-white shadow-lg border border-gray-200`,
-            {
-              width: budgetWidth,
-              right: budgetRight,
-              borderRadius: budgetBorderRadius,
-              overflow: 'hidden'
-            }
-          ]}
-        >
-          <TouchableOpacity 
-            style={tw`flex-1`} 
-            onPress={toggleBudget}
-            activeOpacity={0.9}
-          >
-            <View style={tw`px-4 py-2.5`}>
-              {/* Always visible budget content */}
-              <View style={tw`flex-row justify-between items-center`}>
-                <View style={tw`flex-row items-center`}>
-                  <View style={tw`w-2 h-2 rounded-full bg-accent mr-2`}></View>
-                  <Text style={tw`text-sm font-bold text-neutral`}>$$</Text>
+            {/* Additional content that appears when expanded */}
+            {budgetExpanded && (
+              <View style={tw`mt-2`}>
+                <View style={tw`flex-row justify-between items-center`}>
+                  <View>
+                    <Text style={tw`text-xs text-gray-500`}>You owe</Text>
+                    <Text style={tw`text-base font-bold text-secondary`}>${totalOwed.toFixed(2)}</Text>
+                  </View>
                   
-                  {/* Only show in collapsed state */}
-                  {!budgetExpanded && (
-                    <View style={tw`bg-secondary bg-opacity-10 rounded-full ml-2 px-2`}>
-                      <Text style={tw`text-base font-bold text-secondary`}>${totalOwed.toFixed(2)}</Text>
-                    </View>
-                  )}
+                  <View>
+                    <Text style={tw`text-xs text-gray-500`}>You've paid</Text>
+                    <Text style={tw`text-base font-bold text-accent`}>${totalPaid.toFixed(2)}</Text>
+                  </View>
+                  
+                  <View>
+                    <Text style={tw`text-xs text-gray-500`}>Total trip</Text>
+                    <Text style={tw`text-base font-bold text-neutral`}>${totalTripCost.toFixed(2)}</Text>
+                  </View>
                 </View>
                 
-                {/* Arrow indicator that rotates */}
-                <Animated.View style={{
-                  transform: [{
-                    rotate: budgetAnimation.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: ['0deg', '180deg']
-                    })
-                  }]
-                }}>
-                  <Ionicons 
-                    name="chevron-up" 
-                    size={18} 
-                    color="#1F2937" 
-                  />
-                </Animated.View>
-              </View>
-              
-              {/* Additional content that appears when expanded */}
-              {budgetExpanded && (
-                <View style={tw`mt-2`}>
-                  <View style={tw`flex-row justify-between items-center`}>
-                    <View>
-                      <Text style={tw`text-xs text-gray-500`}>You owe</Text>
-                      <Text style={tw`text-base font-bold text-secondary`}>${totalOwed.toFixed(2)}</Text>
-                    </View>
-                    
-                    <View>
-                      <Text style={tw`text-xs text-gray-500`}>You've paid</Text>
-                      <Text style={tw`text-base font-bold text-accent`}>${totalPaid.toFixed(2)}</Text>
-                    </View>
-                    
-                    <View>
-                      <Text style={tw`text-xs text-gray-500`}>Total trip</Text>
-                      <Text style={tw`text-base font-bold text-neutral`}>${totalTripCost.toFixed(2)}</Text>
-                    </View>
-                  </View>
-                  
-                  {/* Progress bar for payment */}
-                  <View style={tw`mt-2 h-1.5 bg-gray-200 rounded-full overflow-hidden`}>
-                    <View 
-                      style={[
-                        tw`h-full bg-gradient-to-r from-accent to-primary rounded-full`, 
-                        {
-                          width: `${totalOwed > 0 ? Math.min(100, (totalPaid / totalOwed) * 100) : 0}%`
-                        }
-                      ]}
-                    />
-                  </View>
-                  
-                  {/* Pay now button - only shows in expanded state */}
-                  <TouchableOpacity 
-                    style={tw`bg-primary rounded-full py-2 mt-3 items-center`}
-                    onPress={() => {
-                      const remaining = totalOwed - totalPaid;
-                      if (remaining > 0) {
-                        setAccommodationPaymentVisible(true);
-                      } else {
-                        alert('You have already paid for this accommodation.');
+                {/* Progress bar for payment */}
+                <View style={tw`mt-2 h-1.5 bg-gray-200 rounded-full overflow-hidden`}>
+                  <View 
+                    style={[
+                      tw`h-full bg-gradient-to-r from-accent to-primary rounded-full`, 
+                      {
+                        width: `${totalOwed > 0 ? Math.min(100, (totalPaid / totalOwed) * 100) : 0}%`
                       }
-                    }}
-                  >
-                    <Text style={tw`text-white font-bold text-sm`}>Pay Now</Text>
-                  </TouchableOpacity>
+                    ]}
+                  />
                 </View>
-              )}
-            </View>
-          </TouchableOpacity>
-        </Animated.View>
-        
-        {/* Payment Sheet Modal */}
-        <PaymentSheet
-          visible={accommodationPaymentVisible}
-          onClose={() => setAccommodationPaymentVisible(false)}
-          groopId={currentGroop?.id || ''}
-          amount={currentGroop?.accommodation?.costPerPerson || 0}
-          description={`Payment for Accommodation: ${currentGroop?.accommodation?.description || 'Stay'}`}
-          title="Pay for Accommodation"
-        />
-      </SafeAreaView>
+                
+                {/* Pay now button - only shows in expanded state */}
+                <TouchableOpacity 
+                  style={tw`bg-primary rounded-full py-2 mt-3 items-center`}
+                  onPress={() => {
+                    const remaining = totalOwed - totalPaid;
+                    if (remaining > 0) {
+                      setAccommodationPaymentVisible(true);
+                    } else {
+                      alert('You have already paid for this accommodation.');
+                    }
+                  }}
+                >
+                  <Text style={tw`text-white font-bold text-sm`}>Pay Now</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+      
+      {/* Payment Sheet Modal */}
+      <PaymentSheet
+        visible={accommodationPaymentVisible}
+        onClose={() => setAccommodationPaymentVisible(false)}
+        groopId={currentGroop?.id || ''}
+        amount={currentGroop?.accommodation?.costPerPerson || 0}
+        description={`Payment for Accommodation: ${currentGroop?.accommodation?.description || 'Stay'}`}
+        title="Pay for Accommodation"
+      />
+    </SafeAreaView>
     </KeyboardAvoidingView>
   );
 }
