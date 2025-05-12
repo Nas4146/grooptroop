@@ -19,6 +19,7 @@ export type RootStackParamList = {
   Profile: undefined;
   EventDetails: { eventId: string };
   GroupMembers: { groopId?: string };
+  AdminSettings: undefined;
 
 }; 
 //& AuthStackParamList; // Merge with auth types for easier navigation

@@ -15,8 +15,6 @@ import { db } from '../lib/firebase';
 import { ItineraryDay, ItineraryEvent } from '../models/itinerary';
 
 export class ItineraryService {
-  // Add these cache-related functions
-  
   // Cache the itinerary data locally
   static async cacheItinerary(groopId: string, itineraryData: ItineraryDay[]): Promise<void> {
     try {
@@ -79,7 +77,7 @@ export class ItineraryService {
     }
   }
 
-  // Update the getItinerary method to use cache
+  // Get the full itinerary for a groop
   static async getItinerary(groopId: string, useCache: boolean = true): Promise<ItineraryDay[]> {
     try {
       console.log('[ITINERARY] Fetching itinerary for groop:', groopId);
@@ -102,51 +100,97 @@ export class ItineraryService {
       for (const dayDoc of daysSnapshot.docs) {
         const dayData = dayDoc.data();
         
-// Fetch events for this day
-const eventsRef = collection(db, `groops/${groopId}/itinerary/${dayDoc.id}/events`);
-const eventsQuery = query(eventsRef, orderBy('time', 'asc'));
-const eventsSnapshot = await getDocs(eventsQuery);
+        // Fetch events for this day
+        const eventsRef = collection(db, `groops/${groopId}/itinerary/${dayDoc.id}/events`);
+        const eventsQuery = query(eventsRef, orderBy('time', 'asc'));
+        const eventsSnapshot = await getDocs(eventsQuery);
 
-const events: ItineraryEvent[] = eventsSnapshot.docs.map(eventDoc => {
-  const eventData = eventDoc.data();
-  return {
-    id: eventDoc.id,
-    title: eventData.title,
-    date: eventData.date,
-    time: eventData.time,
-    description: eventData.description,
-    location: eventData.location,
-    isPaymentRequired: eventData.isPaymentRequired,
-    totalCost: eventData.totalCost,
-    costPerPerson: eventData.costPerPerson,
-    paid: eventData.paid,
-    isOptional: eventData.isOptional,
-    type: eventData.type,
-    tags: eventData.tags,
-    attendees: eventData.attendees
-  };
-});
+        const events: ItineraryEvent[] = eventsSnapshot.docs.map(eventDoc => {
+          const eventData = eventDoc.data();
+          return {
+            id: eventDoc.id,
+            title: eventData.title || '',
+            date: eventData.date || '',
+            time: eventData.time || '',
+            description: eventData.description || '',
+            location: eventData.location || '',
+            isPaymentRequired: Boolean(eventData.isPaymentRequired) || false,
+            totalCost: eventData.totalCost || 0,
+            costPerPerson: eventData.costPerPerson || 0,
+            paid: Boolean(eventData.paid) || false,
+            isOptional: Boolean(eventData.isOptional) || false,
+            type: eventData.type || 'other',
+            tags: eventData.tags || [],
+            attendees: eventData.attendees || 0
+          };
+        });
 
-itinerary.push({
-  id: dayDoc.id,
-  date: dayData.date,
-  formattedDate: dayData.formattedDate,
-  events: events
-});
-}
+        itinerary.push({
+          id: dayDoc.id,
+          date: dayData.date,
+          formattedDate: dayData.formattedDate,
+          events: events
+        });
+      }
 
-console.log('[ITINERARY] Found', itinerary.length, 'days in itinerary');
+      console.log('[ITINERARY] Found', itinerary.length, 'days in itinerary');
 
-// Cache the data for future use
-if (useCache) {
-await this.cacheItinerary(groopId, itinerary);
-}
+      // Cache the data for future use
+      if (useCache) {
+        await this.cacheItinerary(groopId, itinerary);
+      }
 
-return itinerary;
-} catch (error) {
-console.error('[ITINERARY] Error fetching itinerary:', error);
-throw error;
-}
+      return itinerary;
+    } catch (error) {
+      console.error('[ITINERARY] Error fetching itinerary:', error);
+      throw error;
+    }
+  }
+  
+  // Get a specific event from any day in the itinerary
+  static async getEvent(
+    groopId: string,
+    eventId: string
+  ): Promise<ItineraryEvent | null> {
+    try {
+      console.log(`[ITINERARY] Fetching event ${eventId} for groop ${groopId}`);
+      
+      // First we need to find which day contains this event
+      const daysRef = collection(db, `groops/${groopId}/itinerary`);
+      const daysSnapshot = await getDocs(daysRef);
+      
+      // Search through each day to find the event
+      for (const dayDoc of daysSnapshot.docs) {
+        const eventDocRef = doc(db, `groops/${groopId}/itinerary/${dayDoc.id}/events/${eventId}`);
+        const eventSnapshot = await getDoc(eventDocRef);
+        
+        if (eventSnapshot.exists()) {
+          const eventData = eventSnapshot.data();
+          return {
+            id: eventSnapshot.id,
+            title: eventData.title || '',
+            date: eventData.date || '',
+            time: eventData.time || '',
+            description: eventData.description || '',
+            location: eventData.location || '',
+            isPaymentRequired: Boolean(eventData.isPaymentRequired) || false,
+            totalCost: eventData.totalCost || 0,
+            costPerPerson: eventData.costPerPerson || 0,
+            paid: Boolean(eventData.paid) || false,
+            isOptional: Boolean(eventData.isOptional) || false,
+            type: eventData.type || 'other',
+            tags: eventData.tags || [],
+            attendees: eventData.attendees || 0
+          };
+        }
+      }
+      
+      console.log(`[ITINERARY] No event found with ID: ${eventId}`);
+      return null;
+    } catch (error) {
+      console.error('[ITINERARY] Error fetching event:', error);
+      throw error;
+    }
   }
   
   // Get a specific day from the itinerary
@@ -178,19 +222,19 @@ throw error;
         const eventData = eventDoc.data();
         return {
           id: eventDoc.id,
-          title: eventData.title,
-          date: eventData.date,
-          time: eventData.time,
-          description: eventData.description,
-          location: eventData.location,
-          isPaymentRequired: eventData.isPaymentRequired,
-          totalCost: eventData.totalCost,
-          costPerPerson: eventData.costPerPerson,
-          paid: eventData.paid,
-          isOptional: eventData.isOptional,
-          type: eventData.type,
-          tags: eventData.tags,
-          attendees: eventData.attendees
+          title: eventData.title || '',
+          date: eventData.date || '',
+          time: eventData.time || '',
+          description: eventData.description || '',
+          location: eventData.location || '',
+          isPaymentRequired: Boolean(eventData.isPaymentRequired) || false,
+          totalCost: eventData.totalCost || 0,
+          costPerPerson: eventData.costPerPerson || 0,
+          paid: Boolean(eventData.paid) || false,
+          isOptional: Boolean(eventData.isOptional) || false,
+          type: eventData.type || 'other',
+          tags: eventData.tags || [],
+          attendees: eventData.attendees || 0
         };
       });
       
@@ -245,7 +289,10 @@ throw error;
       const eventsRef = collection(db, `groops/${groopId}/itinerary/${dayId}/events`);
       const eventRef = doc(eventsRef);
       
-      await setDoc(eventRef, event);
+      await setDoc(eventRef, {
+        ...event,
+        createdAt: Timestamp.now() // Add creation timestamp
+      });
       
       console.log('[ITINERARY] Successfully added event with ID:', eventRef.id);
       return eventRef.id;
@@ -255,227 +302,166 @@ throw error;
     }
   }
   
-  // Import an entire itinerary (useful for migrating from your static data)
-  static async importItinerary(groopId: string, itinerary: ItineraryDay[]): Promise<void> {
+  // Update an existing event
+  static async updateEvent(
+    groopId: string,
+    dayId: string,
+    eventId: string,
+    updatedData: Partial<Omit<ItineraryEvent, 'id'>>
+  ): Promise<void> {
     try {
-      console.log('[ITINERARY] Importing itinerary with', itinerary.length, 'days for groop', groopId);
+      console.log(`[ITINERARY] Updating event ${eventId} in day ${dayId}`);
       
-      for (const day of itinerary) {
-        // Add the day
-        const dayId = await this.addDay(groopId, day.date, day.formattedDate);
+      const eventRef = doc(db, `groops/${groopId}/itinerary/${dayId}/events/${eventId}`);
+      const updateData = {
+        ...updatedData,
+        updatedAt: Timestamp.now()
+      };
+      
+      await setDoc(eventRef, updateData, { merge: true });
+      console.log('[ITINERARY] Event successfully updated');
+    } catch (error) {
+      console.error('[ITINERARY] Error updating event:', error);
+      throw error;
+    }
+  }
+  
+  // Delete an event
+  static async deleteEvent(
+    groopId: string,
+    dayId: string,
+    eventId: string
+  ): Promise<void> {
+    try {
+      console.log(`[ITINERARY] Deleting event ${eventId} from day ${dayId}`);
+      
+      const eventRef = doc(db, `groops/${groopId}/itinerary/${dayId}/events/${eventId}`);
+      await deleteDoc(eventRef);
+      
+      console.log('[ITINERARY] Event successfully deleted');
+    } catch (error) {
+      console.error('[ITINERARY] Error deleting event:', error);
+      throw error;
+    }
+  }
+  
+  // Create sample data for a new groop (for admin use only)
+  static async createSampleItinerary(groopId: string, startDate: Date): Promise<void> {
+    try {
+      console.log('[ITINERARY] Creating sample itinerary for groop', groopId);
+      
+      // Format dates
+      const formatDate = (date: Date): string => {
+        return date.toISOString().split('T')[0]; // YYYY-MM-DD
+      };
+      
+      // Format for display
+      const formatDisplayDate = (date: Date): string => {
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
         
-        // Add all events for this day
-        for (const event of day.events) {
-          const { id, ...eventData } = event; // Remove the id as we'll generate a new one
-          await this.addEvent(groopId, dayId, eventData);
+        return `${days[date.getDay()]} ${months[date.getMonth()]} ${date.getDate()}${getSuffix(date.getDate())}`;
+      };
+      
+      // Get suffix for day
+      const getSuffix = (day: number): string => {
+        if (day > 3 && day < 21) return 'th';
+        switch (day % 10) {
+          case 1: return 'st';
+          case 2: return 'nd';
+          case 3: return 'rd';
+          default: return 'th';
+        }
+      };
+      
+      // Create a series of days
+      const numDays = 4; // Create 4 days of sample itinerary
+      
+      for (let i = 0; i < numDays; i++) {
+        const currentDate = new Date(startDate);
+        currentDate.setDate(startDate.getDate() + i);
+        
+        const dateStr = formatDate(currentDate);
+        const formattedDate = formatDisplayDate(currentDate);
+        
+        // Add the day
+        const dayId = await this.addDay(groopId, dateStr, formattedDate);
+        
+        // Add 2-3 events per day
+        if (i === 0) { // First day
+          await this.addEvent(groopId, dayId, {
+            title: 'Arrival & Check-in',
+            date: dateStr,
+            time: '3:00 PM',
+            description: 'Check in to accommodation',
+            isPaymentRequired: false,
+            isOptional: false,
+            type: 'other'
+          });
+          
+          await this.addEvent(groopId, dayId, {
+            title: 'Welcome Dinner',
+            date: dateStr,
+            time: '7:00 PM',
+            description: 'Group dinner to kick off the trip',
+            location: 'Recommended: Local restaurant near accommodation',
+            isPaymentRequired: true,
+            totalCost: 200,
+            costPerPerson: 25,
+            paid: false,
+            isOptional: false,
+            type: 'food'
+          });
+        } else if (i === numDays - 1) { // Last day
+          await this.addEvent(groopId, dayId, {
+            title: 'Checkout & Departure',
+            date: dateStr,
+            time: '11:00 AM',
+            description: 'Check out of accommodation',
+            isPaymentRequired: false,
+            isOptional: false,
+            type: 'other'
+          });
+        } else { // Middle days
+          await this.addEvent(groopId, dayId, {
+            title: 'Morning Activity',
+            date: dateStr,
+            time: '10:00 AM',
+            description: 'Explore the local area',
+            isPaymentRequired: false,
+            isOptional: false,
+            type: 'activity'
+          });
+          
+          await this.addEvent(groopId, dayId, {
+            title: 'Lunch Options',
+            date: dateStr,
+            time: '1:00 PM',
+            description: 'Various lunch options in the area',
+            isPaymentRequired: false,
+            isOptional: true,
+            type: 'food'
+          });
+          
+          await this.addEvent(groopId, dayId, {
+            title: 'Evening Event',
+            date: dateStr,
+            time: '8:00 PM',
+            description: 'Evening entertainment',
+            isPaymentRequired: true,
+            totalCost: 240,
+            costPerPerson: 30,
+            paid: false,
+            isOptional: false,
+            type: 'party'
+          });
         }
       }
       
-      console.log('[ITINERARY] Successfully imported itinerary');
+      console.log('[ITINERARY] Successfully created sample itinerary');
     } catch (error) {
-      console.error('[ITINERARY] Error importing itinerary:', error);
+      console.error('[ITINERARY] Error creating sample itinerary:', error);
       throw error;
     }
-  }
-
-  // Update the static mock data import function to use Firestore
-  static async importMockData(groopId: string): Promise<void> {
-    try {
-      console.log('[ITINERARY] Importing mock data for groop', groopId);
-      
-      // Get your existing mock data (or you could define it directly here)
-      const mockData = this.getMockItineraryData();
-      
-      // Import it into Firestore for this groop
-      await this.importItinerary(groopId, mockData);
-      
-      console.log('[ITINERARY] Successfully imported mock data');
-    } catch (error) {
-      console.error('[ITINERARY] Error importing mock data:', error);
-      throw error;
-    }
-  }
-
-  // Your existing mock data function
-  static getMockItineraryData(): ItineraryDay[] {
-    // Return your existing static data here
-    return [
-      {
-      id: '1',
-      date: '2024-06-05',
-      formattedDate: 'Thursday June 5th',
-      events: [
-      {
-        id: '1',
-        title: 'Explore Roma Norte/Condesa & Find Dinner',
-        date: '2024-06-05',
-        time: '8:00 PM',
-        description: 'Explore the neighborhoods and find dinner somewhere (No Reservation)',
-        isPaymentRequired: false,
-        isOptional: false,
-      },
-      {
-        id: '2',
-        title: 'Jueves @ Outline',
-        date: '2024-06-05',
-        time: '10:00 PM',
-        description: 'Night out at Outline',
-        isPaymentRequired: false,
-        isOptional: true,
-      }
-    ]
-  },
-  {
-    id: '2',
-    date: '2024-06-06',
-    formattedDate: 'Friday June 6th',
-    events: [
-      {
-        id: '3',
-        title: 'Chapultepec Park + Taco Tour',
-        date: '2024-06-06',
-        time: '11:00 AM',
-        description: 'Visit the park and go on a taco tour',
-        isPaymentRequired: false,
-        isOptional: false,
-      },
-      {
-        id: '4a',
-        title: 'Dinner @ Taverna',
-        date: '2024-06-06',
-        time: '6:00 PM',
-        description: 'Dinner at Taverna',
-        location: 'Taverna Restaurant',
-        isPaymentRequired: true,
-        totalCost: 130,
-        costPerPerson: 13,
-        paid: false,
-        isOptional: true,
-      },
-      {
-        id: '4b',
-        title: 'Dinner @ Blanco Colima',
-        date: '2024-06-06',
-        time: '6:00 PM',
-        description: 'Dinner at Blanco Colima',
-        location: 'Blanco Colima Restaurant',
-        isPaymentRequired: true,
-        totalCost: 150,
-        costPerPerson: 15,
-        paid: false,
-        isOptional: true,
-      },
-      {
-        id: '4c',
-        title: 'Dinner @ Huset',
-        date: '2024-06-06',
-        time: '6:00 PM',
-        description: 'Dinner at Huset',
-        location: 'Huset Restaurant',
-        isPaymentRequired: true,
-        totalCost: 140,
-        costPerPerson: 14,
-        paid: false,
-        isOptional: true,
-      },
-      {
-        id: '5',
-        title: 'Lucha Libre Wrestling',
-        date: '2024-06-06',
-        time: '8:30 PM',
-        description: 'Watch traditional Mexican wrestling',
-        isPaymentRequired: true,
-        totalCost: 200,
-        costPerPerson: 20,
-        paid: false,
-        isOptional: false,
-      }
-    ]
-  },
-  {
-    id:'3',
-    date: '2024-06-07',
-    formattedDate: 'Saturday June 7th',
-    events: [
-      {
-        id: '6',
-        title: 'Chapultepec Park + Taco Tour',
-        date: '2024-06-07',
-        time: '11:00 AM',
-        description: 'Visit the park and go on a taco tour',
-        isPaymentRequired: false,
-        isOptional: false,
-      },
-      {
-        id: '7',
-        title: 'Early Dinner @ Esquina comun',
-        date: '2024-06-07',
-        time: '4:00 PM',
-        description: 'Early dinner at Esquina comun',
-        location: 'Esquina comun Restaurant',
-        isPaymentRequired: true,
-        totalCost: 120,
-        costPerPerson: 12,
-        paid: false,
-        isOptional: false,
-      },
-      {
-        id: '8a',
-        title: 'Dinner @ Contramar',
-        date: '2024-06-07',
-        time: '6:00 PM',
-        description: 'Dinner at Contramar',
-        location: 'Contramar Restaurant',
-        isPaymentRequired: true,
-        totalCost: 160,
-        costPerPerson: 16,
-        paid: false,
-        isOptional: true,
-      },
-      {
-        id: '8b',
-        title: 'Dinner @ Cueva',
-        date: '2024-06-07',
-        time: '6:30 PM',
-        description: 'Dinner at Cueva',
-        location: 'Cueva Restaurant',
-        isPaymentRequired: true,
-        totalCost: 140,
-        costPerPerson: 14,
-        paid: false,
-        isOptional: true,
-      },
-      {
-        id: '9',
-        title: 'Supra Rooftop',
-        date: '2024-06-07',
-        time: '9:00 PM',
-        description: 'Party at Supra Rooftop',
-        location: 'Supra Rooftop',
-        isPaymentRequired: true,
-        totalCost: 250,
-        costPerPerson: 25,
-        paid: false,
-        isOptional: false,
-      }
-    ]
-  },
-  {
-    id:'4',
-    date: '2024-06-08',
-    formattedDate: 'Sunday June 8th',
-    events: [
-      {
-        id: '10',
-        title: 'Depart',
-        date: '2024-06-08',
-        time: 'All Day',
-        description: 'Return home',
-        isPaymentRequired: false,
-        isOptional: false,
-      }
-    ]
-  }
-];
   }
 }

@@ -7,6 +7,7 @@ import MapScreen from '../screens/mapScreen';
 import PaymentsScreen from '../screens/paymentsScreen';
 import ChatScreen from '../screens/chatScreen';
 import ProfileScreen from '../screens/profileScreen';
+import AdminSettingsScreen from '../screens/AdminSettingsScreen';
 import { useNotification } from '../contexts/NotificationProvider';
 import tw from '../utils/tw';
 
@@ -27,6 +28,7 @@ export default function BottomTabNavigator() {
           else if (route.name === 'Payments') iconName = 'card';
           else if (route.name === 'Chat') iconName = 'chatbubbles';
           else if (route.name === 'Profile') iconName = 'person';
+          else if (route.name === 'AdminSettings') iconName = 'settings';
           
           // Special handling for Chat tab to show badge
           if (route.name === 'Chat' && unreadCount > 0) {
@@ -74,6 +76,7 @@ export default function BottomTabNavigator() {
       <Tab.Screen name="Payments"  component={PaymentsScreen} />
       <Tab.Screen name="Chat"      component={ChatScreen} />
       <Tab.Screen name="Profile"   component={ProfileScreen} />
+      <Tab.Screen name="Admin" component={AdminSettingsScreen} />
     </Tab.Navigator>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Image, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -7,6 +7,7 @@ import { RootStackParamList, EventCardProps } from '../../navigation/types';
 import tw from '../../utils/tw';
 import PaymentSheet from '../payments/PaymentSheet';
 import { useGroop } from '../../contexts/GroopProvider';
+import EventDetailsModal from './EventDetails';
 
 type EventDetailsNavigationProp = NativeStackNavigationProp<RootStackParamList, 'EventDetails'>;
 
@@ -18,18 +19,20 @@ export default function EventCard({
 }: EventCardProps) {
   const navigation = useNavigation<EventDetailsNavigationProp>();
   const { currentGroop } = useGroop();
+  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [paymentSheetVisible, setPaymentSheetVisible] = useState(false);
 
   const handlePress = () => {
-    navigation.navigate('EventDetails', { eventId: event.id });
+    setDetailsModalVisible(true);
   };
 
-    const handlePayment = (e: any) => {
+  const handlePayment = (e?: any) => {
+    if (e && e.stopPropagation) {
       e.stopPropagation(); // Prevent event card click
-      console.log(`[EVENT_CARD] Opening payment sheet for event: ${event.title}`);
-      setPaymentSheetVisible(true);
-    };
-
+    }
+    console.log(`[EVENT_CARD] Opening payment sheet for event: ${event.title}`);
+    setPaymentSheetVisible(true);
+  };
 
   // Get event color and mood based on event type
   const getEventMood = () => {
@@ -72,7 +75,7 @@ export default function EventCard({
   const mood = getEventMood();
   const costDisplay = event.costPerPerson ? `$${event.costPerPerson}` : '';
 
-   return (
+  return (
     <>
       <View style={tw`relative ${!isFirst ? 'mt-3' : ''}`}>
         {/* Timeline connector - adjusted position for smaller bubble */}
@@ -98,7 +101,7 @@ export default function EventCard({
               <View style={tw`flex-1 pr-1`}>
                 {/* Row with title and mood emoji */}
                 <View style={tw`flex-row items-center flex-wrap`}>
-                  <Text style={tw`text-base font-bold ${  // Reduced further from text-lg to text-base
+                  <Text style={tw`text-base font-bold ${
                     event.isOptional ? 'text-gray-500' : 'text-gray-800'
                   }`}>
                     {event.title || ''}
@@ -167,7 +170,7 @@ export default function EventCard({
             </View>
             
             {/* People attending indicators - more compact */}
-            {event.attendees && (
+            {event.attendees > 0 && (
               <View style={tw`flex-row items-center mt-2`}>
                 <View style={tw`flex-row -space-x-2`}>
                   {[1,2,3].map(i => (
@@ -188,19 +191,28 @@ export default function EventCard({
             {/* Payment Button */}
             {event.isPaymentRequired && !event.paid && (
               <View style={tw`mt-2.5 flex items-end`}>
-            <TouchableOpacity
-            style={tw`bg-primary px-3 py-1.5 rounded-lg flex-row items-center`}
-            onPress={handlePayment}
-            >
-            <Ionicons name="wallet-outline" size={14} color="white" style={tw`mr-1.5`} />
-            <Text style={tw`text-white text-xs font-medium`}>Pay {costDisplay}</Text>
-            </TouchableOpacity>
-            </View>
-      )}
+                <TouchableOpacity
+                  style={tw`bg-primary px-3 py-1.5 rounded-lg flex-row items-center`}
+                  onPress={handlePayment}
+                >
+                  <Ionicons name="wallet-outline" size={14} color="white" style={tw`mr-1.5`} />
+                  <Text style={tw`text-white text-xs font-medium`}>Pay {costDisplay}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
       </View>
       
+      {/* Event Details Modal */}
+      <EventDetailsModal
+        visible={detailsModalVisible}
+        event={event}
+        groopId={currentGroop?.id || ''}
+        onClose={() => setDetailsModalVisible(false)}
+        onPayment={handlePayment}
+      />
+
       {/* Payment Sheet Modal */}
       <PaymentSheet
         visible={paymentSheetVisible}
