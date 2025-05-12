@@ -14,7 +14,9 @@ import { useAuth } from '../contexts/AuthProvider';
 import { PaymentService } from '../services/PaymentService';
 import PaymentSheet from '../components/payments/PaymentSheet';
 import { PaymentItem } from '../models/payments';
+import GroopHeader from '../components/common/GroopHeader';
 import tw from '../utils/tw';
+import { useNavigation } from '@react-navigation/native';
 
 export default function PaymentsScreen() {
   const { currentGroop } = useGroop();
@@ -26,6 +28,13 @@ export default function PaymentsScreen() {
   const [totalPaid, setTotalPaid] = useState(0);
   const [paymentSheetVisible, setPaymentSheetVisible] = useState(false);
   const [selectedPaymentItem, setSelectedPaymentItem] = useState<PaymentItem | null>(null);
+  const navigation = useNavigation(); 
+
+    const navigateToMembers = () => {
+    if (currentGroop?.id) {
+      navigation.navigate('GroupMembers', { groopId: currentGroop.id });
+    }
+  };
 
   // Fetch payment data
   const fetchPayments = async () => {
@@ -126,10 +135,13 @@ export default function PaymentsScreen() {
 
   return (
     <SafeAreaView style={tw`flex-1 bg-light`}>
-      <View style={tw`flex-row justify-between items-center p-4 border-b border-gray-200`}>
-        <Text style={tw`text-2xl font-bold text-neutral`}>Payments</Text>
-        <Text style={tw`text-base text-gray-500`}>{currentGroop.name}</Text>
-      </View>
+      <GroopHeader 
+        minimal={true} 
+        showMembers={true}
+        isChatScreen={false}
+        isItineraryScreen={false}
+        onPressMembers={navigateToMembers}
+/>
       
       <FlatList
         data={paymentItems}

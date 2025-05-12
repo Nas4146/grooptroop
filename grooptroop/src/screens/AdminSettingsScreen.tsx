@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useGroop } from '../contexts/GroopProvider';
 import { useAuth } from '../contexts/AuthProvider';
 import tw from '../utils/tw';
+import GroopHeader from '../components/common/GroopHeader';
 
 export default function AdminSettingsScreen() {
   const navigation = useNavigation();
@@ -25,6 +26,13 @@ export default function AdminSettingsScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
+  
+  // Define navigateToMembers function outside of useEffect
+  const navigateToMembers = () => {
+    if (currentGroop?.id) {
+      navigation.navigate('GroupMembers', { groopId: currentGroop.id });
+    }
+  };
   
   useEffect(() => {
     if (!currentGroop || !profile) {
@@ -37,7 +45,7 @@ export default function AdminSettingsScreen() {
       createdBy: currentGroop.createdBy,
       organizerID: currentGroop.organizerID || []
     });
-    
+
     // Check if the current user is a creator or an organizer
     const isCreator = currentGroop.createdBy === profile.uid;
     const isOrganizer = Array.isArray(currentGroop.organizerID) && 
@@ -110,13 +118,6 @@ export default function AdminSettingsScreen() {
   if (!isAuthorized) {
     return (
       <SafeAreaView style={tw`flex-1 bg-light`}>
-        <View style={tw`p-4 flex-row items-center border-b border-gray-200`}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color="#333" />
-          </TouchableOpacity>
-          <Text style={tw`ml-4 text-xl font-bold text-neutral`}>Admin Settings</Text>
-        </View>
-        
         <View style={tw`flex-1 justify-center items-center p-6`}>
           <Ionicons name="lock-closed" size={64} color="#CBD5E1" />
           <Text style={tw`text-xl font-bold text-gray-800 mt-4 text-center`}>
@@ -132,12 +133,13 @@ export default function AdminSettingsScreen() {
   
   return (
     <SafeAreaView style={tw`flex-1 bg-light`}>
-      <View style={tw`p-4 flex-row items-center border-b border-gray-200`}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={tw`ml-4 text-xl font-bold text-neutral`}>Admin Settings</Text>
-      </View>
+      <GroopHeader 
+        minimal={true} 
+        showMembers={true}
+        isChatScreen={false}
+        isItineraryScreen={false}
+        onPressMembers={navigateToMembers}
+      />
       
       {loading ? (
         <View style={tw`flex-1 justify-center items-center`}>

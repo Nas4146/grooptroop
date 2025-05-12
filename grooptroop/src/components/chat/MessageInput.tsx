@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { 
   View, 
   TextInput, 
@@ -24,7 +24,12 @@ interface MessageInputProps {
   onCancelReply: () => void;
 }
 
-export default function MessageInput({ onSend, replyingTo, onCancelReply }: MessageInputProps) {
+// Export directly as a named function component rather than assigning to a const
+function MessageInput({ 
+  onSend, 
+  replyingTo, 
+  onCancelReply 
+}: MessageInputProps, ref: React.Ref<TextInput>) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [hasEncryptionKey, setHasEncryptionKey] = useState(false);
@@ -34,17 +39,27 @@ export default function MessageInput({ onSend, replyingTo, onCancelReply }: Mess
   const { currentGroop } = useGroop();
   const inputRef = useRef<TextInput>(null);
 
+  // Forward the ref to internal TextInput
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      inputRef.current?.focus();
+    },
+    blur: () => {
+      inputRef.current?.blur();
+    }
+  }));
+
   useEffect(() => {
     const checkEncryptionKey = async () => {
       if (currentGroop?.id) {
-        setEncryptionLoading(true); // Add this line
+        setEncryptionLoading(true);
         try {
           const hasKey = await EncryptionService.hasGroopKey(currentGroop.id);
           setHasEncryptionKey(hasKey);
         } catch (error) {
           console.error('[CHAT] Error checking encryption key:', error);
         } finally {
-          setEncryptionLoading(false); // Add this line
+          setEncryptionLoading(false);
         }
       }
     };
@@ -63,51 +78,51 @@ export default function MessageInput({ onSend, replyingTo, onCancelReply }: Mess
     try {
       let imageUrl;
     
-    if (image) {
-      try {
-        setUploading(true);
-        
-        // Upload image to Firebase Storage
-        const storage = getStorage();
-        const filename = image.split('/').pop() || Date.now().toString();
-        const storageRef = ref(storage, `chat-images/${filename}`);
-        
-        // Convert image URI to blob
-        const response = await fetch(image);
-        const blob = await response.blob();
-        
-        // Upload blob to storage
-        const snapshot = await uploadBytes(storageRef, blob);
-        
-        // Get download URL
-        imageUrl = await getDownloadURL(snapshot.ref);
-        console.log('[CHAT] Image uploaded, url:', imageUrl);
-        
-      } catch (error) {
-        console.error('[CHAT] Error uploading image:', error);
-      } finally {
-        setUploading(false);
+      if (image) {
+        try {
+          setUploading(true);
+          
+          // Upload image to Firebase Storage
+          const storage = getStorage();
+          const filename = image.split('/').pop() || Date.now().toString();
+          const storageRef = ref(storage, `chat-images/${filename}`);
+          
+          // Convert image URI to blob
+          const response = await fetch(image);
+          const blob = await response.blob();
+          
+          // Upload blob to storage
+          const snapshot = await uploadBytes(storageRef, blob);
+          
+          // Get download URL
+          imageUrl = await getDownloadURL(snapshot.ref);
+          console.log('[CHAT] Image uploaded, url:', imageUrl);
+          
+        } catch (error) {
+          console.error('[CHAT] Error uploading image:', error);
+        } finally {
+          setUploading(false);
+        }
       }
+      
+      // Send message
+      await onSend(text, imageUrl);
+      
+      // Clear input
+      setText('');
+      setImage(null);
+    } catch (error) {
+      console.error('[CHAT] Error sending message:', error);
+    } finally {
+      setSending(false); // Make sure to reset the sending state
     }
-    
-    // Send message
-    await onSend(text, imageUrl);
-    
-    // Clear input
-    setText('');
-    setImage(null);
-  } catch (error) {
-    console.error('[CHAT] Error sending message:', error);
-  } finally {
-    setSending(false); // Make sure to reset the sending state
-  }
-};
+  };
   
-const pickImage = async () => {
-  console.log('[CHAT] Image picker not available in this build');
-  // Alert the user that this feature isn't available
-  alert('Image uploading is not available in this build.');
-};
+  const pickImage = async () => {
+    console.log('[CHAT] Image picker not available in this build');
+    // Alert the user that this feature isn't available
+    alert('Image uploading is not available in this build.');
+  };
   
   // Animation for send button
   const animateSendButton = () => {
@@ -208,3 +223,12 @@ const pickImage = async () => {
     </View>
   );
 }
+
+// Create the proper forwardRef version of the component
+const ForwardedMessageInput = forwardRef(MessageInput);
+
+// Add display name
+ForwardedMessageInput.displayName = 'MessageInput';
+
+// Export the forwarded component as default
+export default ForwardedMessageInput;

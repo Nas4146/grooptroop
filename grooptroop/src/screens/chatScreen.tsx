@@ -32,8 +32,15 @@ import { useNotification } from '../contexts/NotificationProvider';
 import { useFocusEffect } from '@react-navigation/native';
 import DateSeparator from '../components/chat/DateSeparator';
 import { ChatItemType } from '../models/chat';
+import GroopHeader from '../components/common/GroopHeader';
 
 type ChatScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
+// Define a MessageInputHandle type to fix the ref issue
+type MessageInputHandle = {
+  focus: () => void;
+  blur: () => void;
+};
 
 export default function ChatScreen() {
   const { profile } = useAuth();
@@ -44,77 +51,72 @@ export default function ChatScreen() {
   const [replyingTo, setReplyingTo] = useState<ReplyingToMessage | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const inputRef = useRef<TextInput>(null);
+  
+  // Fix the ref type to use our custom MessageInputHandle
+  const inputRef = useRef<MessageInputHandle>(null);
+  
   const [showEncryptionInfo, setShowEncryptionInfo] = useState(false);
   const [encryptionLoading, setEncryptionLoading] = useState(false);
   const { refreshUnreadCount } = useNotification();
   const flashListRef = useRef<FlashList<ChatItemType>>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
-      // Handle scroll events
-      const handleScroll = (event: any) => {
-        const offsetY = event.nativeEvent.contentOffset.y;
-        const contentHeight = event.nativeEvent.contentSize.height;
-        const layoutHeight = event.nativeEvent.layoutMeasurement.height;
-      
-        // Show button when user has scrolled up a bit
-        setShowScrollButton(offsetY < contentHeight - layoutHeight - 100);
-    };
-    
-    // Process messages to include date separators
-  const processMessagesWithDateSeparators = useCallback(() => {
-  if (!messages.length) return [];
-
-  // First, sort messages by date if they aren't already
-  const sortedMessages = [...messages].sort((a, b) => {
-    // Safe way to convert to Date, handling all possible types
-    const getDateValue = (createdAt: any): Date => {
-      if (!createdAt) return new Date();
-      if (createdAt?.toDate) return createdAt.toDate();
-      if (createdAt instanceof Date) return createdAt;
-      return new Date(createdAt);
-    };
-
-    const dateA = getDateValue(a.createdAt);
-    const dateB = getDateValue(b.createdAt);
-    
-    return dateA.getTime() - dateB.getTime();  // Oldest first (for non-inverted list)
-  });
-    
-  // Then, create a new array with date separators
-  const result: ChatItemType[] = [];
-  let lastDateStr: string | null = null;
-        
-  sortedMessages.forEach(message => {
-    // Reuse the same helper function for consistent date handling
-    const getDateValue = (createdAt: any): Date => {
-      if (!createdAt) return new Date();
-      if (createdAt?.toDate) return createdAt.toDate();
-      if (createdAt instanceof Date) return createdAt;
-      return new Date(createdAt);
-    };
-    
-    const messageDate = getDateValue(message.createdAt);
-    
-    // Get just the date portion for comparison (year, month, day)
-    const dateStr = messageDate.toDateString();
-    
-    // If this is a new date, add a separator
-    if (dateStr !== lastDateStr) {
-      lastDateStr = dateStr;
-      result.push({
-        id: `date-${dateStr}`,
-        type: 'dateSeparator',
-        date: messageDate
-      });
-    }
-    
-    // Add the message
-    result.push(message);
-  });
+  // Handle scroll events
+  const handleScroll = (event: any) => {
+    const offsetY = event.nativeEvent.contentOffset.y;
+    const contentHeight = event.nativeEvent.contentSize.height;
+    const layoutHeight = event.nativeEvent.layoutMeasurement.height;
   
-  return result;
-}, [messages]);
+    // Show button when user has scrolled up a bit
+    setShowScrollButton(offsetY < contentHeight - layoutHeight - 100);
+  };
+    
+  // Process messages to include date separators
+  const processMessagesWithDateSeparators = useCallback(() => {
+    if (!messages.length) return [];
+
+    // Helper function for date conversion
+    const getDateValue = (createdAt: any): Date => {
+      if (!createdAt) return new Date();
+      if (createdAt?.toDate) return createdAt.toDate();
+      if (createdAt instanceof Date) return createdAt;
+      return new Date(createdAt);
+    };
+
+    // First, sort messages by date if they aren't already
+    const sortedMessages = [...messages].sort((a, b) => {
+      const dateA = getDateValue(a.createdAt);
+      const dateB = getDateValue(b.createdAt);
+      
+      return dateA.getTime() - dateB.getTime();  // Oldest first (for non-inverted list)
+    });
+      
+    // Then, create a new array with date separators
+    const result: ChatItemType[] = [];
+    let lastDateStr: string | null = null;
+          
+    sortedMessages.forEach(message => {
+      const messageDate = getDateValue(message.createdAt);
+      
+      // Get just the date portion for comparison (year, month, day)
+      const dateStr = messageDate.toDateString();
+      
+      // If this is a new date, add a separator
+      if (dateStr !== lastDateStr) {
+        lastDateStr = dateStr;
+        result.push({
+          id: `date-${dateStr}`,
+          type: 'dateSeparator',
+          date: messageDate
+        });
+      }
+      
+      // Add the message
+      result.push(message);
+    });
+    
+    return result;
+  }, [messages]);
 
   // Debug log
   useEffect(() => {
@@ -125,33 +127,33 @@ export default function ChatScreen() {
     const initializeEncryption = async () => {
       setEncryptionLoading(true);
       try {
-      if (profile && currentGroop) {
-        console.log('[CHAT] Checking encryption status for group:', currentGroop.id);
-        
-        // Create groopRef here when you know currentGroop exists
-        const groopRef = doc(db, 'groops', currentGroop.id);
-        const groopSnap = await getDoc(groopRef);
-        
-        if (!groopSnap.data()?.encryptionEnabled) {
-          console.log('[CHAT] Setting up encryption for group');
-          // Set up encryption for this group
-          await KeyExchangeService.setupGroopEncryption(currentGroop.id, profile.uid);
-          console.log('[CHAT] Encryption setup complete');
-        } else {
-          console.log('[CHAT] Encryption already set up for this group');
+        if (profile && currentGroop) {
+          console.log('[CHAT] Checking encryption status for group:', currentGroop.id);
           
-          // Check if we have the key locally - THIS IS THE CRITICAL PART
-          const hasKey = await EncryptionService.hasGroopKey(currentGroop.id);
-          if (!hasKey) {
-            console.log('[CHAT] Group key not found locally, generating new key');
-            await EncryptionService.generateGroopKey(currentGroop.id);
+          // Create groopRef here when you know currentGroop exists
+          const groopRef = doc(db, 'groops', currentGroop.id);
+          const groopSnap = await getDoc(groopRef);
+          
+          if (!groopSnap.data()?.encryptionEnabled) {
+            console.log('[CHAT] Setting up encryption for group');
+            // Set up encryption for this group
+            await KeyExchangeService.setupGroopEncryption(currentGroop.id, profile.uid);
+            console.log('[CHAT] Encryption setup complete');
+          } else {
+            console.log('[CHAT] Encryption already set up for this group');
+            
+            // Check if we have the key locally - THIS IS THE CRITICAL PART
+            const hasKey = await EncryptionService.hasGroopKey(currentGroop.id);
+            if (!hasKey) {
+              console.log('[CHAT] Group key not found locally, generating new key');
+              await EncryptionService.generateGroopKey(currentGroop.id);
+            }
           }
         }
+      } finally {
+        setEncryptionLoading(false);
       }
-    } finally {
-      setEncryptionLoading(false);
-    }
-  };
+    };
     
     initializeEncryption();
   }, [profile, currentGroop]);
@@ -180,8 +182,8 @@ export default function ChatScreen() {
       console.log('[CHAT_DEBUG] Current groop details:', {
         id: currentGroop.id,
         name: currentGroop.name,
-        membersCount: currentGroop.members.length,
-        isMember: currentGroop.members.includes(profile?.uid || ''),
+        membersCount: currentGroop.members?.length || 0,
+        isMember: currentGroop.members?.includes(profile?.uid || '') || false,
       });
     }
   }, [currentGroop, profile]);
@@ -311,10 +313,10 @@ export default function ChatScreen() {
       <SafeAreaView style={tw`flex-1 justify-center items-center bg-light`}>
         <Ionicons name="chatbubbles" size={64} color="#CBD5E1" />
         <Text style={tw`text-xl font-bold text-gray-800 mt-4 text-center`}>
-          No group selected
+          No active conversation
         </Text>
-        <Text style={tw`text-base text-gray-600 mt-2 text-center`}>
-          Select a group to chat with
+        <Text style={tw`text-gray-600 text-center mt-2 mx-10`}>
+          Select or create a groop to start chatting
         </Text>
       </SafeAreaView>
     );
@@ -348,101 +350,22 @@ export default function ChatScreen() {
     </View>
   );
 
-
-  
   return (
-    <SafeAreaView style={tw`flex-1 bg-light`}>
-      {/* Header
-      <View style={tw`flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200`}>
-        <TouchableOpacity 
-          style={tw`flex-row items-center`} 
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="chevron-back" size={24} color="#7C3AED" />
-          <Text style={tw`text-lg font-medium ml-1 text-neutral`}>Back</Text>
-        </TouchableOpacity>
-        
-        <Text style={tw`text-lg font-medium text-neutral`}>
-          {currentGroop?.name}
-        </Text>
-        
-        <TouchableOpacity onPress={navigateToMembers}>
-          <View style={tw`flex-row items-center`}>
-            <Ionicons name="people" size={20} color="#7C3AED" />
-            <Text style={tw`text-sm ml-1 text-primary font-medium`}>
-              {currentGroop.members.length}
-            </Text>
-          </View>
-        </TouchableOpacity>
-      </View>*/}
-      {/* Status card - similar to Trip Home Base in itinerary */}
-      <View style={[
-        tw`mx-4 -mt-2 bg-white rounded-xl px-3 py-2.5 shadow-md`, 
-        {
-          zIndex: 20,
-          elevation: 4,
-          position: 'relative',
-        }
-      ]}>
-        <View style={tw`flex-row justify-between items-center mb-0.5`}>
-          <Text style={tw`font-bold text-neutral text-sm`}>Trip Chat</Text>
-          
-          <View style={tw`flex-row`}>
-            {/* New message indicator */}
-            {unreadCount > 0 && (
-              <View style={tw`bg-green-100 rounded-full px-2 py-0.5 flex-row items-center`}>
-                <View style={tw`h-2 w-2 rounded-full bg-green-500 mr-1`}></View>
-                <Text style={tw`text-xs text-green-700`}>{unreadCount} New</Text>
-              </View>
-            )}
-          </View>
-        </View>
-        
-        <View style={tw`flex-row items-center justify-between mb-1.5`}>
-          <View style={tw`flex-row items-center`}>
-            <Ionicons name="lock-closed" size={12} color="#78c0e1" style={tw`mr-1`} />
-            <Text style={tw`text-gray-600 text-xs`}>
-              End-to-end encrypted
-            </Text>
-          </View>
-          <TouchableOpacity
-            onPress={() => setShowEncryptionInfo(true)}
-            style={tw`p-1`} // Larger touch target
-          >
-            <Ionicons name="information-circle-outline" size={16} color="#78c0e1" />
-          </TouchableOpacity>
-        </View>    
-        {/* Actions row */}
-        <View style={tw`flex-row justify-center`}>
-          <TouchableOpacity 
-            style={tw`bg-gray-100 rounded-lg px-2.5 py-0.5 flex-row items-center mr-2`}
-          >
-            <Ionicons name="image" size={12} color="#1F2937" />
-            <Text style={tw`text-xs text-neutral ml-1`}>Photos</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={tw`bg-gray-100 rounded-lg px-2.5 py-0.5 flex-row items-center mr-2`}
-          >
-            <Ionicons name="location" size={12} color="#1F2937" />
-            <Text style={tw`text-xs text-neutral ml-1`}>Share Location</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={tw`bg-gray-100 rounded-lg px-2.5 py-0.5 flex-row items-center`}
-            onPress={() => navigation.navigate('Itinerary')}
-          >
-            <Ionicons name="calendar" size={12} color="#1F2937" />
-            <Text style={tw`text-xs text-neutral ml-1`}>Plan</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+  <SafeAreaView style={tw`flex-1 bg-light`}>
+<GroopHeader 
+  minimal={true} 
+  showMembers={true}
+  isChatScreen={true}
+  isItineraryScreen={false} // Add this prop (defaults to false)
+  onShowEncryptionInfo={() => setShowEncryptionInfo(true)}
+  onPressMembers={navigateToMembers}
+/>
 
-      <KeyboardAvoidingView 
-        style={tw`flex-1 mt-2`} 
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
+    <KeyboardAvoidingView 
+      style={tw`flex-1 mt-4`} // Changed from mt-10 to mt-4
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
       <FlashList
         ref={flashListRef}
         data={processMessagesWithDateSeparators()}
@@ -460,7 +383,7 @@ export default function ChatScreen() {
               onReactionPress={handleReaction}
               onReplyPress={() => handleReply(item as ChatMessage)}
             />
-    );
+          );
         }}
         keyExtractor={(item) => item.id}
         estimatedItemSize={80}
@@ -472,25 +395,25 @@ export default function ChatScreen() {
         scrollEventThrottle={16}
       />
 
-    {showScrollButton && (
-  <TouchableOpacity
-    style={tw`absolute right-4 bottom-16 bg-primary rounded-full w-10 h-10 items-center justify-center shadow-md z-10`}
-    onPress={() => flashListRef.current?.scrollToEnd({ animated: true })}
-  >
-    <Ionicons name="arrow-down" size={24} color="white" />
-  </TouchableOpacity>
-)}
-        
-        <MessageInput 
-          onSend={sendMessage} 
-          replyingTo={replyingTo}
-          onCancelReply={() => setReplyingTo(null)}
-        />
-      </KeyboardAvoidingView>
-      <EncryptionInfoModal 
-        isVisible={showEncryptionInfo}
-        onClose={() => setShowEncryptionInfo(false)}
+      {showScrollButton && (
+        <TouchableOpacity
+              style={tw`absolute right-4 bottom-16 bg-primary rounded-full w-10 h-10 items-center justify-center shadow-md z-10`}
+              onPress={() => flashListRef.current?.scrollToEnd({ animated: true })}
+        >
+          <Ionicons name="arrow-down" size={24} color="white" />
+        </TouchableOpacity>
+      )}
+      
+      <MessageInput 
+        onSend={sendMessage} 
+        replyingTo={replyingTo}
+        onCancelReply={() => setReplyingTo(null)}
       />
-    </SafeAreaView>
-  );
+    </KeyboardAvoidingView>
+    <EncryptionInfoModal 
+      isVisible={showEncryptionInfo}
+      onClose={() => setShowEncryptionInfo(false)}
+    />
+  </SafeAreaView>
+);
 }

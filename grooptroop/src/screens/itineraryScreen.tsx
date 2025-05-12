@@ -12,6 +12,7 @@ import { useGroop } from '../contexts/GroopProvider';
 import PaymentSheet from '../components/payments/PaymentSheet';
 import { PaymentService } from '../services/PaymentService';
 import { useAuth } from '../contexts/AuthProvider';
+import GroopHeader from '../components/common/GroopHeader';
 
 export default function ItineraryScreen() {
   const { currentGroop, userGroops, fetchUserGroops, setCurrentGroop } = useGroop();
@@ -212,77 +213,83 @@ export default function ItineraryScreen() {
 
   return (
     <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={tw`flex-1`}
+    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    style={tw`flex-1`}
     >
-      <SafeAreaView style={tw`flex-1 bg-light`}>
-        {/* Render groop selector if user has multiple groops */}
-        {renderGroopSelector()}
+    <SafeAreaView style={tw`flex-1 bg-light`}>
+      {/* Add GroopHeader but pass isItineraryScreen=true so it returns null */}
+      <GroopHeader 
+        isItineraryScreen={true} 
+        showMembers={false}
+      />
+      
+      {/* Render groop selector if user has multiple groops */}
+      {renderGroopSelector()}
+      
+      {/* Keep your existing header section with dynamic groop data */}
+      <Animated.View style={[
+        tw`px-4 pt-1 pb-4 bg-primary rounded-b-3xl shadow-lg`, 
+        { 
+          height: headerHeight,
+          zIndex: 30,
+          elevation: 5,
+          position: 'relative',
+          overflow: 'hidden',
+        }
+      ]}>
+        {/* Your existing header content remains unchanged */}
+        <View style={tw`flex-row justify-between items-center`}>
+          <Text style={tw`text-xl font-bold text-white`}>{currentGroop.name}</Text>
+          <View style={tw`bg-white bg-opacity-20 rounded-full p-1.5`}>
+            <Ionicons name="notifications-outline" size={18} color="white" />
+          </View>
+        </View>
         
-        {/* Header section with dynamic groop data */}
-        <Animated.View style={[
-          tw`px-4 pt-1 pb-4 bg-primary rounded-b-3xl shadow-lg`, 
-          { 
-            height: headerHeight,
-            zIndex: 30,
-            elevation: 5,
-            position: 'relative',
-            overflow: 'hidden',
-          }
-        ]}>
-          <View style={tw`flex-row justify-between items-center`}>
-            <Text style={tw`text-xl font-bold text-white`}>{currentGroop.name}</Text>
-            <View style={tw`bg-white bg-opacity-20 rounded-full p-1.5`}>
-              <Ionicons name="notifications-outline" size={18} color="white" />
-            </View>
-          </View>
+        {/* Date and location pill on the same row */}
+        <View style={tw`flex-row items-center mt-1`}>
+          {currentGroop.dateRange && (
+            <>
+              <Ionicons name="calendar" size={16} color="white" />
+              <Text style={tw`text-white font-medium ml-2 text-sm`}>
+                {currentGroop.dateRange}
+              </Text>
+            </>
+          )}
           
-          {/* Date and location pill on the same row */}
-          <View style={tw`flex-row items-center mt-1`}>
-            {currentGroop.dateRange && (
-              <>
-                <Ionicons name="calendar" size={16} color="white" />
-                <Text style={tw`text-white font-medium ml-2 text-sm`}>
-                  {currentGroop.dateRange}
-                </Text>
-              </>
-            )}
-            
-            {/* Location pill */}
-            {currentGroop.location && (
-              <View style={tw`bg-white bg-opacity-20 rounded-full px-2.5 py-0.5 ml-3`}>
-                <Text style={tw`text-white font-medium text-xs`}>📍 {currentGroop.location}</Text>
-              </View>
-            )}
-          </View>
-          
-          <View style={tw`flex-row justify-end px-4 mt-2`}>
-            <TouchableOpacity
-              style={tw`bg-gray-200 px-3 py-1 rounded-full flex-row items-center`}
-              onPress={async () => {
-                setLoading(true);
-                // Clear cache and force refresh
-                await ItineraryService.clearCache(currentGroop.id);
-                await fetchItinerary();
-              }}
-            >
-              <Ionicons name="refresh" size={14} color="#333" />
-              <Text style={tw`text-xs font-medium ml-1 text-gray-700`}>Refresh</Text>
-            </TouchableOpacity>
-          </View>
-    
-          {/* Location image section */}
-          {currentGroop.photoURL && (
-            <View style={tw`items-center mt-3 mb-1`}>
-              <View style={tw`w-full h-20 rounded-lg overflow-hidden`}>
-                <Image
-                  source={{ uri: currentGroop.photoURL }}
-                  style={[tw`w-full h-full`, { resizeMode: 'cover' }]}
-                />
-              </View>
+          {/* Location pill */}
+          {currentGroop.location && (
+            <View style={tw`bg-white bg-opacity-20 rounded-full px-2.5 py-0.5 ml-3`}>
+              <Text style={tw`text-white font-medium text-xs`}>📍 {currentGroop.location}</Text>
             </View>
           )}
-        </Animated.View>
+        </View>
+        
+        <View style={tw`flex-row justify-end px-4 mt-2`}>
+          <TouchableOpacity
+            style={tw`bg-gray-200 px-3 py-1 rounded-full flex-row items-center`}
+            onPress={async () => {
+              setLoading(true);
+              await ItineraryService.clearCache(currentGroop.id);
+              await fetchItinerary();
+            }}
+          >
+            <Ionicons name="refresh" size={14} color="#333" />
+            <Text style={tw`text-xs font-medium ml-1 text-gray-700`}>Refresh</Text>
+          </TouchableOpacity>
+        </View>
+        
+        {/* Location image section */}
+        {currentGroop.photoURL && (
+          <View style={tw`items-center mt-3 mb-1`}>
+            <View style={tw`w-full h-20 rounded-lg overflow-hidden`}>
+              <Image
+                source={{ uri: currentGroop.photoURL }}
+                style={[tw`w-full h-full`, { resizeMode: 'cover' }]}
+              />
+            </View>
+          </View>
+        )}
+      </Animated.View>
 
         {/* Quick access location info */}
         <View style={[
