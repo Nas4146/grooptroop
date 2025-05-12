@@ -72,9 +72,9 @@ export default function BottomTabNavigator() {
       })}
     >
       <Tab.Screen name="Itinerary" component={ItineraryScreen} />
+      <Tab.Screen name="Chat"      component={ChatScreen} />
       <Tab.Screen name="Map"       component={MapScreen} />
       <Tab.Screen name="Payments"  component={PaymentsScreen} />
-      <Tab.Screen name="Chat"      component={ChatScreen} />
       <Tab.Screen name="Profile"   component={ProfileScreen} />
       <Tab.Screen name="Admin" component={AdminSettingsScreen} />
     </Tab.Navigator>

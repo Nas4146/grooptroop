@@ -34,6 +34,18 @@ export default function EventCard({
     setPaymentSheetVisible(true);
   };
 
+    // payment completion handler
+  const handlePaymentSheetClose = (paymentCompleted: boolean = false) => {
+    setPaymentSheetVisible(false);
+    
+    // If payment was completed, we could optionally refresh the event data
+    // or mark the event as paid locally
+    if (paymentCompleted) {
+      console.log('[EVENT_CARD] Payment completed for event:', event.title);
+      // You could add additional handling here if needed
+    }
+  };
+
   // Get event color and mood based on event type
   const getEventMood = () => {
     switch(event.type) {
@@ -170,7 +182,7 @@ export default function EventCard({
             </View>
             
             {/* People attending indicators - more compact */}
-            {event.attendees > 0 && (
+            {typeof event.attendees === 'number' && event.attendees > 0 && (
               <View style={tw`flex-row items-center mt-2`}>
                 <View style={tw`flex-row -space-x-2`}>
                   {[1,2,3].map(i => (
@@ -216,7 +228,7 @@ export default function EventCard({
       {/* Payment Sheet Modal */}
       <PaymentSheet
         visible={paymentSheetVisible}
-        onClose={() => setPaymentSheetVisible(false)}
+        onClose={handlePaymentSheetClose}
         groopId={currentGroop?.id || ''}
         eventId={event.id}
         amount={typeof event.costPerPerson === 'number' ? event.costPerPerson : 0}

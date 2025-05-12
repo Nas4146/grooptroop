@@ -22,7 +22,7 @@ import { PaymentResponse } from '../../models/payments';
 
 interface PaymentSheetProps {
   visible: boolean;
-  onClose: () => void;
+  onClose: (paymentCompleted?: boolean) => void;  // Updated to accept payment status
   groopId: string;
   eventId?: string;
   amount: number;
@@ -210,9 +210,9 @@ export default function PaymentSheet({
         setPaymentSuccess(true);
         setPaymentFailed(false);
         
-        // Auto-close after success
+        // Auto-close after success with payment status = true
         setTimeout(() => {
-          onClose();
+          onClose(true);  // Pass true to indicate payment completed
         }, 2000);
       } else {
         console.error('[PAYMENT_SHEET] Failed to confirm payment');
@@ -232,23 +232,28 @@ export default function PaymentSheet({
   
   const handleCancelPayment = async () => {
     if (!paymentId) {
-      onClose();
+      onClose(false);  // Pass false to indicate no payment completed
       return;
     }
     
     try {
       console.log(`[PAYMENT_SHEET] Cancelling payment: ${paymentId}`);
       await PaymentService.cancelPayment(paymentId, groopId);
-      onClose();
+      onClose(false);  // Pass false to indicate no payment completed
     } catch (error) {
       console.error('[PAYMENT_SHEET] Error cancelling payment:', error);
-      onClose();
+      onClose(false);  // Still pass false since no payment completed
     }
   };
   
   const handleTryAgain = () => {
     setPaymentFailed(false);
     setErrorMessage('');
+  };
+
+  // Handle the standard close button with payment status = false
+  const handleCloseModal = () => {
+    onClose(false);  // No payment was completed
   };
   
   const translateY = slideAnim.interpolate({
@@ -261,13 +266,13 @@ export default function PaymentSheet({
       visible={visible}
       transparent={true}
       animationType="none"
-      onRequestClose={onClose}
+      onRequestClose={handleCloseModal}  
     >
       <View style={styles.overlay}>
         <TouchableOpacity 
           style={tw`absolute inset-0 bg-black bg-opacity-50`} 
           activeOpacity={1}
-          onPress={!paymentInitiated ? onClose : undefined}
+          onPress={!paymentInitiated ? (event) => handleCloseModal() : undefined}
         />
         
         <Animated.View 
@@ -285,7 +290,7 @@ export default function PaymentSheet({
               <Text style={tw`text-lg font-bold text-gray-800`}>{title}</Text>
               
               {!paymentInitiated && (
-                <TouchableOpacity onPress={onClose}>
+                <TouchableOpacity onPress={handleCloseModal}>
                   <Ionicons name="close" size={24} color="#666" />
                 </TouchableOpacity>
               )}
@@ -330,7 +335,7 @@ export default function PaymentSheet({
                   
                   <TouchableOpacity
                     style={tw`py-2 px-4 rounded-lg w-full`}
-                    onPress={onClose}
+                    onPress={(event) => handleCloseModal()}
                   >
                     <Text style={tw`text-gray-600 text-center`}>
                       Cancel

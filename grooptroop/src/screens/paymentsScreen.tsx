@@ -91,12 +91,16 @@ export default function PaymentsScreen() {
     setPaymentSheetVisible(true);
   };
   
-  const closePaymentSheet = () => {
+  const closePaymentSheet = (paymentCompleted: boolean = false) => {
     setPaymentSheetVisible(false);
-    // Refresh data after payment attempt
-    setTimeout(() => {
-      fetchPayments();
-    }, 500);
+    
+    // Only refresh data if a payment was actually completed
+    if (paymentCompleted) {
+      console.log('[PAYMENTS_SCREEN] Payment completed, refreshing data');
+      setTimeout(() => {
+        fetchPayments();
+      }, 500);
+    }
   };
 
   if (loading && !refreshing) {
@@ -247,7 +251,7 @@ export default function PaymentsScreen() {
       {selectedPaymentItem && (
         <PaymentSheet
           visible={paymentSheetVisible}
-          onClose={closePaymentSheet}
+          onClose={closePaymentSheet}  // This now accepts a boolean parameter
           groopId={currentGroop.id}
           eventId={selectedPaymentItem.type === 'event' ? selectedPaymentItem.id : undefined}
           amount={selectedPaymentItem.amountDue}
