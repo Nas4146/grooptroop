@@ -17,20 +17,28 @@ import { KeyExchangeService } from '../services/KeyExchangeService';
 import { NotificationService } from '../services/NotificationService';
 import { arrayUnion, serverTimestamp } from 'firebase/firestore';
 
+export interface UserAvatar {
+  type: 'initial' | 'image' | 'bitmoji';
+  value: string; // URL for image/bitmoji, or initials for type 'initial'
+  color?: string; // Background color for initials avatar
+}
+
 // Define our user type to include Firestore profile data
-export type UserProfile = {
+export interface UserProfile {
   uid: string;
   displayName: string;
   email?: string;
   photoURL?: string;
   avatarColor: string;
+  avatar?: UserAvatar;
   isAnonymous: boolean;
   createdAt: Date;
   lastActive: Date;
   providers?: string[];
   publicKey?: string;
   needsKeyGeneration?: boolean;
-};
+  hasCompletedOnboarding?: boolean;
+}
 
 // Define the context type
 type AuthContextType = {
@@ -57,33 +65,75 @@ const AuthContext = createContext<AuthContextType | null>(null);
 const AUTH_PERSISTENCE_KEY = 'grooptroop-auth-persistence';
 
 // Helper function to create/update user document in Firestore
-const createUserDocument = async (user: User): Promise<UserProfile> => {
+export const createUserDocument = async (user: User, additionalData?: any) => {
+  if (!user) return null;
+  
+  // Check if user document already exists
   const userRef = doc(db, 'users', user.uid);
   const userSnap = await getDoc(userRef);
   
-  const userData = {
-    uid: user.uid,
-    displayName: user.displayName || 'User',
-    email: user.email,
-    photoURL: user.photoURL,
-    avatarColor: userSnap.exists() ? userSnap.data().avatarColor : getRandomColor(),
-    isAnonymous: user.isAnonymous,
-    createdAt: userSnap.exists() ? userSnap.data().createdAt : Timestamp.now(),
-    lastActive: Timestamp.now(),
-    providers: user.providerData.map(provider => provider.providerId)
-  };
-
-  await setDoc(userRef, userData, { merge: true });
-   // Convert Timestamps to Dates for our app's use
-   return {
-    ...userData,
-    createdAt: userData.createdAt instanceof Timestamp ? 
-               userData.createdAt.toDate() : 
-               new Date(),
-    lastActive: userData.lastActive instanceof Timestamp ? 
-                userData.lastActive.toDate() : 
-                new Date()
-  } as UserProfile;
+  const now = new Date();
+  
+  if (!userSnap.exists()) {
+    // Create new user document
+    const avatarColor = `#${Math.floor(Math.random()*16777215).toString(16)}`;
+    const displayName = user.displayName || additionalData?.displayName || `User${Math.floor(Math.random() * 10000)}`;
+    
+    const userData = {
+      uid: user.uid,
+      email: user.email || '',
+      displayName,
+      photoURL: user.photoURL || '',
+      avatarColor,
+      avatar: {
+        type: 'initial',
+        value: displayName.charAt(0).toUpperCase(),
+        color: avatarColor
+      },
+      createdAt: now,
+      lastActive: now,
+      isAnonymous: user.isAnonymous,
+      hasCompletedOnboarding: false, // New users haven't completed onboarding
+      // Track auth providers
+      providers: user.providerData.map(p => p.providerId) || []
+    };
+    
+    try {
+      await setDoc(userRef, userData);
+      console.log('User document created');
+      return userData;
+    } catch (error) {
+      console.error('Error creating user document:', error);
+      return null;
+    }
+  } else {
+    // Update existing user with latest data
+    const userData = userSnap.data();
+    const updatedData = {
+      lastActive: now,
+      // Preserve anonymity status if converting anonymous account
+      isAnonymous: userData.isAnonymous && user.isAnonymous,
+      // Update display name if provided
+      ...(user.displayName && { displayName: user.displayName }),
+      // Update photo URL if provided  
+      ...(user.photoURL && { photoURL: user.photoURL }),
+      // Update email if provided
+      ...(user.email && { email: user.email }),
+      // Update providers list
+      providers: user.providerData.map(p => p.providerId)
+    };
+    
+    try {
+      await updateDoc(userRef, updatedData);
+      return {
+        ...userData,
+        ...updatedData
+      };
+    } catch (error) {
+      console.error('Error updating user document:', error);
+      return userData;
+    }
+  }
 };
 
 // Helper function for random avatar color
@@ -113,12 +163,36 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   // Fetch user profile document from Firestore
-  const refreshProfile = async () => {
+const refreshProfile = async () => {
+  try {
+    console.log('[AUTH] Refreshing user profile');
     if (user) {
-      const userData = await createUserDocument(user);
-      setProfile(userData as UserProfile);
+      const userRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userRef);
+      
+      if (userSnap.exists()) {
+        const userData = userSnap.data();
+        
+        // Convert Timestamps to Dates
+        const profile = {
+          ...userData,
+          createdAt: userData.createdAt instanceof Timestamp ? userData.createdAt.toDate() : new Date(),
+          lastActive: userData.lastActive instanceof Timestamp ? userData.lastActive.toDate() : new Date()
+        } as UserProfile;
+        
+        console.log('[AUTH] Profile refreshed successfully');
+        setProfile(profile);
+        return profile;
+      }
     }
-  };
+    
+    console.log('[AUTH] Failed to refresh profile - user not found');
+    return null;
+  } catch (error) {
+    console.error('[AUTH] Error refreshing profile:', error);
+    return null;
+  }
+};
 
   // Sign in anonymously
   const signInAnonymously = async () => {
@@ -251,45 +325,48 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  useEffect(() => {
-    console.log('[AUTH] Setting up auth state listener');
+ useEffect(() => {
+  console.log('[AUTH] Setting up auth state listener');
+  
+  return onAuthStateChanged(auth, async (user) => {
+    console.log('[AUTH] Auth state changed, user:', user ? `${user.uid} (${user.isAnonymous ? 'anonymous' : 'authenticated'})` : 'null');
     
-    return onAuthStateChanged(auth, async (user) => {
-      console.log('[AUTH] Auth state changed, user:', user ? `${user.uid} (${user.isAnonymous ? 'anonymous' : 'authenticated'})` : 'null');
-      
-          // Skip auto-login for anonymous users during development
+    // Skip auto-login for anonymous users during development
     if (user && user.isAnonymous && SKIP_AUTO_LOGIN) {
       console.log('[AUTH] Skipping auto-login for anonymous user during development');
       await auth.signOut();
       return;
     }
-      if (user) {
-        try {
-          console.log('[AUTH] Fetching user profile');
-          const userData = await createUserDocument(user);
-          console.log('[AUTH] User profile loaded:', userData ? 'success' : 'failed');
-          setProfile(userData as UserProfile);
-          setIsAuthenticated(true);
-          
-          // Persist auth state
-          persistAuthState(user.uid);
-        } catch (error) {
-          console.error('[AUTH] Error processing authenticated user:', error);
-          setIsAuthenticated(false);
-          setProfile(null);
-        }
-      } else {
-        console.log('[AUTH] User is signed out');
-        setIsAuthenticated(false);
-        setUser(null);
-        setProfile(null);
+    
+    if (user) {
+      try {
+        console.log('[AUTH] Fetching user profile');
+        const userData = await createUserDocument(user);
+        console.log('[AUTH] User profile loaded:', userData ? 'success' : 'failed');
+        setProfile(userData as UserProfile);
+        setUser(user);
+        setIsAuthenticated(true);
         
-        // Clear persisted auth state
-        persistAuthState(null);      }
+        // Persist auth state
+        persistAuthState(user.uid);
+      } catch (error) {
+        console.error('[AUTH] Error processing authenticated user:', error);
+        setIsAuthenticated(false);
+        setProfile(null);
+      }
+    } else {
+      console.log('[AUTH] User is signed out');
+      setIsAuthenticated(false);
+      setUser(null);
+      setProfile(null);
       
-      setIsLoading(false);
-    });
-  }, []);
+      // Clear persisted auth state
+      persistAuthState(null);
+    }
+    
+    setIsLoading(false);
+  });
+}, []);
 
   const value = {
     isAuthenticated,

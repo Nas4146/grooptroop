@@ -2,20 +2,21 @@ import React, { useEffect } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthProvider';
-import BottomTabNavigator from './BottomTabNavigator';
-import SimpleLoginScreen from '../screens/SimpleLoginScreen';
-import EventDetailsScreen from '../screens/EventDetailsScreen';
-import GroupMembersScreen from '../screens/GroupMembersScreen';
-import AdminSettingsScreen from '../screens/AdminSettingsScreen';
+import BottomTabbNavigator from './BottomTabNavigator';
+import TestSimpleLoginScreen from '../screens/TestSimpleLoginScreen';
+import ProfileSetupScreen from '../screens/ProfileSetupScreen';
 
 const RootStack = createNativeStackNavigator();
 
 export default function RootNavigator() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, profile } = useAuth();
   
   useEffect(() => {
     console.log(`[NAVIGATION] RootNavigator rendering with isAuthenticated=${isAuthenticated}, isLoading=${isLoading}`);
-  }, [isAuthenticated, isLoading]);
+    if (profile) {
+      console.log(`[NAVIGATION] User profile loaded, hasCompletedOnboarding=${profile.hasCompletedOnboarding}`);
+    }
+  }, [isAuthenticated, isLoading, profile]);
   
   if (isLoading) {
     return (
@@ -28,30 +29,22 @@ export default function RootNavigator() {
   
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
-      {isAuthenticated ? (
-        <RootStack.Screen name="MainApp" component={BottomTabNavigator} />
+      {!isAuthenticated ? (
+        // Not authenticated - show login
+        <RootStack.Screen name="Auth" component={TestSimpleLoginScreen} />
+      ) : profile && !profile.hasCompletedOnboarding ? (
+        // Authenticated but needs profile setup
+        <RootStack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
       ) : (
-        <RootStack.Screen name="Auth" component={AuthNavigator} />
+        // Fully authenticated with completed profile
+        <RootStack.Screen name="MainApp" component={BottomTabbNavigator} />
       )}
       
       {/* Modal screens */}
       <RootStack.Group screenOptions={{ presentation: 'modal' }}>
-        <RootStack.Screen name="EventDetails" component={EventDetailsScreen} />
-        <RootStack.Screen name="GroupMembers" component={GroupMembersScreen} />
-        <RootStack.Screen name="AdminSettings" component={AdminSettingsScreen} />
+        {/* Add your modal screens here */}
       </RootStack.Group>
     </RootStack.Navigator>
-  );
-}
-
-// Auth navigator
-const AuthStack = createNativeStackNavigator();
-
-function AuthNavigator() {
-  return (
-    <AuthStack.Navigator screenOptions={{ headerShown: false }}>
-      <AuthStack.Screen name="Login" component={SimpleLoginScreen} />
-    </AuthStack.Navigator>
   );
 }
 

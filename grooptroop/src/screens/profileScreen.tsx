@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Alert, SafeAreaView, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, SafeAreaView, ScrollView, Image } from 'react-native';
 import { useAuth } from '../contexts/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../utils/tw';
 
-export default function ProfileScreen() {
+export default function ProfileScreen({ navigation }) {
   const { user, profile, isLoading, signOut } = useAuth();
 
   const handleSignOut = async () => {
@@ -16,6 +16,12 @@ export default function ProfileScreen() {
       console.error('[PROFILE] Error signing out:', error);
       Alert.alert('Sign Out Failed', 'There was a problem signing out. Please try again.');
     }
+  };
+  
+  const handleEditAvatar = () => {
+    console.log('[PROFILE] Editing avatar');
+    // Navigate to a simplified version of the profile setup that only handles avatar
+    navigation.navigate('ProfileSetup', { editMode: true });
   };
 
   if (isLoading) {
@@ -36,18 +42,38 @@ export default function ProfileScreen() {
         
         {/* Avatar section with proper spacing */}
         <View style={tw`items-center px-4 mb-8`}>
-          <View 
-            style={[
-              tw`w-24 h-24 rounded-full items-center justify-center mb-3 shadow-sm`,
-              { backgroundColor: profile?.avatarColor || '#7C3AED' }
-            ]}
+          {/* Avatar with Edit button */}
+          <TouchableOpacity 
+            onPress={handleEditAvatar}
+            style={tw`relative`}
           >
-            <Text style={tw`text-white text-3xl font-bold`}>
-              {profile?.displayName?.charAt(0).toUpperCase() || 'A'}
-            </Text>
-          </View>
+            {/* Show image avatar if available */}
+            {profile?.avatar?.type === 'image' ? (
+              <Image
+                source={{ uri: profile.avatar.value }}
+                style={tw`w-24 h-24 rounded-full shadow-sm`}
+              />
+            ) : (
+              // Otherwise show initial avatar
+              <View 
+                style={[
+                  tw`w-24 h-24 rounded-full items-center justify-center shadow-sm`,
+                  { backgroundColor: profile?.avatar?.color || profile?.avatarColor || '#7C3AED' }
+                ]}
+              >
+                <Text style={tw`text-white text-3xl font-bold`}>
+                  {profile?.avatar?.value || profile?.displayName?.charAt(0).toUpperCase() || 'A'}
+                </Text>
+              </View>
+            )}
+            
+            {/* Edit button overlay */}
+            <View style={tw`absolute bottom-0 right-0 bg-primary rounded-full w-8 h-8 items-center justify-center shadow-sm`}>
+              <Ionicons name="pencil" size={16} color="white" />
+            </View>
+          </TouchableOpacity>
           
-          <Text style={tw`text-2xl font-bold text-neutral`}>
+          <Text style={tw`text-2xl font-bold text-neutral mt-3`}>
             {profile?.displayName || 'Anonymous User'}
           </Text>
           
@@ -84,7 +110,7 @@ export default function ProfileScreen() {
             </View>
             <Text style={tw`text-neutral font-medium ml-6`}>
               {profile?.email || user?.email || 'No email available'}
-          </Text>
+           </Text>
           </View>
           
           {/* Sign in button for anonymous users */}
