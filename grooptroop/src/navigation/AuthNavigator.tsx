@@ -1,30 +1,46 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { View, Text } from 'react-native';
 import { AuthStackParamList } from './types';
-import SignInScreen from '../screens/signInScreen';
-import SignUpScreen from '../screens/signUpScreen';
-import ForgotPasswordScreen from '../screens/forgotPasswordScreen';
-import { Text, View } from 'react-native';
+// Import the SimpleLoginScreen that exists in your project
+import SimpleLoginScreen from '../screens/SimpleLoginScreen';
 
-// Simple backup components for testing
-const TestSignIn = () => <View style={{flex:1, alignItems:'center', justifyContent:'center'}}><Text>Sign In Screen</Text></View>;
+// Create extremely simple test components for fallback
+const TestSignIn = () => (
+  <View style={{flex:1, alignItems:'center', justifyContent:'center', backgroundColor: '#fff'}}>
+    <Text>Sign In Test Screen</Text>
+  </View>
+);
 
+const TestSignUp = () => (
+  <View style={{flex:1, alignItems:'center', justifyContent:'center', backgroundColor: '#fff'}}>
+    <Text>Sign Up Test Screen</Text>
+  </View>
+);
+
+const TestForgotPassword = () => (
+  <View style={{flex:1, alignItems:'center', justifyContent:'center', backgroundColor: '#fff'}}>
+    <Text>Forgot Password Test Screen</Text>
+  </View>
+);
+
+// Create the navigator
 const Stack = createNativeStackNavigator<AuthStackParamList>();
 
-const AuthNavigator = () => {
-  return (
-    <Stack.Navigator
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: '#fff' }
-      }}
-    >
-      {/*<Stack.Screen name="SignIn" component={SignInScreen} />
-      <Stack.Screen name="SignUp" component={SignUpScreen} />
-      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />*/}
-      <Stack.Screen name="SignIn" component={TestSignIn} />
-    </Stack.Navigator>
-  );
-};
+// Define a plain component without any hooks or complex logic
+const AuthNavigator = () => (
+  <Stack.Navigator
+    initialRouteName="SignIn"
+    screenOptions={{
+      headerShown: false,
+      contentStyle: { backgroundColor: '#fff' }
+    }}
+  >
+    {/* First try using your test component directly */}
+    <Stack.Screen name="SignIn" component={TestSignIn} />
+    <Stack.Screen name="SignUp" component={TestSignUp} />
+    <Stack.Screen name="ForgotPassword" component={TestForgotPassword} />
+  </Stack.Navigator>
+);
 
 export default AuthNavigator;

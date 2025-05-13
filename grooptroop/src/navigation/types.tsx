@@ -1,5 +1,6 @@
 import { ItineraryEvent, ItineraryDay } from '../models/itinerary';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { NavigatorScreenParams } from '@react-navigation/native';
 
 // Auth navigation param types
 export type AuthStackParamList = {
@@ -8,21 +9,27 @@ export type AuthStackParamList = {
   ForgotPassword: undefined;
 };
 
-// Main navigation param types
-export type RootStackParamList = {
+export type MainTabParamList = {
   Home: undefined;
   Itinerary: undefined;
-  Settings: undefined;
   Map: undefined;
   Payments: undefined;
   Chat: undefined;
   Profile: undefined;
+};
+
+// Root navigation param types that combine all navigators
+export type RootStackParamList = {
+  // Auth Flow
+  Auth: NavigatorScreenParams<AuthStackParamList>;
+  // Main App Flow
+  MainTabs: NavigatorScreenParams<MainTabParamList>;
+  // Modal screens (accessible from anywhere)
   EventDetails: { eventId: string };
   GroupMembers: { groopId?: string };
   AdminSettings: undefined;
+};
 
-}; 
-//& AuthStackParamList; // Merge with auth types for easier navigation
 
 // Navigation type helpers
 export type AuthScreenNavigationProp = NativeStackNavigationProp<AuthStackParamList>;
