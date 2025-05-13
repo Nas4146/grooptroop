@@ -48,7 +48,7 @@ type AuthContextType = {
   refreshProfile: () => Promise<void>;
 };
 
-const SKIP_AUTO_LOGIN = true; // Set to false in production
+const SKIP_AUTO_LOGIN = false; // Set to false in production
 
 // Create the context with a null default value
 const AuthContext = createContext<AuthContextType | null>(null);

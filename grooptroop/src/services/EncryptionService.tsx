@@ -1,19 +1,56 @@
 import nacl from 'tweetnacl';
 import util from 'tweetnacl-util';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+import * as Random from 'expo-random';
+
+// Initialize a secure random number generator for tweetnacl
+const initializeSecureRandom = async () => {
+  try {
+    console.log('[ENCRYPTION] Initializing secure random generator');
+    
+    // Get random bytes using expo-random
+    const randomBytes = await Random.getRandomBytesAsync(32);
+    
+    // Set the random bytes generator for tweetnacl
+    nacl.setPRNG((x, n) => {
+      // For each call, get new random bytes
+      const randomBytesSync = Random.getRandomBytes(n);
+      for (let i = 0; i < n; i++) {
+        x[i] = randomBytesSync[i];
+      }
+      return x;
+    });
+    
+    console.log('[ENCRYPTION] Successfully initialized secure random generator');
+    return true;
+  } catch (error) {
+    console.error('[ENCRYPTION] Failed to initialize secure random generator:', error);
+    return false;
+  }
+};
+
+// Immediately initialize the PRNG when this module is imported
+initializeSecureRandom();
 
 export class EncryptionService {
-    // Check if PRNG is available
-    static checkPRNG(): boolean {
-        try {
-          // Test if we can generate random bytes
-          const testBytes = nacl.randomBytes(16);
-          return testBytes.length === 16;
-        } catch (error) {
-          console.error('[ENCRYPTION] PRNG check failed:', error);
-          return false;
-        }
+  // Check if PRNG is available
+  static async checkPRNG(): Promise<boolean> {
+    try {
+      // Test if we can generate random bytes
+      const testBytes = await Random.getRandomBytesAsync(16);
+      const isValid = testBytes.length === 16;
+      
+      if (!isValid) {
+        console.error('[ENCRYPTION] PRNG check failed: invalid random bytes length');
       }
+      
+      return isValid;
+    } catch (error) {
+      console.error('[ENCRYPTION] PRNG check failed:', error);
+      return false;
+    }
+  }
   // Generate a new key pair for a user
     static async generateAndStoreUserKeys(userId: string): Promise<{ publicKey: string, secretKey: string }> {
     try {

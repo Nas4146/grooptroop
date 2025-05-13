@@ -6,11 +6,14 @@ import { AuthStackParamList } from './types';
 import SimpleLoginScreen from '../screens/SimpleLoginScreen';
 
 // Create extremely simple test components for fallback
-const TestSignIn = () => (
-  <View style={{flex:1, alignItems:'center', justifyContent:'center', backgroundColor: '#fff'}}>
-    <Text>Sign In Test Screen</Text>
-  </View>
-);
+const TestSignIn = () => {
+  console.log('[DEBUG] TestSignIn component rendering');
+  return (
+    <View style={{flex:1, alignItems:'center', justifyContent:'center', backgroundColor: '#fff'}}>
+      <Text>Sign In Test Screen</Text>
+    </View>
+  );
+};
 
 const TestSignUp = () => (
   <View style={{flex:1, alignItems:'center', justifyContent:'center', backgroundColor: '#fff'}}>

@@ -1,53 +1,105 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { MainTabParamList } from './types';
-
-// Import screens
-import ItineraryScreen from '../screens/itineraryScreen';
-import MapScreen from '../screens/mapScreen';
-import PaymentsScreen from '../screens/paymentsScreen';
-import ChatScreen from '../screens/chatScreen';
+import HomeScreen from '../screens/HomeScreen';
 import ProfileScreen from '../screens/profileScreen';
+import ItineraryScreen from '../screens/itineraryScreen';
+import ChatScreen from '../screens/chatScreen';
+import MapScreen from '../screens/mapScreen';
+import AdminSettingsScreen from '../screens/AdminSettingsScreen';
+import PaymentsScreen from '../screens/paymentsScreen';
 
-const Tab = createBottomTabNavigator<MainTabParamList>();
+const Tab = createBottomTabNavigator();
+const HomeStack = createNativeStackNavigator();
 
-export default function BottomTabNavigator() {
+// Home stack navigator
+function HomeStackScreen() {
+  return (
+    <HomeStack.Navigator>
+      <HomeStack.Screen 
+        name="Home" 
+        component={ItineraryScreen} 
+        options={{ headerShown: false }}
+      />
+    </HomeStack.Navigator>
+  );
+}
+
+export default function TabNavigator() {
+  useEffect(() => {
+    console.log('[NAVIGATION] TabNavigator mounted');
+    return () => console.log('[NAVIGATION] TabNavigator unmounted');
+  }, []);
+  
   return (
     <Tab.Navigator
-      initialRouteName="Itinerary" // Set Itinerary as the initial route
       screenOptions={({ route }) => ({
         tabBarIcon: ({ focused, color, size }) => {
-          // Initialize with a default icon name
-          let iconName = 'calendar-outline';
+          let iconName;
 
-          if (route.name === 'Home') {
-            iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === 'Itinerary') {
-            iconName = focused ? 'calendar' : 'calendar-outline';
-          } else if (route.name === 'Map') {
-            iconName = focused ? 'map' : 'map-outline';
-          } else if (route.name === 'Payments') {
-            iconName = focused ? 'card' : 'card-outline';
-          } else if (route.name === 'Chat') {
-            iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
-          } else if (route.name === 'Profile') {
-            iconName = focused ? 'person' : 'person-outline';
+          switch (route.name) {
+            case 'HomeTab':
+              iconName = focused ? 'home' : 'home-outline';
+              break;
+            case 'ItineraryTab':
+              iconName = focused ? 'calendar' : 'calendar-outline';
+              break;
+            case 'PaymentsTab':
+              iconName = focused ? 'card' : 'card-outline';
+              break;
+            case 'AdminSettingsTab':
+              iconName = focused ? 'settings' : 'settings-outline';
+              break;  
+            case 'ChatTab':
+              iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
+              break;
+            case 'MapTab':
+              iconName = focused ? 'map' : 'map-outline';
+              break;
+            case 'ProfileTab':
+              iconName = focused ? 'person' : 'person-outline';
+              break;
+            default:
+              iconName = 'help-circle-outline';
           }
-
+          
           return <Ionicons name={iconName} size={size} color={color} />;
         },
         tabBarActiveTintColor: '#7C3AED',
         tabBarInactiveTintColor: '#6B7280',
-        headerShown: false,
-        tabBarStyle: { paddingBottom: 5, height: 60 }
       })}
     >
-      <Tab.Screen name="Itinerary" component={ItineraryScreen} />
-      <Tab.Screen name="Chat" component={ChatScreen} />
-      <Tab.Screen name="Map" component={MapScreen} />
-      <Tab.Screen name="Payments" component={PaymentsScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen 
+        name="ItineraryTab" 
+        component={ItineraryScreen} 
+        options={{ title: 'Itinerary', headerShown: false }}
+      />
+      <Tab.Screen 
+        name="ChatTab" 
+        component={ChatScreen} 
+        options={{ title: 'Chat', headerShown: false }}
+      />
+      <Tab.Screen 
+        name="MapTab" 
+        component={MapScreen} 
+        options={{ title: 'Map', headerShown: false }}  
+      />
+      <Tab.Screen 
+        name="ProfileTab" 
+        component={ProfileScreen} 
+        options={{ title: 'Profile', headerShown: false }}
+      />
+            <Tab.Screen
+        name="PaymentsTab"
+        component={PaymentsScreen}
+        options={{ title: 'Payments', headerShown: false }}
+        />
+      <Tab.Screen
+        name="AdminSettingsTab"
+        component={AdminSettingsScreen}
+        options={{ title: 'Admin', headerShown: false }}
+        />
     </Tab.Navigator>
   );
 }
