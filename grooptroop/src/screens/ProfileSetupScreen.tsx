@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,27 +10,32 @@ import {
   ActivityIndicator,
   ScrollView,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Animated,
+  Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../contexts/AuthProvider';
-import { UserAvatar } from '../models/user';
+import { UserAvatar } from '../contexts/AuthProvider';
 import { storage, db } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { doc, updateDoc } from 'firebase/firestore';
 import { AvatarService, AVATAR_COLORS } from '../services/AvatarService';
+import BitmojiAvatar from '../components/avatar/BitmojiAvatar';
 
 export default function ProfileSetupScreen({ navigation }: { navigation: any }) {
   const { user, profile, refreshProfile } = useAuth();
   const [displayName, setDisplayName] = useState('');
-  const [selectedAvatarType, setSelectedAvatarType] = useState<'initial' | 'image' | 'bitmoji'>('initial');
+  const [selectedAvatarType, setSelectedAvatarType] = useState<'initial' | 'bitmoji'>('initial');  
   const [selectedColor, setSelectedColor] = useState(AVATAR_COLORS[0]);
   const [avatarImage, setAvatarImage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
+  const [bitmojiUrl, setBitmojiUrl] = useState<string | null>(null);
+  const [avatarContainerHeight] = useState(new Animated.Value(120));
+  const prevAvatarType = useRef(selectedAvatarType);
+  
   // Pre-fill displayName if user has one
   useEffect(() => {
     console.log('[PROFILE_SETUP] Screen mounted');
@@ -57,41 +62,199 @@ export default function ProfileSetupScreen({ navigation }: { navigation: any }) 
     };
   }, [user, profile]);
 
-  const getFunMessage = () => {
-  const messages = [
-    "Let's make your avatar pop! ✨",
-    "Show off your vibe with a cool avatar 😎",
-    "Make it uniquely you! 💯",
-    "Your digital glow-up starts here ✌️",
-    "Time for your profile's aesthetic upgrade 🔥"
-  ];
-  return messages[Math.floor(Math.random() * messages.length)];
-};
+  useEffect(() => {
+    if (selectedAvatarType !== prevAvatarType.current) {
+      console.log('[PROFILE_SETUP] Avatar type changed, animating container');
+      
+      // Target height based on avatar type - increase for bitmoji to give more space
+      const targetHeight = selectedAvatarType === 'bitmoji' ? 600 : 120; // Increased from 520 to 600
+      
+      Animated.timing(avatarContainerHeight, {
+        toValue: targetHeight,
+        duration: 500,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false
+      }).start();
+      
+      prevAvatarType.current = selectedAvatarType;
+    }
+    
+    if (selectedAvatarType === 'bitmoji' && bitmojiUrl) {
+      console.log('[PROFILE_SETUP] Bitmoji state updated - type:', selectedAvatarType, 'URL:', bitmojiUrl);
+    }
+  }, [selectedAvatarType, bitmojiUrl]);
 
-  // Pick an image from the gallery
-const pickImage = async () => {
-  console.log('[PROFILE_SETUP] Opening image picker with AvatarService');
-  const uri = await AvatarService.pickImage();
-  if (uri) {
-    console.log('[PROFILE_SETUP] Image selected, updating state');
-    setAvatarImage(uri);
-    setSelectedAvatarType('image');
-  } else {
-    console.log('[PROFILE_SETUP] No image selected');
-  }
-};
+  const getAvatarTypeMessage = () => {
+    console.log('[PROFILE_SETUP] Getting message for avatar type:', selectedAvatarType);
+    
+    if (selectedAvatarType === 'bitmoji') {
+      const bitmojiMessages = [
+        "Choose a Bitmoji that matches your vibe ✌️",
+        "Pick a Bitmoji that feels like you 🔥",
+      ];
+      return bitmojiMessages[Math.floor(Math.random() * bitmojiMessages.length)];
+    } else {
+      const initialMessages = [
+        "Simple and clean with your initials 🌟",
+        "Keep it minimal with your initials ✨",
+      ];
+      return initialMessages[Math.floor(Math.random() * initialMessages.length)];
+    }
+  };
 
-  // For mock implementation - later we'll integrate an actual bitmoji picker
-  const openBitmojiPicker = () => {
-    console.log('[PROFILE_SETUP] Opening bitmoji picker (placeholder)');
-    Alert.alert(
-      'Bitmoji Coming Soon',
-      'Bitmoji integration will be available in a future update. For now, you can use a custom image.',
-      [
-        { text: 'Choose Image Instead', onPress: pickImage },
-        { text: 'Cancel', style: 'cancel' }
+  const BitmojiSelector = () => {
+    const [bitmojiOptions, setBitmojiOptions] = useState<string[]>([]);
+    const [selectedBitmojiIndex, setSelectedBitmojiIndex] = useState<number>(-1);
+    const [loading, setLoading] = useState(true);
+    
+    // Animation values
+    const animation = useRef(new Animated.Value(0)).current;
+    
+    // Start animation when component mounts
+    useEffect(() => {
+      console.log('[BITMOJI_SELECTOR] Starting entrance animation');
+      Animated.timing(animation, {
+        toValue: 1,
+        duration: 500,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true
+      }).start();
+      
+      loadBitmojiOptions();
+    }, []);
+    
+    // Animation styles
+    const animatedStyles = {
+      opacity: animation,
+      transform: [
+        { 
+          translateY: animation.interpolate({
+            inputRange: [0, 1],
+            outputRange: [50, 0]
+          })
+        }
       ]
+    };
+    
+    const loadBitmojiOptions = async () => {
+      setLoading(true);
+      try {
+        console.log('[BITMOJI_SELECTOR] Fetching trending bitmojis');
+        const options = AvatarService.getTrendingBitmojis();
+        console.log(`[BITMOJI_SELECTOR] Retrieved ${options.length} options`);
+        setBitmojiOptions(options);
+        
+        // If user already has a bitmoji selected, find its index
+        if (bitmojiUrl) {
+          const index = options.findIndex(url => url === bitmojiUrl);
+          console.log(`[BITMOJI_SELECTOR] Current bitmoji index: ${index}`);
+          if (index >= 0) {
+            setSelectedBitmojiIndex(index);
+          }
+        }
+      } catch (error) {
+        console.error('[BITMOJI_SELECTOR] Error loading options:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    const handleBitmojiSelect = useCallback((url: string, index: number) => {
+      console.log(`[BITMOJI_SELECTOR] Selected bitmoji at index ${index}`);
+      setSelectedBitmojiIndex(index);
+      setBitmojiUrl(url);
+    }, []);
+    
+    // Gen Z themed category pills
+    const renderCategories = () => {
+      return (
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoryContainer}
+        >
+          {['✨ Trending', '🔥 Fire', '🤩 Vibing', '😎 Cool', '💅 Aesthetic'].map(
+            (category, index) => (
+              <TouchableOpacity 
+                key={index} 
+                style={styles.categoryPill}
+                onPress={() => {
+                  console.log(`[BITMOJI_SELECTOR] Selected category: ${category}`);
+                  // For now just reload options to simulate category change
+                  loadBitmojiOptions();
+                }}
+              >
+                <Text style={styles.categoryText}>{category}</Text>
+              </TouchableOpacity>
+            )
+          )}
+        </ScrollView>
+      );
+    };
+    
+    return (
+      <Animated.View 
+        style={[
+          styles.bitmojiSelectorContainer, 
+          animatedStyles,
+          { paddingBottom: 20 } // Add extra padding at bottom
+        ]}
+      >
+        {renderCategories()}
+        
+        {loading ? (
+          <View style={styles.bitmojiLoading}>
+            <ActivityIndicator color="#7C3AED" size="large" />
+            <Text style={styles.bitmojiLoadingText}>Loading avatars...</Text>
+          </View>
+        ) : (
+          <Animated.View 
+            style={[
+              styles.bitmojiGrid, 
+              { 
+                opacity: animation,
+                paddingBottom: 30 // Add padding to prevent last row from being cut off
+              }
+            ]}
+          >
+            {bitmojiOptions.map((url, index) => (
+              <TouchableOpacity
+                key={index}
+                style={[
+                  styles.bitmojiOption,
+                  selectedBitmojiIndex === index && styles.selectedBitmojiOption,
+                  { marginBottom: 25 } // Increase spacing between rows
+                ]}
+                onPress={() => handleBitmojiSelect(url, index)}
+              >
+                <Image
+                  source={{ uri: url }}
+                  style={styles.bitmojiImage}
+                  onError={(e) => console.error(`[BITMOJI_SELECTOR] Image load error for index ${index}:`, e.nativeEvent.error)}
+                />
+                {selectedBitmojiIndex === index && (
+                  <View style={styles.bitmojiSelectedOverlay}>
+                    <Ionicons name="checkmark-circle" size={24} color="#7C3AED" />
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))}
+          </Animated.View>
+        )}
+      </Animated.View>
     );
+  };
+
+  const openBitmojiPicker = () => {
+    console.log('[PROFILE_SETUP] Switching to bitmoji avatar type');
+    setSelectedAvatarType('bitmoji');
+    
+    // If no bitmoji is selected yet, pre-select one
+    if (!bitmojiUrl) {
+      console.log('[PROFILE_SETUP] No bitmoji selected yet, selecting default');
+      const defaultBitmoji = AvatarService.getPlaceholderBitmojiUrl();
+      setBitmojiUrl(defaultBitmoji);
+    }
   };
 
   // Upload avatar image to Firebase Storage
@@ -121,113 +284,134 @@ const pickImage = async () => {
   };
 
   // Save user profile
-const saveProfile = async () => {
-  if (!displayName.trim()) {
-    Alert.alert('Error', 'Please enter a display name');
-    return;
-  }
-
-  if (!user) {
-    Alert.alert('Error', 'You must be logged in to complete profile setup');
-    return;
-  }
-
-  try {
-    console.log('[PROFILE_SETUP] Saving profile');
-    setIsSubmitting(true);
-
-    let userAvatar;
-
-    // If user has selected an image, upload it
-    if (selectedAvatarType === 'image' && avatarImage) {
-      try {
-        console.log('[PROFILE_SETUP] Creating image avatar via AvatarService');
-        userAvatar = await AvatarService.createImageAvatar(avatarImage, user.uid);
-      } catch (error) {
-        console.error('[PROFILE_SETUP] Error creating image avatar:', error);
-        // Fall back to initial avatar
-        console.log('[PROFILE_SETUP] Falling back to initial avatar');
-        userAvatar = AvatarService.createInitialAvatar(displayName, selectedColor);
-      }
-    } else {
-      console.log('[PROFILE_SETUP] Creating initial avatar via AvatarService');
-      userAvatar = AvatarService.createInitialAvatar(displayName, selectedColor);
+  const saveProfile = async () => {
+    if (!displayName.trim()) {
+      Alert.alert('Error', 'Please enter a display name');
+      return;
     }
 
-    // Update the user's Firestore document
-    console.log('[PROFILE_SETUP] Updating Firestore document');
-    const userRef = doc(db, 'users', user.uid);
-    await updateDoc(userRef, {
-      displayName: displayName.trim(),
-      avatar: userAvatar,
-      avatarColor: selectedColor,
-      hasCompletedOnboarding: true
-    });
+    if (!user) {
+      Alert.alert('Error', 'You must be logged in to complete profile setup');
+      return;
+    }
 
-    console.log('[PROFILE_SETUP] Profile updated successfully');
-    
-    // Refresh the profile in auth context
-    await refreshProfile();
-    
-    // Navigate to main app
-    navigation.replace('MainApp');
-  } catch (error) {
-    console.error('[PROFILE_SETUP] Error saving profile:', error);
-    Alert.alert('Error', 'Failed to save profile. Please try again.');
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+    try {
+      console.log('[PROFILE_SETUP] Saving profile');
+      setIsSubmitting(true);
+
+      let userAvatar;
+
+      // If user has selected an image, upload it
+      if (selectedAvatarType === 'image' && avatarImage) {
+        try {
+          console.log('[PROFILE_SETUP] Creating image avatar via AvatarService');
+          userAvatar = await AvatarService.createImageAvatar(avatarImage, user.uid);
+        } catch (error) {
+          console.error('[PROFILE_SETUP] Error creating image avatar:', error);
+          // Fall back to initial avatar
+          console.log('[PROFILE_SETUP] Falling back to initial avatar');
+          userAvatar = AvatarService.createInitialAvatar(displayName, selectedColor);
+        }
+      } else if (selectedAvatarType === 'bitmoji' && bitmojiUrl) {
+        console.log('[PROFILE_SETUP] Creating bitmoji avatar');
+        userAvatar = AvatarService.createBitmojiAvatar(bitmojiUrl);
+      } else {
+        console.log('[PROFILE_SETUP] Creating initial avatar via AvatarService');
+        userAvatar = AvatarService.createInitialAvatar(displayName, selectedColor);
+      }
+
+      // Update the user's Firestore document
+      console.log('[PROFILE_SETUP] Updating Firestore document');
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        displayName: displayName.trim(),
+        avatar: userAvatar,
+        avatarColor: selectedColor,
+        hasCompletedOnboarding: true
+      });
+
+      console.log('[PROFILE_SETUP] Profile updated successfully');
+      
+      // Refresh the profile in auth context
+      await refreshProfile();
+      
+      // Navigate to main app
+      navigation.replace('MainApp');
+    } catch (error) {
+      console.error('[PROFILE_SETUP] Error saving profile:', error);
+      Alert.alert('Error', 'Failed to save profile. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // Skip profile setup for now
-const skipSetup = async () => {
-  if (!user) return;
-  
-  try {
-    console.log('[PROFILE_SETUP] Skipping profile setup');
-    setIsSubmitting(true);
+  const skipSetup = async () => {
+    if (!user) return;
     
-    // Create a simple initial avatar with AvatarService
-    const avatar = AvatarService.createInitialAvatar(
-      user.displayName || 'User',
-      selectedColor
-    );
-    
-    // Still mark onboarding as complete
-    const userRef = doc(db, 'users', user.uid);
-    await updateDoc(userRef, {
-      hasCompletedOnboarding: true,
-      avatar: avatar
-    });
-    
-    await refreshProfile();
-    navigation.replace('MainApp');
-  } catch (error) {
-    console.error('[PROFILE_SETUP] Error skipping profile setup:', error);
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+    try {
+      console.log('[PROFILE_SETUP] Skipping profile setup');
+      setIsSubmitting(true);
+      
+      // Create a simple initial avatar with AvatarService
+      const avatar = AvatarService.createInitialAvatar(
+        user.displayName || 'User',
+        selectedColor
+      );
+      
+      // Still mark onboarding as complete
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        hasCompletedOnboarding: true,
+        avatar: avatar
+      });
+      
+      await refreshProfile();
+      navigation.replace('MainApp');
+    } catch (error) {
+      console.error('[PROFILE_SETUP] Error skipping profile setup:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // Helper function to get avatar preview
-const getAvatarPreview = () => {
-  if (selectedAvatarType === 'image' && avatarImage) {
-    console.log('[PROFILE_SETUP] Rendering image avatar preview');
+  const getAvatarPreview = () => {
+    console.log('[PROFILE_SETUP] Getting avatar preview for type:', selectedAvatarType);
+    
+    // For Bitmoji type
+    if (selectedAvatarType === 'bitmoji') {
+      // If we have a selected bitmoji, show it at the top of the selector
+      const selectedPreview = bitmojiUrl ? (
+        <View style={[styles.selectedBitmojiPreview, { marginBottom: 30 }]}>
+          <BitmojiAvatar
+            url={bitmojiUrl}
+            displayName={displayName}
+            size={120}
+            color={selectedColor}
+          />
+          <Text style={styles.selectedBitmojiText}>Your Selected Avatar</Text>
+        </View>
+      ) : null;
+      
+      return (
+        <View style={[styles.expandedAvatarContainer, { paddingBottom: 40 }]}>
+          {selectedPreview}
+          <BitmojiSelector />
+        </View>
+      );
+    }
+    
+    // Default to initials avatar
+    console.log('[PROFILE_SETUP] Rendering initial avatar preview');
     return (
-      <Image source={{ uri: avatarImage }} style={styles.avatarPreview} />
+      <View style={[styles.initialAvatar, { backgroundColor: selectedColor }]}>
+        <Text style={styles.initialText}>
+          {AvatarService.getInitials(displayName)}
+        </Text>
+      </View>
     );
-  }
-  
-  // Default to initials
-  console.log('[PROFILE_SETUP] Rendering initial avatar preview');
-  return (
-    <View style={[styles.initialAvatar, { backgroundColor: selectedColor }]}>
-      <Text style={styles.initialText}>
-        {AvatarService.getInitials(displayName)}
-      </Text>
-    </View>
-  );
-};
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -235,10 +419,16 @@ const getAvatarPreview = () => {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.container}
       >
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={true}
+          scrollEventThrottle={16}
+          removeClippedSubviews={false} // Important to prevent clipping
+          keyboardShouldPersistTaps="handled" // Helps with keyboard interactions
+        >
           <View style={styles.header}>
             <Text style={styles.title}>Set Up Your Profile</Text>
-            <Text style={styles.subtitle}>{getFunMessage()}</Text>
+            <Text style={styles.subtitle}>{getAvatarTypeMessage()}</Text>         
           </View>
           
           {/* Profile Setup Form */}
@@ -256,26 +446,21 @@ const getAvatarPreview = () => {
             
             {/* Avatar Preview */}
             <Text style={styles.label}>Your Avatar</Text>
-            <View style={styles.avatarPreviewContainer}>
+            <Animated.View 
+              style={[
+                styles.avatarPreviewContainer, 
+                { 
+                  minHeight: selectedAvatarType === 'bitmoji' ? 520 : 120, // Use minHeight instead of height to allow expansion
+                  height: avatarContainerHeight,
+                  overflow: selectedAvatarType === 'bitmoji' ? 'visible' : 'hidden'
+                }
+              ]}
+            >
               {getAvatarPreview()}
-            </View>
+            </Animated.View>
             
             {/* Avatar Type Selection */}
             <View style={styles.avatarTypeContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.avatarTypeButton,
-                  selectedAvatarType === 'image' && styles.selectedAvatarType
-                ]}
-                onPress={pickImage}
-              >
-                <Ionicons name="image-outline" size={24} color={selectedAvatarType === 'image' ? '#7C3AED' : '#666'} />
-                <Text style={[
-                  styles.avatarTypeText,
-                  selectedAvatarType === 'image' && styles.selectedAvatarTypeText
-                ]}>Upload Photo</Text>
-              </TouchableOpacity>
-              
               <TouchableOpacity
                 style={[
                   styles.avatarTypeButton,
@@ -283,7 +468,11 @@ const getAvatarPreview = () => {
                 ]}
                 onPress={openBitmojiPicker}
               >
-                <Ionicons name="happy-outline" size={24} color={selectedAvatarType === 'bitmoji' ? '#7C3AED' : '#666'} />
+                <Ionicons 
+                  name="happy-outline" 
+                  size={24} 
+                  color={selectedAvatarType === 'bitmoji' ? '#7C3AED' : '#666'} 
+                />
                 <Text style={[
                   styles.avatarTypeText,
                   selectedAvatarType === 'bitmoji' && styles.selectedAvatarTypeText
@@ -296,11 +485,16 @@ const getAvatarPreview = () => {
                   selectedAvatarType === 'initial' && styles.selectedAvatarType
                 ]}
                 onPress={() => {
+                  console.log('[PROFILE_SETUP] Selecting initial avatar type');
                   setSelectedAvatarType('initial');
                   setAvatarImage(null);
                 }}
               >
-                <Ionicons name="text" size={24} color={selectedAvatarType === 'initial' ? '#7C3AED' : '#666'} />
+                <Ionicons 
+                  name="text" 
+                  size={24} 
+                  color={selectedAvatarType === 'initial' ? '#7C3AED' : '#666'} 
+                />
                 <Text style={[
                   styles.avatarTypeText,
                   selectedAvatarType === 'initial' && styles.selectedAvatarTypeText
@@ -369,6 +563,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     padding: 20,
+    paddingBottom: 80, // Add extra padding at bottom to ensure scrollable content is fully visible
   },
   header: {
     alignItems: 'center',
@@ -379,6 +574,9 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#1e293b',
     marginBottom: 8,
+    textShadowColor: 'rgba(124, 58, 237, 0.15)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 3
   },
   subtitle: {
     fontSize: 16,
@@ -395,6 +593,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 15,
     elevation: 2,
+    borderWidth: 1,
+    borderColor: '#F3F0FF',
   },
   label: {
     fontSize: 16,
@@ -410,11 +610,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 24,
     backgroundColor: '#f8fafc',
+    borderLeftWidth: 3,
+    borderLeftColor: '#7C3AED',
+    paddingLeft: 8,
+    shadowColor: '#7C3AED',
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 2 },
   },
   avatarPreviewContainer: {
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     marginVertical: 16,
+    paddingVertical: 10,
+    paddingBottom: 30, // Add extra padding at bottom
   },
   avatarPreview: {
     width: 120,
@@ -444,7 +653,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 12,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     marginHorizontal: 4,
@@ -453,6 +662,11 @@ const styles = StyleSheet.create({
   selectedAvatarType: {
     borderColor: '#7C3AED',
     backgroundColor: '#EDE9FE',
+    shadowColor: '#7C3AED',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
   avatarTypeText: {
     marginTop: 4,
@@ -514,10 +728,133 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#7C3AED',
     flex: 1.5,
+    shadowColor: '#7C3AED',
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
   saveButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  bitmojiContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#f8fafc',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  bitmojiPreview: {
+    width: 140,
+    height: 140,
+  },
+  expandedAvatarContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 40, // Increase bottom margin
+    paddingTop: 10,
+    minHeight: 400,
+    paddingBottom: 30, // Add explicit padding at bottom
+  },
+  selectedBitmojiPreview: {
+    alignItems: 'center',
+    marginBottom: 16,
+    marginTop: 10,
+  },
+  selectedBitmojiText: {
+    fontSize: 14,
+    color: '#64748b',
+    marginTop: 8,
+  },
+  bitmojiSelectorContainer: {
+    width: '100%',
+    marginTop: 16,
+    paddingBottom: 20, // Add padding at bottom
+  },
+  categoryContainer: {
+    paddingBottom: 12,
+  },
+  categoryPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 20,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#7C3AED',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  categoryText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#334155',
+  },
+  bitmojiGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-around',
+    marginTop: 12,
+    paddingHorizontal: 5,
+    paddingBottom: 20, // Add padding at bottom
+  },
+  bitmojiOption: {
+    width: '30%',
+    aspectRatio: 1,
+    marginBottom: 25, // Increase bottom margin
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+    marginHorizontal: 4,
+  },
+  selectedBitmojiOption: {
+    borderColor: '#7C3AED',
+    borderWidth: 2,
+    shadowColor: '#7C3AED',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  bitmojiImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'contain',
+  },
+  bitmojiSelectedOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(124, 58, 237, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  bitmojiLoading: {
+    height: 200,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  bitmojiLoadingText: {
+    marginTop: 12,
+    color: '#64748b',
+    fontSize: 14,
   },
 });

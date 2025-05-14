@@ -133,19 +133,108 @@ export class AvatarService {
     }
   }
   
-  // Mock Bitmoji functionality (for future integration)
-  static openBitmojiPicker(): void {
-    console.log('[AVATAR] Bitmoji picker not yet implemented');
-    // To be implemented with Snapchat's Bitmoji SDK
+  // Get placeholder bitmoji URLs (for future implementation)
+static getPlaceholderBitmojiUrl(): string {
+  console.log('[AVATAR] Getting random placeholder bitmoji URL');
+  
+  // Use reliable public URLs that won't break
+  const bitmojiUrls = [
+    'https://cdn-icons-png.flaticon.com/512/599/599305.png', // Man with glasses
+    'https://cdn-icons-png.flaticon.com/512/146/146005.png', // Woman with ponytail
+    'https://cdn-icons-png.flaticon.com/512/4140/4140048.png', // Cool guy
+    'https://cdn-icons-png.flaticon.com/512/236/236832.png', // Woman with short hair
+    'https://cdn-icons-png.flaticon.com/512/1326/1326405.png', // Young professional
+    'https://cdn-icons-png.flaticon.com/512/5231/5231019.png'  // Cool person with beanie
+  ];
+  
+  const url = bitmojiUrls[Math.floor(Math.random() * bitmojiUrls.length)];
+  console.log('[AVATAR] Selected bitmoji URL:', url);
+  return url;
+}
+  
+  // Create a bitmoji avatar using selected or random bitmoji
+  static createBitmojiAvatar(bitmojiUrl?: string): UserAvatar {
+    console.log('[AVATAR] Creating bitmoji avatar');
+    
+    // Use provided URL or get a placeholder if none provided
+    const url = bitmojiUrl || this.getPlaceholderBitmojiUrl();
+    console.log('[AVATAR] Using bitmoji URL:', url.substring(0, 40) + '...');
+    
+    const avatar = {
+      type: 'bitmoji' as const,
+      value: url
+    };
+    
+    console.log('[AVATAR] Bitmoji avatar created successfully');
+    return avatar;
   }
   
-  // Get placeholder bitmoji URLs (for future implementation)
-  static getPlaceholderBitmojiUrl(): string {
-    const bitmojiUrls = [
-      'https://sdk.bitmoji.com/render/panel/20048676-99468787249_4-s5-v1.png?transparent=1',
-      'https://sdk.bitmoji.com/render/panel/e0c8b93f-96ab-4b19-91b8-bottke-5-v1.png?transparent=1',
-      'https://sdk.bitmoji.com/render/panel/3038a9fc-126a-467f-857f-83r4jd-5-v1.png?transparent=1',
-    ];
-    return bitmojiUrls[Math.floor(Math.random() * bitmojiUrls.length)];
+  // Mock Bitmoji selection - in a real app, this would integrate with Snapchat's SDK
+  static async selectBitmoji(): Promise<string | null> {
+    console.log('[AVATAR] Opening mock bitmoji selector');
+    
+    try {
+      // For now, just return a random bitmoji from our placeholders
+      // In a real implementation, this would show the Snapchat Bitmoji picker
+      const selectedUrl = this.getPlaceholderBitmojiUrl();
+      
+      console.log('[AVATAR] Bitmoji selected:', selectedUrl.substring(0, 40) + '...');
+      
+      // Simulate network delay to make it feel more realistic
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      return selectedUrl;
+    } catch (error) {
+      console.error('[AVATAR] Error selecting bitmoji:', error);
+      return null;
+    }
   }
+  
+  // Enhanced bitmoji picker with expanded library and trends
+static async openEnhancedBitmojiPicker(userId: string): Promise<UserAvatar | null> {
+  console.log('[AVATAR] Opening enhanced bitmoji picker for user:', userId);
+  
+  try {
+    // In production, we would integrate with Snapchat's Bitmoji SDK
+    // For now, we'll simulate the picker with a timeout and random selection
+    console.log('[AVATAR] Initiating bitmoji selection process');
+    
+    // Simulate loading the bitmoji library
+    await new Promise(resolve => setTimeout(resolve, 600));
+    
+    // Get a "selected" bitmoji URL
+    const selectedBitmoji = await this.selectBitmoji();
+    
+    if (selectedBitmoji) {
+      // Create and return the bitmoji avatar
+      return this.createBitmojiAvatar(selectedBitmoji);
+    } else {
+      console.log('[AVATAR] No bitmoji selected, returning null');
+      return null;
+    }
+  } catch (error) {
+    console.error('[AVATAR] Error in bitmoji picker:', error);
+    return null;
+  }
+}
+  
+  // Add trending bitmoji collection - very appealing to Gen Z
+static getTrendingBitmojis(): string[] {
+  console.log('[AVATAR] Fetching trending bitmojis');
+  
+  // Use the same reliable URLs
+  const trendingBitmojis = [
+    'https://cdn-icons-png.flaticon.com/512/599/599305.png',
+    'https://cdn-icons-png.flaticon.com/512/146/146005.png',
+    'https://cdn-icons-png.flaticon.com/512/4140/4140048.png',
+    'https://cdn-icons-png.flaticon.com/512/236/236832.png',
+    'https://cdn-icons-png.flaticon.com/512/1326/1326405.png',
+    'https://cdn-icons-png.flaticon.com/512/5231/5231019.png',
+    'https://cdn-icons-png.flaticon.com/512/4128/4128176.png',
+    'https://cdn-icons-png.flaticon.com/512/1154/1154448.png'
+  ];
+  
+  console.log('[AVATAR] Retrieved trending bitmojis collection with', trendingBitmojis.length, 'items');
+  return trendingBitmojis;
+}
 }
