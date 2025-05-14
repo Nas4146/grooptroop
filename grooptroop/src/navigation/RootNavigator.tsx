@@ -3,8 +3,8 @@ import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthProvider';
 import BottomTabbNavigator from './BottomTabNavigator';
-import TestSimpleLoginScreen from '../screens/TestSimpleLoginScreen';
 import ProfileSetupScreen from '../screens/ProfileSetupScreen';
+import SimpleLoginScreen from '../screens/SimpleLoginScreen';
 
 const RootStack = createNativeStackNavigator();
 
@@ -31,7 +31,7 @@ export default function RootNavigator() {
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       {!isAuthenticated ? (
         // Not authenticated - show login
-        <RootStack.Screen name="Auth" component={TestSimpleLoginScreen} />
+        <RootStack.Screen name="Auth" component={SimpleLoginScreen} />
       ) : profile && !profile.hasCompletedOnboarding ? (
         // Authenticated but needs profile setup
         <RootStack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
