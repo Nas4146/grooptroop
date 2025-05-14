@@ -1,4 +1,5 @@
 import { Timestamp } from 'firebase/firestore';
+import { UserAvatar } from '../contexts/AuthProvider';
 
 export interface ChatGroup {
   id: string;
@@ -15,14 +16,14 @@ export interface ChatMessage {
   text: string;
   senderId: string;
   senderName: string;
-  senderAvatar: string;
+  senderAvatar?: UserAvatar;  
   createdAt: Timestamp;
   reactions: { [key: string]: string[] };
   replyTo?: string;
   imageUrl?: string;
   read: string[];
   isEncrypted?: boolean;
-  isDecrypted?: boolean | null; 
+  isDecrypted?: boolean | null;
   attachments?: {
     type: 'image' | 'video' | 'file';
     url: string;

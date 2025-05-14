@@ -39,6 +39,11 @@ const Avatar: React.FC<AvatarProps> = ({
     );
   }
   
+
+  console.log(`[AVATAR_RENDER] Rendering avatar for ${displayName || 'unknown user'}`);
+console.log(`[AVATAR_RENDER] Avatar data:`, avatar ? JSON.stringify(avatar).substring(0, 100) + '...' : 'null');
+console.log(`[AVATAR_RENDER] Avatar type: ${avatar?.type || 'none'}`);
+
   // Handle bitmoji avatar (future implementation)
   if (avatar?.type === 'bitmoji' && avatar.value) {
     console.log('[AVATAR_COMP] Rendering bitmoji avatar');

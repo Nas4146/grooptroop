@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ChatMessage } from '../../models/chat';
 import tw from '../../utils/tw';
+import Avatar from '../common/Avatar';
 
 // Common emoji reactions
 const COMMON_REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🔥'];
@@ -29,6 +30,17 @@ export default function MessageBubble({
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
   
+  console.log(`[MESSAGE] Avatar details:`, {
+  exists: !!message.senderAvatar,
+  type: message.senderAvatar?.type,
+  valuePreview: message.senderAvatar?.value ? 
+    (typeof message.senderAvatar.value === 'string' ? 
+      message.senderAvatar.value.substring(0, 30) + '...' : 
+      'non-string value') : 
+    'no value',
+  isFromCurrentUser
+});
+
   // Get reaction counts
   const getReactionCounts = () => {
     const counts: {[key: string]: number} = {};
@@ -43,6 +55,45 @@ export default function MessageBubble({
     
     return counts;
   };
+
+  // Helper to handle legacy message formats (for backward compatibility)
+const renderLegacyAvatar = () => {
+  // If message doesn't have the new avatar structure but has the old senderAvatar string
+  if (!message.senderAvatar && typeof message.senderAvatar === 'string' && message.senderAvatar.length > 0) {
+    console.log(`[MESSAGE] Found legacy avatar format for ${message.senderName}`);
+    // If it's a URL, render as image
+    if (message.senderAvatar.startsWith('http')) {
+      return (
+        <Image 
+          source={{ uri: message.senderAvatar as string }} 
+          style={tw`w-9 h-9 rounded-full mr-2`}
+        />
+      );
+    } 
+    // If it's a color code, render as color circle with initial
+    else if (message.senderAvatar.startsWith('#')) {
+      return (
+        <View style={[
+          tw`w-9 h-9 rounded-full mr-2 items-center justify-center`,
+          { backgroundColor: message.senderAvatar as string }
+        ]}>
+          <Text style={tw`text-white font-bold`}>
+            {message.senderName?.charAt(0) || '?'}
+          </Text>
+        </View>
+      );
+    }
+  }
+  
+  // Default avatar
+  return (
+    <View style={tw`w-9 h-9 rounded-full bg-gray-300 mr-2 items-center justify-center`}>
+      <Text style={tw`text-white font-bold`}>
+        {message.senderName?.charAt(0) || '?'}
+      </Text>
+    </View>
+  );
+};
   
   // Check if current user has reacted with this emoji
   const hasUserReacted = (emoji: string) => {
@@ -60,7 +111,7 @@ export default function MessageBubble({
           <Ionicons 
             name="lock-closed" 
             size={14} 
-            color={isFromCurrentUser ? "#ffffff" : "#78c0e1"} 
+            color={isFromCurrentUser ? "#ffffff" : "#9ca3af"} 
             style={tw`mr-1`} 
           />
         );
@@ -106,44 +157,47 @@ export default function MessageBubble({
     );
   }
   
+  console.log(`[MESSAGE] Rendering message from ${message.senderName}, avatar:`, 
+    message.senderAvatar ? `${message.senderAvatar.type} avatar` : 'no avatar');
+  
   return (
     <View style={tw`mb-3 ${isFromCurrentUser ? 'items-end' : 'items-start'}`}>
-      {/* Sender name */}
+      {/* Sender name for messages from others */}
       {!isFromCurrentUser && (
-        <Text style={tw`text-xs text-gray-500 ml-12 mb-1`}>{message.senderName}</Text>
+        <Text style={tw`text-xs text-gray-500 ml-12 mb-0.5`}>{message.senderName}</Text>
       )}
       
       <View style={tw`flex-row items-end`}>
         {/* Avatar for other users */}
         {!isFromCurrentUser && (
-          <View style={tw`w-8 h-8 rounded-full bg-gray-300 mr-2 overflow-hidden`}>
-            {message.senderAvatar && message.senderAvatar.startsWith('http') ? (
-              <Image source={{ uri: message.senderAvatar }} style={tw`w-full h-full`} />
-            ) : (
-              <View style={[
-                tw`w-full h-full items-center justify-center`, 
-                { backgroundColor: message.senderAvatar || '#78c0e1' }
-              ]}>
-                <Text style={tw`text-white font-bold`}>
-                  {message.senderName?.charAt(0) || '?'}
-                </Text>
-              </View>
-            )}
+          <View style={tw`mr-2`}>
+            <Avatar
+              avatar={message.senderAvatar}
+              displayName={message.senderName}
+              size={36}
+              style={tw`shadow-sm`}
+            />
           </View>
         )}
         
         {/* Message bubble */}
-        <TouchableOpacity
-          style={[
-            tw`max-w-[80%] rounded-2xl p-3`,
-            isFromCurrentUser ? 
-              tw`bg-primary rounded-tr-none` : 
-              tw`bg-gray-200 rounded-tl-none`
-          ]}
-          onLongPress={() => setShowReactions(true)}
-          delayLongPress={200}
-          activeOpacity={0.9}
-        >
+<TouchableOpacity
+  style={[
+    tw`max-w-[80%] rounded-2xl p-3`,
+    isFromCurrentUser ? 
+      tw`bg-primary rounded-tr-none` : 
+      tw`bg-gray-200 rounded-tl-none shadow-sm`
+  ]}
+  onLongPress={() => setShowReactions(true)}
+  delayLongPress={200}
+  activeOpacity={0.9}
+>
+  {/* Optional: Add a subtle gradient or pattern for Gen Z appeal */}
+  {isFromCurrentUser && (
+    <View style={tw`absolute inset-0 rounded-2xl overflow-hidden opacity-10`}>
+      {/* You can add gradient or pattern image here */}
+    </View>
+  )}
           {/* Reply reference */}
           {message.replyTo && (
             <View style={tw`bg-black bg-opacity-5 rounded-lg p-2 mb-2 border-l-2 ${isFromCurrentUser ? 'border-white' : 'border-primary'}`}>

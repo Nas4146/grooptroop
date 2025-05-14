@@ -252,34 +252,41 @@ export default function ChatScreen() {
   }, [profile, currentGroop]);
   
   // Send message
-  const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
-    if (!profile || !currentGroop) {
-      console.log('[CHAT] Cannot send message: No profile or groop selected');
-      return;
-    }
+const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
+  if (!profile || !currentGroop) {
+    console.log('[CHAT] Cannot send message: No profile or groop selected');
+    return;
+  }
+  
+  try {
+    console.log(`[CHAT] Sending message to groop: ${currentGroop.id}`);
+    console.log('[CHAT] Current user profile:', JSON.stringify({
+      displayName: profile.displayName,
+      hasAvatar: !!profile.avatar,
+      avatarType: profile.avatar?.type
+    }));
     
-    try {
-      console.log(`[CHAT] Sending message to groop: ${currentGroop.id}`);
-      
-      await ChatService.sendMessage(currentGroop.id, {
-        text,
-        senderId: profile.uid,
-        senderName: profile.displayName || 'Anonymous',
-        senderAvatar: profile.photoURL || profile.avatarColor || '',
-        replyTo: replyingTo?.id
-      });
-      
-      // Clear reply state
-      if (replyingTo) setReplyingTo(null);
-      
-      // Scroll to the bottom after sending
-      setTimeout(() => {
-        flashListRef.current?.scrollToEnd();
-      }, 200);
-    } catch (error) {
-      console.error('[CHAT] Error in sendMessage:', error);
-    }
-  }, [profile, currentGroop, replyingTo]);
+    // Use the proper avatar object from the profile
+    await ChatService.sendMessage(currentGroop.id, {
+      text,
+      senderId: profile.uid,
+      senderName: profile.displayName || 'Anonymous',
+      senderAvatar: profile.avatar, // Pass the whole avatar object instead of photoURL or avatarColor
+      replyTo: replyingTo?.id,
+      imageUrl
+    });
+    
+    // Clear reply state
+    if (replyingTo) setReplyingTo(null);
+    
+    // Scroll to the bottom after sending
+    setTimeout(() => {
+      flashListRef.current?.scrollToEnd();
+    }, 200);
+  } catch (error) {
+    console.error('[CHAT] Error in sendMessage:', error);
+  }
+}, [profile, currentGroop, replyingTo]);
   
   // Handle reactions
   const handleReaction = useCallback(async (messageId: string, emoji: string) => {

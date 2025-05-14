@@ -21,6 +21,7 @@ import { db } from '../lib/firebase';
 import { ChatMessage } from '../models/chat';
 import { EncryptionService } from './EncryptionService';
 import { KeyExchangeService } from './KeyExchangeService';
+import { UserAvatar } from '../contexts/AuthProvider';
 
 export class ChatService {
   // Subscribe to messages with pagination
@@ -67,7 +68,7 @@ export class ChatService {
           text: messageText,
           senderId: data.senderId,
           senderName: data.senderName,
-          senderAvatar: data.senderAvatar || '',
+          senderAvatar: data.senderAvatar,  // Now this could be a UserAvatar object
           createdAt: data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt),
           reactions: data.reactions || {},
           replyTo: data.replyTo,
@@ -80,6 +81,8 @@ export class ChatService {
       }
       
       console.log(`[CHAT] Received and processed ${messages.length} messages from subscription`);
+      console.log('[CHAT] First message avatar data type:', messages.length > 0 ? 
+        (messages[0].senderAvatar ? typeof messages[0].senderAvatar : 'none') : 'no messages');
       callback(messages);
     }, error => {
       console.error("[CHAT] Error listening to messages:", error);
@@ -87,97 +90,99 @@ export class ChatService {
   }
 
   // Get total count of unread messages across all groops
-static async getTotalUnreadMessagesCount(userId: string): Promise<number> {
-  try {
-    console.log(`[CHAT] Getting total unread count for user: ${userId}`);
-    
-    // First, get the user's groop memberships
-    const userDoc = await getDoc(doc(db, 'users', userId));
-    if (!userDoc.exists()) {
-      console.log(`[CHAT] User ${userId} not found`);
+  static async getTotalUnreadMessagesCount(userId: string): Promise<number> {
+    try {
+      console.log(`[CHAT] Getting total unread count for user: ${userId}`);
+      
+      // First, get the user's groop memberships
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      if (!userDoc.exists()) {
+        console.log(`[CHAT] User ${userId} not found`);
+        return 0;
+      }
+      
+      const userData = userDoc.data();
+      const userGroops = userData.groops || [];
+      
+      console.log(`[CHAT] User is a member of ${userGroops.length} groops`);
+      
+      // Count unread messages across all groops
+      let totalUnread = 0;
+      
+      for (const groopId of userGroops) {
+        try {
+          const messagesRef = collection(db, `groops/${groopId}/messages`);
+          // Query for messages NOT sent by this user AND NOT read by this user
+          const messagesQuery = query(
+            messagesRef,
+            where('senderId', '!=', userId)
+          );
+          
+          const snapshot = await getDocs(messagesQuery);
+          
+          // Need to filter client-side since Firestore doesn't support
+          // "array-does-not-contain" queries directly
+          const unreadCount = snapshot.docs.filter(doc => {
+            const data = doc.data();
+            const readArray = data.read || [];
+            return !readArray.includes(userId);
+          }).length;
+          
+          console.log(`[CHAT] Groop ${groopId} has ${unreadCount} unread messages`);
+          totalUnread += unreadCount;
+        } catch (error) {
+          console.error(`[CHAT] Error counting unread for groop ${groopId}:`, error);
+        }
+      }
+      
+      console.log(`[CHAT] Total unread messages across all groops: ${totalUnread}`);
+      return totalUnread;
+    } catch (error) {
+      console.error('[CHAT] Error calculating total unread count:', error);
       return 0;
     }
-    
-    const userData = userDoc.data();
-    const userGroops = userData.groops || [];
-    
-    console.log(`[CHAT] User is a member of ${userGroops.length} groops`);
-    
-    // Count unread messages across all groops
-    let totalUnread = 0;
-    
-    for (const groopId of userGroops) {
-      try {
-        const messagesRef = collection(db, `groops/${groopId}/messages`);
-        // Query for messages NOT sent by this user AND NOT read by this user
-        const messagesQuery = query(
-          messagesRef,
-          where('senderId', '!=', userId)
-        );
-        
-        const snapshot = await getDocs(messagesQuery);
-        
-        // Need to filter client-side since Firestore doesn't support
-        // "array-does-not-contain" queries directly
-        const unreadCount = snapshot.docs.filter(doc => {
-          const data = doc.data();
-          const readArray = data.read || [];
-          return !readArray.includes(userId);
-        }).length;
-        
-        console.log(`[CHAT] Groop ${groopId} has ${unreadCount} unread messages`);
-        totalUnread += unreadCount;
-      } catch (error) {
-        console.error(`[CHAT] Error counting unread for groop ${groopId}:`, error);
-      }
-    }
-    
-    console.log(`[CHAT] Total unread messages across all groops: ${totalUnread}`);
-    return totalUnread;
-  } catch (error) {
-    console.error('[CHAT] Error calculating total unread count:', error);
-    return 0;
   }
-}
 
-// Subscribe to changes in unread message counts
-static subscribeToUnreadMessages(userId: string, callback: (count: number) => void) {
-  console.log(`[CHAT] Setting up unread messages subscription for ${userId}`);
-  
-  // Get the user doc to monitor their groop memberships
-  const userRef = doc(db, 'users', userId);
-  
-  return onSnapshot(userRef, async (userSnap) => {
-    if (!userSnap.exists()) {
-      console.log(`[CHAT] User document not found for ${userId}`);
-      callback(0);
-      return;
-    }
+  // Subscribe to changes in unread message counts
+  static subscribeToUnreadMessages(userId: string, callback: (count: number) => void) {
+    console.log(`[CHAT] Setting up unread messages subscription for ${userId}`);
     
-    try {
-      // When user doc changes, recalculate total unread count
-      const totalUnread = await this.getTotalUnreadMessagesCount(userId);
-      callback(totalUnread);
-    } catch (error) {
-      console.error('[CHAT] Error in unread subscription handler:', error);
-      callback(0);
-    }
-  }, (error) => {
-    console.error('[CHAT] Error in unread messages subscription:', error);
-  });
-}
+    // Get the user doc to monitor their groop memberships
+    const userRef = doc(db, 'users', userId);
+    
+    return onSnapshot(userRef, async (userSnap) => {
+      if (!userSnap.exists()) {
+        console.log(`[CHAT] User document not found for ${userId}`);
+        callback(0);
+        return;
+      }
+      
+      try {
+        // When user doc changes, recalculate total unread count
+        const totalUnread = await this.getTotalUnreadMessagesCount(userId);
+        callback(totalUnread);
+      } catch (error) {
+        console.error('[CHAT] Error in unread subscription handler:', error);
+        callback(0);
+      }
+    }, (error) => {
+      console.error('[CHAT] Error in unread messages subscription:', error);
+    });
+  }
 
   // Send message to a specific groop
   static async sendMessage(groopId: string, message: {
     text: string;
     senderId: string;
     senderName: string;
-    senderAvatar: string;
+    senderAvatar?: UserAvatar; // Updated to use UserAvatar type instead of string
     replyTo?: string;
     imageUrl?: string;
   }) {
     try {
       console.log(`[CHAT] Sending message to groop: ${groopId}`);
+      console.log(`[CHAT] Message sender: ${message.senderName} (${message.senderId})`);
+      console.log(`[CHAT] Avatar data included:`, message.senderAvatar ? `${message.senderAvatar.type} avatar` : 'no avatar');
       
       // First verify that the groop exists
       const groopRef = doc(db, 'groops', groopId);
@@ -217,25 +222,30 @@ static subscribeToUnreadMessages(userId: string, callback: (count: number) => vo
       const messagesRef = collection(db, `groops/${groopId}/messages`);
       
       // Prepare message data with encrypted text
-      const messageData = {
+      const messageData: any = {
         text: encryptedText,
         isEncrypted: isEncrypted, // Set proper encryption flag
         senderId: message.senderId,
         senderName: message.senderName,
-        senderAvatar: message.senderAvatar,
         createdAt: serverTimestamp(),
         reactions: {},
         read: [message.senderId]
       };
       
+      // Include avatar data if available
+      if (message.senderAvatar) {
+        console.log(`[CHAT] Including avatar of type: ${message.senderAvatar.type}`);
+        messageData.senderAvatar = message.senderAvatar;
+      }
+      
       // Only add these fields if they have values
       if (message.replyTo) {
-        messageData['replyTo'] = message.replyTo;
+        messageData.replyTo = message.replyTo;
       }
       
       if (message.imageUrl) {
         // For now, we're not encrypting image URLs
-        messageData['imageUrl'] = message.imageUrl;
+        messageData.imageUrl = message.imageUrl;
       }
       
       // Create a new message document
@@ -284,7 +294,7 @@ static subscribeToUnreadMessages(userId: string, callback: (count: number) => vo
       }
 
       console.log(`[CHAT] Message sent successfully (encrypted: ${isEncrypted})`);
-      return true;
+      return newMessageRef.id;
     } catch (error) {
       console.error("[CHAT] Error sending message:", error);
       throw error;
@@ -292,67 +302,67 @@ static subscribeToUnreadMessages(userId: string, callback: (count: number) => vo
   }
   
   // Send chat notification
-static async sendChatNotification(
-  groopId: string,
-  groopName: string,
-  senderName: string,
-  messageText: string,
-  recipientIds: string[],
-  messageId: string
-) {
-  try {
-    console.log(`[CHAT] Preparing notification for ${recipientIds.length} recipients`);
-    
-    // Get push tokens for all recipients
-    const userRefs = recipientIds.map(uid => doc(db, 'users', uid));
-    const userSnapshots = await Promise.all(userRefs.map(ref => getDoc(ref)));
-    
-    let pushTokens: string[] = [];
-    
-    userSnapshots.forEach(snap => {
-      if (snap.exists()) {
-        const userData = snap.data();
-        if (userData.pushTokens && Array.isArray(userData.pushTokens)) {
-          pushTokens = pushTokens.concat(userData.pushTokens);
+  static async sendChatNotification(
+    groopId: string,
+    groopName: string,
+    senderName: string,
+    messageText: string,
+    recipientIds: string[],
+    messageId: string
+  ) {
+    try {
+      console.log(`[CHAT] Preparing notification for ${recipientIds.length} recipients`);
+      
+      // Get push tokens for all recipients
+      const userRefs = recipientIds.map(uid => doc(db, 'users', uid));
+      const userSnapshots = await Promise.all(userRefs.map(ref => getDoc(ref)));
+      
+      let pushTokens: string[] = [];
+      
+      userSnapshots.forEach(snap => {
+        if (snap.exists()) {
+          const userData = snap.data();
+          if (userData.pushTokens && Array.isArray(userData.pushTokens)) {
+            pushTokens = pushTokens.concat(userData.pushTokens);
+          }
         }
+      });
+      
+      if (pushTokens.length === 0) {
+        console.log('[CHAT] No push tokens found for recipients');
+        return;
       }
-    });
-    
-    if (pushTokens.length === 0) {
-      console.log('[CHAT] No push tokens found for recipients');
-      return;
+      
+      // Limit message preview length
+      const previewText = messageText.length > 100 
+        ? messageText.substring(0, 97) + '...' 
+        : messageText;
+      
+      console.log(`[CHAT] Sending notification to ${pushTokens.length} devices`);
+      
+      // Store notification in database for tracking
+      const notificationRef = collection(db, 'notifications');
+      await addDoc(notificationRef, {
+        type: 'chat_message',
+        groopId,
+        messageId,
+        recipientIds,
+        senderName,
+        message: previewText,
+        createdAt: serverTimestamp(),
+        tokens: pushTokens,
+        delivered: false
+      });
+      
+      console.log('[CHAT] Notification record created');
+      
+      // In a real-world scenario, you'd have a server component send the actual push notification
+      // This is where you'd call your cloud function or backend API
+      console.log('[CHAT] Server would now send push notifications to tokens:', pushTokens);
+    } catch (error) {
+      console.error('[CHAT] Error preparing notification:', error);
     }
-    
-    // Limit message preview length
-    const previewText = messageText.length > 100 
-      ? messageText.substring(0, 97) + '...' 
-      : messageText;
-    
-    console.log(`[CHAT] Sending notification to ${pushTokens.length} devices`);
-    
-    // Store notification in database for tracking
-    const notificationRef = collection(db, 'notifications');
-    await addDoc(notificationRef, {
-      type: 'chat_message',
-      groopId,
-      messageId,
-      recipientIds,
-      senderName,
-      message: previewText,
-      createdAt: serverTimestamp(),
-      tokens: pushTokens,
-      delivered: false
-    });
-    
-    console.log('[CHAT] Notification record created');
-    
-    // In a real-world scenario, you'd have a server component send the actual push notification
-    // This is where you'd call your cloud function or backend API
-    console.log('[CHAT] Server would now send push notifications to tokens:', pushTokens);
-  } catch (error) {
-    console.error('[CHAT] Error preparing notification:', error);
   }
-}
 
   // Add reaction to a message
   static async addReaction(
@@ -447,40 +457,40 @@ static async sendChatNotification(
   }
   
   // Set up encryption for a new group
-static async initializeGroupEncryption(groopId: string, userId: string): Promise<boolean> {
-  try {
-    console.log(`[CHAT] Initializing encryption for group: ${groopId}`);
-    
-    // Check if encryption is already enabled
-    const groopRef = doc(db, 'groops', groopId);
-    const groopSnap = await getDoc(groopRef);
-    
-    if (groopSnap.exists() && groopSnap.data().encryptionEnabled) {
-      console.log('[CHAT] Encryption already enabled for this group');
+  static async initializeGroupEncryption(groopId: string, userId: string): Promise<boolean> {
+    try {
+      console.log(`[CHAT] Initializing encryption for group: ${groopId}`);
+      
+      // Check if encryption is already enabled
+      const groopRef = doc(db, 'groops', groopId);
+      const groopSnap = await getDoc(groopRef);
+      
+      if (groopSnap.exists() && groopSnap.data().encryptionEnabled) {
+        console.log('[CHAT] Encryption already enabled for this group');
+        return true;
+      }
+      
+      // Generate a new symmetric key for the group
+      const key = await EncryptionService.generateGroopKey(groopId);
+      if (!key) {
+        console.error('[CHAT] Failed to generate group key');
+        return false;
+      }
+      
+      // Update group metadata to indicate encryption is enabled
+      await updateDoc(groopRef, {
+        encryptionEnabled: true,
+        encryptionInitiatedBy: userId,
+        encryptionInitiatedAt: serverTimestamp()
+      });
+      
+      console.log('[CHAT] Encryption successfully initialized for group');
       return true;
-    }
-    
-    // Generate a new symmetric key for the group
-    const key = await EncryptionService.generateGroopKey(groopId);
-    if (!key) {
-      console.error('[CHAT] Failed to generate group key');
+    } catch (error) {
+      console.error('[CHAT] Error initializing group encryption:', error);
       return false;
     }
-    
-    // Update group metadata to indicate encryption is enabled
-    await updateDoc(groopRef, {
-      encryptionEnabled: true,
-      encryptionInitiatedBy: userId,
-      encryptionInitiatedAt: serverTimestamp()
-    });
-    
-    console.log('[CHAT] Encryption successfully initialized for group');
-    return true;
-  } catch (error) {
-    console.error('[CHAT] Error initializing group encryption:', error);
-    return false;
   }
-}
 
   // Search messages
   static async searchMessages(groopId: string, searchText: string, maxResults = 100): Promise<ChatMessage[]> {
@@ -525,7 +535,7 @@ static async initializeGroupEncryption(groopId: string, userId: string): Promise
             text: messageText,
             senderId: data.senderId,
             senderName: data.senderName,
-            senderAvatar: data.senderAvatar || '',
+            senderAvatar: data.senderAvatar,
             createdAt: data.createdAt,
             reactions: data.reactions || {},
             replyTo: data.replyTo,
