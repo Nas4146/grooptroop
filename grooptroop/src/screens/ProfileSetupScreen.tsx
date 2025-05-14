@@ -57,6 +57,17 @@ export default function ProfileSetupScreen({ navigation }: { navigation: any }) 
     };
   }, [user, profile]);
 
+  const getFunMessage = () => {
+  const messages = [
+    "Let's make your avatar pop! ✨",
+    "Show off your vibe with a cool avatar 😎",
+    "Make it uniquely you! 💯",
+    "Your digital glow-up starts here ✌️",
+    "Time for your profile's aesthetic upgrade 🔥"
+  ];
+  return messages[Math.floor(Math.random() * messages.length)];
+};
+
   // Pick an image from the gallery
 const pickImage = async () => {
   console.log('[PROFILE_SETUP] Opening image picker with AvatarService');
@@ -227,9 +238,10 @@ const getAvatarPreview = () => {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
             <Text style={styles.title}>Set Up Your Profile</Text>
-            <Text style={styles.subtitle}>Customize how others will see you in GroopTroop</Text>
+            <Text style={styles.subtitle}>{getFunMessage()}</Text>
           </View>
-
+          
+          {/* Profile Setup Form */}
           <View style={styles.formSection}>
             {/* Display Name Input */}
             <Text style={styles.label}>Display Name</Text>
