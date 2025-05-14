@@ -1,9 +1,13 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import tw from '../../utils/tw';
 import { useGroop } from '../../contexts/GroopProvider';
+import Avatar from './Avatar';
+import { UserProfile } from '../../contexts/AuthProvider';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 
 interface GroopHeaderProps {
   minimal?: boolean;
@@ -12,6 +16,12 @@ interface GroopHeaderProps {
   isChatScreen?: boolean;
   isItineraryScreen?: boolean;
   onShowEncryptionInfo?: () => void;
+}
+
+interface MemberData {
+  uid: string;
+  displayName: string;
+  avatar?: any; // Using UserAvatar type but keeping it simple for debugging
 }
 
 export default function GroopHeader({ 
@@ -24,6 +34,8 @@ export default function GroopHeader({
 }: GroopHeaderProps) {
   const { currentGroop } = useGroop();
   const navigation = useNavigation();
+  const [memberProfiles, setMemberProfiles] = useState<MemberData[]>([]);
+  const [isLoadingMembers, setIsLoadingMembers] = useState(true);
 
   if (!currentGroop) return null;
 
@@ -31,6 +43,98 @@ export default function GroopHeader({
   
   // Maximum number of member avatars to show
   const MAX_AVATARS = 3;
+
+  useEffect(() => {
+  console.log(`[GROOP_HEADER] Component mounted with memberCount: ${memberCount}`);
+  
+  const startTime = Date.now();
+  
+  return () => {
+    const totalTime = Date.now() - startTime;
+    console.log(`[GROOP_HEADER] Component was mounted for ${totalTime}ms`);
+  };
+}, []);
+
+// Log each render
+console.log(`[GROOP_HEADER] Rendering with ${memberProfiles.length} member profiles loaded`);
+console.log(`[GROOP_HEADER] isLoadingMembers: ${isLoadingMembers}`);
+
+  // Load member profiles
+  useEffect(() => {
+    const fetchMemberProfiles = async () => {
+      if (!currentGroop || !currentGroop.members || currentGroop.members.length === 0) {
+        console.log('[GROOP_HEADER] No members to fetch');
+        setIsLoadingMembers(false);
+        return;
+      }
+
+      try {
+        console.log(`[GROOP_HEADER] Fetching profiles for ${currentGroop.members.length} members`);
+        setIsLoadingMembers(true);
+        
+        // Only fetch the first MAX_AVATARS members for efficiency
+        const membersToFetch = currentGroop.members.slice(0, MAX_AVATARS);
+        const memberData: MemberData[] = [];
+        
+        for (const memberId of membersToFetch) {
+          try {
+            console.log(`[GROOP_HEADER] Fetching profile for member: ${memberId.substring(0, 5)}...`);
+            const memberRef = doc(db, 'users', memberId);
+            const memberSnap = await getDoc(memberRef);
+            
+            if (memberSnap.exists()) {
+              const data = memberSnap.data();
+              console.log(`[GROOP_HEADER] Got profile for ${data.displayName || 'Unknown User'}`);
+              console.log(`[GROOP_HEADER] Avatar data:`, data.avatar ? `type: ${data.avatar.type}` : 'none');
+              
+              memberData.push({
+                uid: memberId,
+                displayName: data.displayName || 'Unknown User',
+                avatar: data.avatar
+              });
+            } else {
+              console.log(`[GROOP_HEADER] No profile found for member: ${memberId.substring(0, 5)}...`);
+              // Add placeholder data for non-existent users
+              memberData.push({
+                uid: memberId,
+                displayName: 'User',
+                avatar: undefined
+              });
+            }
+          } catch (error) {
+            console.error(`[GROOP_HEADER] Error fetching member ${memberId}:`, error);
+            // Continue with next member
+          }
+        }
+        
+        console.log(`[GROOP_HEADER] Fetched ${memberData.length} member profiles`);
+        setMemberProfiles(memberData);
+      } catch (error) {
+        console.error('[GROOP_HEADER] Error fetching member profiles:', error);
+      } finally {
+        setIsLoadingMembers(false);
+      }
+    };
+
+    fetchMemberProfiles();
+  }, [currentGroop]);
+
+  const getAvatarFallback = (index: number) => {
+  // Create a deterministic color based on index
+  const colors = ['#FF6B6B', '#4ECDC4', '#7C3AED', '#F59E0B', '#3A86FF'];
+  return (
+    <View 
+      style={[
+        tw`w-full h-full items-center justify-center`,
+        { backgroundColor: colors[index % colors.length] }
+      ]}
+    >
+      <Text style={tw`text-[8px] text-white font-bold`}>
+        {`U${index + 1}`}
+      </Text>
+    </View>
+  );
+};
 
   // Default handler for member press if not provided
   const handlePressMembers = () => {
@@ -45,6 +149,41 @@ export default function GroopHeader({
   if (isItineraryScreen) {
     return null;
   }
+
+  // Render a member avatar - either with the Avatar component or a placeholder
+const renderMemberAvatar = (member: MemberData, index: number) => {
+  console.log(`[GROOP_HEADER] Rendering avatar for member: ${member.displayName}, index: ${index}`);
+  
+  // Calculate a slight offset for a staggered effect
+  const verticalOffset = index % 2 === 0 ? 0 : -1;
+    
+  return (
+    <TouchableOpacity 
+      key={member.uid || index} 
+      style={[
+        tw`w-5 h-5 rounded-full border-2 border-white overflow-hidden shadow-sm`,
+        { transform: [{ translateY: verticalOffset }] }
+      ]}
+      onPress={handlePressMembers}
+    >
+      {/* Avatar with error handling */}
+      <View style={tw`w-full h-full`}>
+        {member ? (
+          <Avatar
+            avatar={member.avatar}
+            displayName={member.displayName}
+            size={20}
+          />
+        ) : getAvatarFallback(index)}
+      </View>
+      
+      {/* Add a subtle "active" indicator for the first member */}
+      {index === 0 && (
+        <View style={tw`absolute bottom-0 right-0 w-1.5 h-1.5 bg-green-400 rounded-full border border-white`} />
+      )}
+    </TouchableOpacity>
+  );
+};
 
   return (
     <View style={tw`${minimal ? 'pt-2' : 'pt-1'} pb-0 rounded-b-3xl`}>
@@ -160,18 +299,18 @@ export default function GroopHeader({
             <View style={tw`flex-row`}>
               {/* Member avatars - right aligned */}
               <View style={tw`flex-row -space-x-1.5`}>
-                {[...Array(Math.min(memberCount, MAX_AVATARS))].map((_, i) => (
-                  <TouchableOpacity 
-                    key={i} 
-                    style={tw`w-5 h-5 rounded-full border-2 border-white overflow-hidden shadow-sm`}
-                    onPress={handlePressMembers}
-                  >
-                    <Image 
-                      source={{ uri: `https://i.pravatar.cc/100?img=${i+10}` }} 
-                      style={tw`w-full h-full`}
+                {isLoadingMembers ? (
+                  // Show placeholder dots while loading
+                  [...Array(Math.min(memberCount, MAX_AVATARS))].map((_, i) => (
+                    <View 
+                      key={`loading-${i}`} 
+                      style={tw`w-5 h-5 rounded-full bg-gray-200 border-2 border-white`}
                     />
-                  </TouchableOpacity>
-                ))}
+                  ))
+                ) : (
+                  // Render actual member avatars
+                  memberProfiles.map((member, index) => renderMemberAvatar(member, index))
+                )}
                 
                 {memberCount > MAX_AVATARS && (
                   <TouchableOpacity 
