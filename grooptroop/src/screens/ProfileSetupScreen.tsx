@@ -20,19 +20,7 @@ import { UserAvatar } from '../models/user';
 import { storage, db } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { doc, updateDoc } from 'firebase/firestore';
-
-const AVATAR_COLORS = [
-  '#FF6B6B', // Red
-  '#4ECDC4', // Teal
-  '#45B7D1', // Light Blue
-  '#FFBE0B', // Yellow
-  '#FB5607', // Orange
-  '#8338EC', // Purple
-  '#3A86FF', // Blue
-  '#38B000', // Green
-  '#FF006E', // Pink
-  '#9381FF', // Lavender
-];
+import { AvatarService, AVATAR_COLORS } from '../services/AvatarService';
 
 export default function ProfileSetupScreen({ navigation }: { navigation: any }) {
   const { user, profile, refreshProfile } = useAuth();
@@ -70,28 +58,17 @@ export default function ProfileSetupScreen({ navigation }: { navigation: any }) 
   }, [user, profile]);
 
   // Pick an image from the gallery
-  const pickImage = async () => {
-    console.log('[PROFILE_SETUP] Opening image picker');
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        console.log('[PROFILE_SETUP] Image selected:', result.assets[0].uri);
-        setAvatarImage(result.assets[0].uri);
-        setSelectedAvatarType('image');
-      } else {
-        console.log('[PROFILE_SETUP] Image picker canceled or no assets');
-      }
-    } catch (error) {
-      console.error('[PROFILE_SETUP] Error picking image:', error);
-      Alert.alert('Error', 'Failed to pick an image. Please try again.');
-    }
-  };
+const pickImage = async () => {
+  console.log('[PROFILE_SETUP] Opening image picker with AvatarService');
+  const uri = await AvatarService.pickImage();
+  if (uri) {
+    console.log('[PROFILE_SETUP] Image selected, updating state');
+    setAvatarImage(uri);
+    setSelectedAvatarType('image');
+  } else {
+    console.log('[PROFILE_SETUP] No image selected');
+  }
+};
 
   // For mock implementation - later we'll integrate an actual bitmoji picker
   const openBitmojiPicker = () => {
@@ -133,116 +110,113 @@ export default function ProfileSetupScreen({ navigation }: { navigation: any }) 
   };
 
   // Save user profile
-  const saveProfile = async () => {
-    if (!displayName.trim()) {
-      Alert.alert('Error', 'Please enter a display name');
-      return;
-    }
+const saveProfile = async () => {
+  if (!displayName.trim()) {
+    Alert.alert('Error', 'Please enter a display name');
+    return;
+  }
 
-    if (!user) {
-      Alert.alert('Error', 'You must be logged in to complete profile setup');
-      return;
-    }
+  if (!user) {
+    Alert.alert('Error', 'You must be logged in to complete profile setup');
+    return;
+  }
 
-    try {
-      console.log('[PROFILE_SETUP] Saving profile');
-      setIsSubmitting(true);
+  try {
+    console.log('[PROFILE_SETUP] Saving profile');
+    setIsSubmitting(true);
 
-      let userAvatar: UserAvatar = {
-        type: 'initial',
-        value: displayName.charAt(0).toUpperCase(),
-        color: selectedColor
-      };
+    let userAvatar;
 
-      // If user has selected an image, upload it
-      if (selectedAvatarType === 'image' && avatarImage) {
-        try {
-          const downloadURL = await uploadAvatarImage(avatarImage);
-          userAvatar = {
-            type: 'image',
-            value: downloadURL
-          };
-        } catch (error) {
-          console.error('[PROFILE_SETUP] Error uploading image:', error);
-          // Fall back to initial avatar
-          userAvatar = {
-            type: 'initial',
-            value: displayName.charAt(0).toUpperCase(),
-            color: selectedColor
-          };
-        }
+    // If user has selected an image, upload it
+    if (selectedAvatarType === 'image' && avatarImage) {
+      try {
+        console.log('[PROFILE_SETUP] Creating image avatar via AvatarService');
+        userAvatar = await AvatarService.createImageAvatar(avatarImage, user.uid);
+      } catch (error) {
+        console.error('[PROFILE_SETUP] Error creating image avatar:', error);
+        // Fall back to initial avatar
+        console.log('[PROFILE_SETUP] Falling back to initial avatar');
+        userAvatar = AvatarService.createInitialAvatar(displayName, selectedColor);
       }
-
-      // Update the user's Firestore document
-      console.log('[PROFILE_SETUP] Updating Firestore document');
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
-        displayName: displayName.trim(),
-        avatar: userAvatar,
-        avatarColor: selectedColor,
-        hasCompletedOnboarding: true
-      });
-
-      console.log('[PROFILE_SETUP] Profile updated successfully');
-      
-      // Refresh the profile in auth context
-      await refreshProfile();
-      
-      // Navigate to main app
-      navigation.replace('MainApp');
-    } catch (error) {
-      console.error('[PROFILE_SETUP] Error saving profile:', error);
-      Alert.alert('Error', 'Failed to save profile. Please try again.');
-    } finally {
-      setIsSubmitting(false);
+    } else {
+      console.log('[PROFILE_SETUP] Creating initial avatar via AvatarService');
+      userAvatar = AvatarService.createInitialAvatar(displayName, selectedColor);
     }
-  };
+
+    // Update the user's Firestore document
+    console.log('[PROFILE_SETUP] Updating Firestore document');
+    const userRef = doc(db, 'users', user.uid);
+    await updateDoc(userRef, {
+      displayName: displayName.trim(),
+      avatar: userAvatar,
+      avatarColor: selectedColor,
+      hasCompletedOnboarding: true
+    });
+
+    console.log('[PROFILE_SETUP] Profile updated successfully');
+    
+    // Refresh the profile in auth context
+    await refreshProfile();
+    
+    // Navigate to main app
+    navigation.replace('MainApp');
+  } catch (error) {
+    console.error('[PROFILE_SETUP] Error saving profile:', error);
+    Alert.alert('Error', 'Failed to save profile. Please try again.');
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   // Skip profile setup for now
-  const skipSetup = async () => {
-    if (!user) return;
+const skipSetup = async () => {
+  if (!user) return;
+  
+  try {
+    console.log('[PROFILE_SETUP] Skipping profile setup');
+    setIsSubmitting(true);
     
-    try {
-      console.log('[PROFILE_SETUP] Skipping profile setup');
-      setIsSubmitting(true);
-      
-      // Still set basic avatar and mark onboarding as complete
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
-        hasCompletedOnboarding: true,
-        avatar: {
-          type: 'initial',
-          value: (user.displayName || 'User').charAt(0).toUpperCase(),
-          color: selectedColor
-        }
-      });
-      
-      await refreshProfile();
-      navigation.replace('MainApp');
-    } catch (error) {
-      console.error('[PROFILE_SETUP] Error skipping profile setup:', error);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    // Create a simple initial avatar with AvatarService
+    const avatar = AvatarService.createInitialAvatar(
+      user.displayName || 'User',
+      selectedColor
+    );
+    
+    // Still mark onboarding as complete
+    const userRef = doc(db, 'users', user.uid);
+    await updateDoc(userRef, {
+      hasCompletedOnboarding: true,
+      avatar: avatar
+    });
+    
+    await refreshProfile();
+    navigation.replace('MainApp');
+  } catch (error) {
+    console.error('[PROFILE_SETUP] Error skipping profile setup:', error);
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   // Helper function to get avatar preview
-  const getAvatarPreview = () => {
-    if (selectedAvatarType === 'image' && avatarImage) {
-      return (
-        <Image source={{ uri: avatarImage }} style={styles.avatarPreview} />
-      );
-    }
-    
-    // Default to initials
+const getAvatarPreview = () => {
+  if (selectedAvatarType === 'image' && avatarImage) {
+    console.log('[PROFILE_SETUP] Rendering image avatar preview');
     return (
-      <View style={[styles.initialAvatar, { backgroundColor: selectedColor }]}>
-        <Text style={styles.initialText}>
-          {displayName ? displayName.charAt(0).toUpperCase() : '?'}
-        </Text>
-      </View>
+      <Image source={{ uri: avatarImage }} style={styles.avatarPreview} />
     );
-  };
+  }
+  
+  // Default to initials
+  console.log('[PROFILE_SETUP] Rendering initial avatar preview');
+  return (
+    <View style={[styles.initialAvatar, { backgroundColor: selectedColor }]}>
+      <Text style={styles.initialText}>
+        {AvatarService.getInitials(displayName)}
+      </Text>
+    </View>
+  );
+};
 
   return (
     <SafeAreaView style={styles.container}>
