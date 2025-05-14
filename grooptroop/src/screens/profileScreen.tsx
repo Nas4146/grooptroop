@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Alert, SafeAreaView, ScrollView, Image } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, SafeAreaView, ScrollView } from 'react-native';
 import { useAuth } from '../contexts/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../utils/tw';
+import Avatar from '../components/common/Avatar';
 
 export default function ProfileScreen({ navigation }) {
   const { user, profile, isLoading, signOut } = useAuth();
@@ -47,25 +48,12 @@ export default function ProfileScreen({ navigation }) {
             onPress={handleEditAvatar}
             style={tw`relative`}
           >
-            {/* Show image avatar if available */}
-            {profile?.avatar?.type === 'image' ? (
-              <Image
-                source={{ uri: profile.avatar.value }}
-                style={tw`w-24 h-24 rounded-full shadow-sm`}
-              />
-            ) : (
-              // Otherwise show initial avatar
-              <View 
-                style={[
-                  tw`w-24 h-24 rounded-full items-center justify-center shadow-sm`,
-                  { backgroundColor: profile?.avatar?.color || profile?.avatarColor || '#7C3AED' }
-                ]}
-              >
-                <Text style={tw`text-white text-3xl font-bold`}>
-                  {profile?.avatar?.value || profile?.displayName?.charAt(0).toUpperCase() || 'A'}
-                </Text>
-              </View>
-            )}
+            <Avatar
+              avatar={profile?.avatar}
+              displayName={profile?.displayName}
+              size={96} // Equivalent to w-24 h-24
+              style={tw`shadow-sm`}
+            />
             
             {/* Edit button overlay */}
             <View style={tw`absolute bottom-0 right-0 bg-primary rounded-full w-8 h-8 items-center justify-center shadow-sm`}>
