@@ -11,6 +11,7 @@ import {
   Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 //import * as ImagePicker from 'expo-image-picker';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import tw from '../../utils/tw';
@@ -75,7 +76,13 @@ function MessageInput({
   const handleSend = async () => {
     if ((!text.trim() && !image) || uploading || encryptionLoading) return;
     
-    setSending(true); // Add this to show sending indicator
+    // Trigger haptic feedback
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    // Animate the send button
+    animateSendButton();
+    
+    setSending(true);
     
     try {
       let imageUrl;
@@ -110,13 +117,18 @@ function MessageInput({
       // Send message
       await onSend(text, imageUrl);
       
+      // Success feedback
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
       // Clear input
       setText('');
       setImage(null);
     } catch (error) {
       console.error('[CHAT] Error sending message:', error);
+      // Error feedback
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
-      setSending(false); // Make sure to reset the sending state
+      setSending(false);
     }
   };
   
@@ -214,18 +226,20 @@ function MessageInput({
             }}
           />
           
-          {/* Send button */}
-          <TouchableOpacity
-            style={tw`bg-primary h-8 w-8 rounded-full items-center justify-center ${!text.trim() ? 'opacity-50' : ''}`}
-            onPress={handleSend}
-            disabled={!text.trim() || sending || encryptionLoading}
-          >
-            {sending ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Ionicons name="send" size={16} color="#fff" />
-            )}
-          </TouchableOpacity>
+          {/* Send button with animation */}
+          <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
+            <TouchableOpacity
+              style={tw`bg-primary h-8 w-8 rounded-full items-center justify-center ${!text.trim() ? 'opacity-50' : ''}`}
+              onPress={handleSend}
+              disabled={!text.trim() || sending || encryptionLoading}
+            >
+              {sending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="send" size={16} color="#fff" />
+              )}
+            </TouchableOpacity>
+          </Animated.View>
         </View>
       </View>
     </View>
