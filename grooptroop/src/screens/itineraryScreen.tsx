@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Animated, TouchableOpacity, Linking, Image, Platform, KeyboardAvoidingView } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -32,6 +33,13 @@ export default function ItineraryScreen() {
   useEffect(() => {
     fetchUserGroops();
   }, []);
+
+    useFocusEffect(
+    useCallback(() => {
+      // Refresh itinerary data
+      fetchItineraryData();
+    }, [])
+  );
 
   // Animation configs
   const animateBudget = (expand: boolean) => {
@@ -107,6 +115,29 @@ export default function ItineraryScreen() {
       console.error('[ITINERARY_SCREEN] Error loading payment data:', error);
     }
   };
+
+  // Add this function below your fetchPaymentSummary function:
+
+  const fetchItineraryData = useCallback(() => {
+    console.log("[ITINERARY] Refreshing data from focus effect");
+    
+    // Refresh itinerary without showing the loading indicator
+    if (currentGroop) {
+      // We want to fetch fresh data but don't need the loading spinner
+      // since this happens when returning to the tab
+      ItineraryService.clearCache(currentGroop.id).then(() => {
+        fetchItinerary();
+      });
+      
+      // Also refresh payment data
+      if (profile) {
+        fetchPaymentSummary();
+        
+        // Additionally, refresh any payment status in the PaymentService
+        PaymentService.clearPaymentStatusCache();
+      }
+    }
+  }, [currentGroop, profile]);
 
   useEffect(() => {
     if (currentGroop && profile) {

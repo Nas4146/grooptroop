@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -7,7 +7,9 @@ import { RootStackParamList, EventCardProps } from '../../navigation/types';
 import tw from '../../utils/tw';
 import PaymentSheet from '../payments/PaymentSheet';
 import { useGroop } from '../../contexts/GroopProvider';
+import { useAuth } from '../../contexts/AuthProvider';
 import EventDetailsModal from './EventDetails';
+import { PaymentService } from '../../services/PaymentService';
 
 type EventDetailsNavigationProp = NativeStackNavigationProp<RootStackParamList, 'EventDetails'>;
 
@@ -19,8 +21,33 @@ export default function EventCard({
 }: EventCardProps) {
   const navigation = useNavigation<EventDetailsNavigationProp>();
   const { currentGroop } = useGroop();
+  const { profile } = useAuth();
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [paymentSheetVisible, setPaymentSheetVisible] = useState(false);
+  const [isPaid, setIsPaid] = useState(false);
+
+  // Check if this event is already paid by the user
+  useEffect(() => {
+    if (event.isPaymentRequired && event.id && currentGroop?.id && profile?.uid) {
+      checkPaymentStatus();
+    }
+  }, [event.id, currentGroop?.id, profile?.uid, paymentSheetVisible]);
+  
+  const checkPaymentStatus = async () => {
+    try {
+      if (!currentGroop?.id || !profile?.uid) {
+        console.log('[EVENT_CARD] Cannot check payment status: Missing groop ID or user ID');
+        return;
+      }
+      
+      // Check if this specific event is paid
+      const eventPaid = await PaymentService.isEventPaid(currentGroop.id, profile.uid, event.id);
+      setIsPaid(eventPaid);
+      
+    } catch (error) {
+      console.error(`[EVENT_CARD] Error checking payment status for event ${event.title}:`, error);
+    }
+  };
 
   const handlePress = () => {
     setDetailsModalVisible(true);
@@ -34,15 +61,14 @@ export default function EventCard({
     setPaymentSheetVisible(true);
   };
 
-    // payment completion handler
+  // payment completion handler
   const handlePaymentSheetClose = (paymentCompleted: boolean = false) => {
     setPaymentSheetVisible(false);
     
-    // If payment was completed, we could optionally refresh the event data
-    // or mark the event as paid locally
+    // If payment was completed, update the paid status immediately
     if (paymentCompleted) {
       console.log('[EVENT_CARD] Payment completed for event:', event.title);
-      // You could add additional handling here if needed
+      setIsPaid(true);
     }
   };
 
@@ -109,77 +135,94 @@ export default function EventCard({
               : `bg-white border ${mood.border}`
             } ${event.isOptional ? 'opacity-80' : 'opacity-100'}`}
           >
-<View style={tw`flex-row justify-between items-start pr-1.5`}>
-  <View style={tw`flex-1 pr-1`}>
-    {/* Row with title and mood emoji */}
-    <View style={tw`flex-row items-center flex-wrap`}>
-      <Text style={tw`text-base font-bold ${
-        event.isOptional ? 'text-gray-500' : 'text-gray-800'
-      }`}>
-        {event.title || ''}
-      </Text>
-      <Text style={tw`ml-1.5 text-base`}>{mood.emoji}</Text>
-    </View>
-    
-    {/* Optional tag */}
-    {event.isOptional && (
-      <View style={tw`flex-row items-center mt-0.5`}>
-        <View style={tw`bg-gray-100 rounded-full px-1.5 py-0.5`}>
-          <Text style={tw`text-xs font-medium text-gray-500`}>Optional</Text>
-        </View>
-      </View>
-    )}
+            <View style={tw`flex-row justify-between items-start pr-1.5`}>
+              <View style={tw`flex-1 pr-1`}>
+                {/* Row with title and mood emoji */}
+                <View style={tw`flex-row items-center flex-wrap`}>
+                  <Text style={tw`text-base font-bold ${
+                    event.isOptional ? 'text-gray-500' : 'text-gray-800'
+                  }`}>
+                    {event.title || ''}
+                  </Text>
+                  <Text style={tw`ml-1.5 text-base`}>{mood.emoji}</Text>
+                </View>
                 
-    {/* Location if available */}
-    {event.location && (
-      <View style={tw`flex-row items-center mt-1`}>
-        <Ionicons name="location-outline" size={14} color="#6B7280" />
-        <Text style={tw`text-xs text-gray-500 ml-0.5`}>{event.location}</Text>
-      </View>
-    )}
-                
-    {/* Description with ellipsis if too long */}
-    <Text 
-      numberOfLines={2}
-      ellipsizeMode="tail"
-      style={tw`text-sm text-gray-600 mt-1.5`}
-    >
-      {event.description || ''}
-    </Text>
-                
-    {/* Trending hashtags - more compact */}
-    {event.tags && event.tags.length > 0 && (
-      <View style={tw`flex-row flex-wrap mt-1.5`}>
-        {event.tags.map(tag => (
-          <Text key={tag} style={tw`mr-1.5 text-xs text-secondary font-medium`}>
-            #{tag}
-          </Text>
-        ))}
-      </View>
-    )}
-  </View>
+                {/* Optional tag */}
+                {event.isOptional && (
+                  <View style={tw`flex-row items-center mt-0.5`}>
+                    <View style={tw`bg-gray-100 rounded-full px-1.5 py-0.5`}>
+                      <Text style={tw`text-xs font-medium text-gray-500`}>Optional</Text>
+                    </View>
+                  </View>
+                )}
+                            
+                {/* Location if available */}
+                {event.location && (
+                  <View style={tw`flex-row items-center mt-1`}>
+                    <Ionicons name="location-outline" size={14} color="#6B7280" />
+                    <Text style={tw`text-xs text-gray-500 ml-0.5`}>{event.location}</Text>
+                  </View>
+                )}
+                            
+                {/* Description with ellipsis if too long */}
+                <Text 
+                  numberOfLines={2}
+                  ellipsizeMode="tail"
+                  style={tw`text-sm text-gray-600 mt-1.5`}
+                >
+                  {event.description || ''}
+                </Text>
+                            
+                {/* Trending hashtags - more compact */}
+                {event.tags && event.tags.length > 0 && (
+                  <View style={tw`flex-row flex-wrap mt-1.5`}>
+                    {event.tags.map(tag => (
+                      <Text key={tag} style={tw`mr-1.5 text-xs text-secondary font-medium`}>
+                        #{tag}
+                      </Text>
+                    ))}
+                  </View>
+                )}
+              </View>
               
-              {/* Payment indicator - more compact */}
-  {event.isPaymentRequired && (
-    <TouchableOpacity
-      style={tw`items-center`}
-      onPress={handlePayment}
-    >
-      <Ionicons 
-        name="card-outline" 
-        size={14} 
-        color={event.paid ? "#22c55e" : "#f59e0b"} 
-        style={tw`mb-0.5 self-center`} 
-      />
-      <View style={tw`bg-gray-100 rounded-full px-2.5 py-1 flex-row items-center`}>
-        <View style={tw`h-3.5 w-3.5 rounded-full ${event.paid ? 'bg-green-500' : 'bg-amber-500'} mr-1.5`} />
-        <Text style={tw`text-xs font-medium ${event.paid ? 'text-green-700' : 'text-gray-700'}`}>
-          ${event.costPerPerson || 0}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  )}
-</View>
+              {/* Payment indicator - updated to show paid status */}
+              {event.isPaymentRequired && (
+                <TouchableOpacity
+                  style={tw`items-center`}
+                  onPress={handlePayment}
+                >
+                  {isPaid ? (
+                    <>
+                      <Ionicons 
+                        name="checkmark-circle" 
+                        size={14} 
+                        color="#22c55e" 
+                        style={tw`mb-0.5 self-center`} 
+                      />
+                      <View style={tw`bg-green-100 rounded-full px-2.5 py-1 flex-row items-center`}>
+                        <View style={tw`h-3.5 w-3.5 rounded-full bg-green-500 mr-1.5`} />
+                        <Text style={tw`text-xs font-medium text-green-700`}>Paid</Text>
+                      </View>
+                    </>
+                  ) : (
+                    <>
+                      <Ionicons 
+                        name="card-outline" 
+                        size={14} 
+                        color="#f59e0b" 
+                        style={tw`mb-0.5 self-center`} 
+                      />
+                      <View style={tw`bg-gray-100 rounded-full px-2.5 py-1 flex-row items-center`}>
+                        <View style={tw`h-3.5 w-3.5 rounded-full bg-amber-500 mr-1.5`} />
+                        <Text style={tw`text-xs font-medium text-gray-700`}>
+                          ${event.costPerPerson || 0}
+                        </Text>
+                      </View>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
             
             {/* People attending indicators - more compact */}
             {typeof event.attendees === 'number' && event.attendees > 0 && (
@@ -212,7 +255,7 @@ export default function EventCard({
         onPayment={handlePayment}
       />
 
-      {/* Payment Sheet Modal */}
+      {/* Payment Sheet Modal - now with isPaid prop */}
       <PaymentSheet
         visible={paymentSheetVisible}
         onClose={handlePaymentSheetClose}
@@ -221,6 +264,7 @@ export default function EventCard({
         amount={typeof event.costPerPerson === 'number' ? event.costPerPerson : 0}
         description={`Payment for ${event.title}`}
         title={`Pay for ${event.title}`}
+        isPaid={isPaid}
       />
     </>
   );

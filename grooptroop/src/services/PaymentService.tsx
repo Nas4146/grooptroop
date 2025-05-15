@@ -490,4 +490,93 @@ export class PaymentService {
       groopId: activePayment.groopId
     };
   }
+
+  // Check if a specific event is paid by a user
+  static async isEventPaid(groopId: string, userId: string, eventId: string): Promise<boolean> {
+    console.log(`[PAYMENT_SERVICE] Checking if event ${eventId} is paid by user ${userId}`);
+    
+    try {
+      const paymentsRef = collection(db, 'groops', groopId, 'payments');
+      const q = query(
+        paymentsRef,
+        where('userId', '==', userId),
+        where('eventId', '==', eventId),
+        where('status', '==', 'completed')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const isPaid = !querySnapshot.empty;
+      
+      console.log(`[PAYMENT_SERVICE] Event ${eventId} paid status: ${isPaid}`);
+      return isPaid;
+    } catch (error) {
+      console.error(`[PAYMENT_SERVICE] Error checking event payment status:`, error);
+      return false;
+    }
+  }
+
+  // Add this static method to your PaymentService class:
+
+  static clearPaymentStatusCache() {
+    console.log('[PAYMENT_SERVICE] Clearing payment status cache');
+    // You could implement memory or AsyncStorage caching here
+    // For now we'll just make sure any in-memory data is cleared
+    // and will be fetched fresh next time
+    
+    // This is where you'd implement any specific cache clearing logic
+    // based on how you're caching payment status data
+  }
+
+  // Create a direct payment (already paid outside the app)
+static async createDirectPayment(
+  groopId: string,
+  eventId: string | undefined,
+  amount: number,
+  description: string,
+  userId: string,
+  userName: string
+): Promise<PaymentResponse> {
+  console.log(`[PAYMENT_SERVICE] Creating direct payment record of $${amount} for user ${userId}`);
+  
+  try {
+    // Create a payment record
+    const paymentData = {
+      userId,
+      userName,
+      groopId,
+      type: eventId ? 'event' as PaymentType : 'accommodation' as PaymentType,
+      eventId: eventId || null,
+      amount,
+      description,
+      status: 'pending' as PaymentStatus, // Start as pending, will be confirmed right after
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      method: 'venmo' as PaymentMethod, // Default to Venmo for now
+      notes: 'User reported payment was already made outside the app'
+    };
+    
+    // Add to Firestore
+    const paymentRef = await addDoc(
+      collection(db, 'groops', groopId, 'payments'),
+      paymentData
+    );
+    
+    console.log(`[PAYMENT_SERVICE] Created direct payment with ID: ${paymentRef.id}`);
+    
+    return {
+      success: true,
+      paymentId: paymentRef.id
+    };
+  } catch (error) {
+    console.error('[PAYMENT_SERVICE] Error creating direct payment:', error);
+    return {
+      success: false,
+      error: 'Failed to record your payment. Please try again.',
+      errorDetail: {
+        code: 'direct_payment_failed',
+        message: error instanceof Error ? error.message : String(error)
+      }
+    };
+  }
+}
 }
