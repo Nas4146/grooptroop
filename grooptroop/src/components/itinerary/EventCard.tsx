@@ -65,10 +65,12 @@ export default function EventCard({
   const handlePaymentSheetClose = (paymentCompleted: boolean = false) => {
     setPaymentSheetVisible(false);
     
-    // If payment was completed, update the paid status immediately
     if (paymentCompleted) {
-      console.log('[EVENT_CARD] Payment completed for event:', event.title);
+      console.log('[EVENT_CARD] Payment completed, updating status');
       setIsPaid(true);
+      
+      // Clear payment cache to ensure fresh data on next fetch
+      PaymentService.clearPaymentStatusCache();
     }
   };
 

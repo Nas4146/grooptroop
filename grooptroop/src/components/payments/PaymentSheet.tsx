@@ -195,6 +195,9 @@ export default function PaymentSheet({
         setPaymentSuccess(true);
         setPaymentFailed(false);
         
+        // Clear any cached payment status data to ensure fresh fetches
+        PaymentService.clearPaymentStatusCache();
+        
         // Auto-close after success with payment status = true
         setTimeout(() => {
           onClose(true);  // Pass true to indicate payment completed
@@ -272,6 +275,9 @@ const handleAlreadyPaid = async () => {
       if (confirmed) {
         console.log('[PAYMENT_SHEET] Payment confirmed successfully');
         setPaymentSuccess(true);
+        
+        // Clear any cached payment status data to ensure fresh fetches
+        PaymentService.clearPaymentStatusCache();
         
         // Auto-close after success
         setTimeout(() => {
@@ -487,11 +493,11 @@ const handleAlreadyPaid = async () => {
 
         {/* I Already Paid option - MOVED below other payment options */}
         <TouchableOpacity
-          style={tw`flex-row items-center border-2 border-indigo-500 rounded-lg py-4 px-5 mb-3`}
+          style={tw`flex-row items-center border-2 rounded-lg py-4 px-5 mb-3`}
           onPress={handleAlreadyPaid}
           disabled={loading}
         >
-          <View style={tw`h-6 w-6 bg-indigo-100 rounded-full items-center justify-center mr-3`}>
+          <View style={tw`h-6 w-6 rounded-full items-center justify-center mr-3`}>
             <Ionicons name="checkmark" size={18} color="#4F46E5" />
           </View>
           <Text style={tw`text-indigo-600 font-bold flex-grow`}>I Already Paid</Text>

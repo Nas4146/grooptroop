@@ -33,71 +33,77 @@ export class PaymentService {
     console.log(`[PAYMENT_SERVICE] Getting payment items for user ${userId} in groop ${groopId}`);
     
     try {
-      // First, get all payments made by this user
-      const paymentItems: PaymentItem[] = [];
-      const userPayments = await this.getUserPayments(groopId, userId);
+      // First, get all completed payments by this user to determine what's paid
+      const paymentsQuery = query(
+        collection(db, 'groops', groopId, 'payments'),
+        where('userId', '==', userId),
+        where('status', '==', 'completed')
+      );
       
-      // Create a map for quick lookup
-      const paymentMap = new Map<string, Payment>();
-      userPayments.forEach(payment => {
+      const paymentsSnapshot = await getDocs(paymentsQuery);
+      
+      // Create sets for quick lookup of paid items
+      const paidEventIds = new Set<string>();
+      let accommodationPaid = false;
+      
+      paymentsSnapshot.forEach(doc => {
+        const payment = doc.data();
         if (payment.eventId) {
-          paymentMap.set(payment.eventId, payment);
+          paidEventIds.add(payment.eventId);
         } else if (payment.type === 'accommodation') {
-          paymentMap.set('accommodation', payment);
+          accommodationPaid = true;
         }
       });
       
-      // Get all events with payment requirements
+      console.log(`[PAYMENT_SERVICE] Found ${paidEventIds.size} paid events, accommodation paid: ${accommodationPaid}`);
+      
+      // Get all events that require payment (regardless of paid status)
       const eventsSnapshot = await this.getPayableEvents(groopId);
       
-      // Map events to payment items
+      const paymentItems: PaymentItem[] = [];
+      
+      // Add all events with payment requirements to payment items
       eventsSnapshot.forEach(eventDoc => {
-        const event = eventDoc.data();
+        const event = { ...eventDoc.data(), id: eventDoc.id };
         if (event.isPaymentRequired && event.costPerPerson) {
-          const payment = event.id ? paymentMap.get(event.id) : undefined;
-          const isPaid = !!payment && payment.status === 'completed';
+          // Check if this event has been paid by looking it up in the set
+          const isPaid = paidEventIds.has(eventDoc.id);
           
           paymentItems.push({
-            id: event.id,
-            title: event.title,
-            description: event.description,
-            amountDue: event.costPerPerson,
-            totalCost: event.totalCost,
+            id: eventDoc.id,
+            title: event.title || 'Unnamed Event',
+            description: event.description || '',
+            amountDue: parseFloat(event.costPerPerson),
+            totalCost: event.totalCost ? parseFloat(event.totalCost) : undefined,
             isPaid: isPaid,
             date: event.date,
-            paymentId: payment?.id,
             type: 'event',
-            optional: event.isOptional
+            optional: !!event.isOptional
           });
         }
       });
       
-      // Get accommodation cost if any
+      // Get accommodation info if any
       const groopDoc = await getDoc(doc(db, 'groops', groopId));
       const groopData = groopDoc.data();
       
       if (groopData?.accommodation?.costPerPerson) {
-        const accommodationPayment = paymentMap.get('accommodation');
-        const isPaid = !!accommodationPayment && accommodationPayment.status === 'completed';
-        
         paymentItems.push({
           id: 'accommodation',
           title: 'Accommodation',
           description: groopData.accommodation.description || 'Stay',
-          amountDue: groopData.accommodation.costPerPerson,
-          totalCost: groopData.accommodation.totalCost,
-          isPaid: isPaid,
-          paymentId: accommodationPayment?.id,
+          amountDue: parseFloat(groopData.accommodation.costPerPerson),
+          totalCost: groopData.accommodation.totalCost ? parseFloat(groopData.accommodation.totalCost) : undefined,
+          isPaid: accommodationPaid,
           type: 'accommodation'
         });
       }
       
-      console.log(`[PAYMENT_SERVICE] Found ${paymentItems.length} payment items`);
+      console.log(`[PAYMENT_SERVICE] Returning ${paymentItems.length} payment items (${paymentItems.filter(i => i.isPaid).length} paid)`);
       return paymentItems;
-      
     } catch (error) {
       console.error('[PAYMENT_SERVICE] Error getting payment items:', error);
-      throw error;
+      return [];
     }
   }
 
@@ -518,13 +524,9 @@ export class PaymentService {
   // Add this static method to your PaymentService class:
 
   static clearPaymentStatusCache() {
+    // This method clears any cached payment data to ensure fresh fetch
     console.log('[PAYMENT_SERVICE] Clearing payment status cache');
-    // You could implement memory or AsyncStorage caching here
-    // For now we'll just make sure any in-memory data is cleared
-    // and will be fetched fresh next time
-    
-    // This is where you'd implement any specific cache clearing logic
-    // based on how you're caching payment status data
+    // If you implement actual caching later, clear it here
   }
 
   // Create a direct payment (already paid outside the app)

@@ -16,7 +16,7 @@ import PaymentSheet from '../components/payments/PaymentSheet';
 import { PaymentItem } from '../models/payments';
 import GroopHeader from '../components/common/GroopHeader';
 import tw from '../utils/tw';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
 export default function PaymentsScreen() {
   const { currentGroop } = useGroop();
@@ -70,6 +70,21 @@ export default function PaymentsScreen() {
       fetchPayments();
     }
   }, [currentGroop, profile]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (currentGroop?.id && profile?.uid) {
+        console.log('[PAYMENTS_SCREEN] Screen focused, refreshing payment data');
+        // Clear any cached data
+        PaymentService.clearPaymentStatusCache();
+        // Fetch fresh payment data
+        fetchPayments();
+      }
+      return () => {
+        // Cleanup function to prevent memory leaks
+      };
+    }, [currentGroop?.id, profile?.uid])
+  );
 
   const handleRefresh = () => {
     setRefreshing(true);
