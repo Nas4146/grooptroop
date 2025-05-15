@@ -427,9 +427,9 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
 />
 
     <KeyboardAvoidingView 
-      style={tw`flex-1 mt-4`} // Changed from mt-10 to mt-4
+      style={tw`flex-1 mt-4`}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0} // Changed from 90 to 0
     >
       <FlashList
         ref={flashListRef}
