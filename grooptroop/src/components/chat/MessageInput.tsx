@@ -22,13 +22,15 @@ interface MessageInputProps {
   onSend: (text: string, imageUrl?: string) => Promise<void> | void;
   replyingTo: ReplyingToMessage | null;
   onCancelReply: () => void;
+  onInputFocus?: () => void; // New prop for handling input focus
 }
 
 // Export directly as a named function component rather than assigning to a const
 function MessageInput({ 
   onSend, 
   replyingTo, 
-  onCancelReply 
+  onCancelReply,
+  onInputFocus // Destructure the new prop
 }: MessageInputProps, ref: React.Ref<TextInput>) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -204,6 +206,12 @@ function MessageInput({
             value={text}
             onChangeText={setText}
             placeholderTextColor="#9CA3AF"
+            onFocus={() => {
+              // Call the onInputFocus prop if it exists
+              if (onInputFocus) {
+                onInputFocus();
+              }
+            }}
           />
           
           {/* Send button */}

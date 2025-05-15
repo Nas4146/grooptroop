@@ -9,7 +9,9 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Image,
-  Alert
+  Alert,
+  Keyboard,
+  KeyboardEvent
 } from 'react-native';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -373,6 +375,37 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
     navigation.navigate('GroupMembers', { groopId: currentGroop?.id });
   }, [navigation, currentGroop]);
   
+  // Add this new useEffect to manage keyboard behavior
+  useEffect(() => {
+    // Function to handle keyboard showing
+    const handleKeyboardShow = (event: KeyboardEvent) => {
+      // Only scroll if we have messages
+      if (messages.length > 0) {
+        // Get keyboard height
+        const keyboardHeight = event.endCoordinates.height;
+        
+        console.log(`[CHAT] Keyboard shown with height: ${keyboardHeight}`);
+        
+        // Slight delay to let the layout adjust
+        setTimeout(() => {
+          // Scroll to end (latest message) with extra padding to account for the keyboard
+          flashListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      }
+    };
+
+    // Set up keyboard listeners
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      handleKeyboardShow
+    );
+
+    // Clean up
+    return () => {
+      keyboardDidShowListener.remove();
+    };
+  }, [messages.length]);
+
   if (!currentGroop) {
     return (
       <SafeAreaView style={tw`flex-1 justify-center items-center bg-light`}>
@@ -485,6 +518,12 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
         onSend={sendMessage} 
         replyingTo={replyingTo}
         onCancelReply={() => setReplyingTo(null)}
+        onInputFocus={() => {
+          // Scroll to end when input is focused
+          setTimeout(() => {
+            flashListRef.current?.scrollToEnd({ animated: true });
+          }, 50);
+        }}
       />
     </KeyboardAvoidingView>
     <EncryptionInfoModal 
