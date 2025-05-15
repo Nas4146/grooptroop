@@ -61,6 +61,10 @@ export default function ChatScreen() {
   const flashListRef = useRef<FlashList<ChatItemType>>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
+  // Add these state variables at the top of your component
+  const [initialScrollComplete, setInitialScrollComplete] = useState(false);
+  const [hasScrolledToUnread, setHasScrolledToUnread] = useState(false);
+
   // Handle scroll events
   const handleScroll = (event: any) => {
     const offsetY = event.nativeEvent.contentOffset.y;
@@ -224,33 +228,87 @@ export default function ChatScreen() {
       // Count unread messages
       const unread = newMessages.filter(msg => 
         !msg.read.includes(profile.uid) && msg.senderId !== profile.uid
-      ).length;
-      setUnreadCount(unread);
-      
-      // Mark messages as read
-      if (unread > 0) {
-        const unreadIds = newMessages
-          .filter(msg => !msg.read.includes(profile.uid) && msg.senderId !== profile.uid)
-          .map(msg => msg.id);
-        
-        console.log(`[CHAT] Marking ${unreadIds.length} messages as read`);
-        ChatService.markAsRead(currentGroop.id, unreadIds, profile.uid)
-          .then(success => {
-            if (success) {
-              console.log('[CHAT] Messages marked as read, refreshing unread count');
-              refreshUnreadCount(); // Update the global unread count
-            }
-          });
-      }
+      );
+      setUnreadCount(unread.length);
     });
     
     // Cleanup subscription
     return () => {
       console.log(`[CHAT] Unsubscribing from messages for groop: ${currentGroop?.id || 'unknown'}`);
       unsubscribe();
+      setHasScrolledToUnread(false); // Reset for next time
     };
   }, [profile, currentGroop]);
-  
+
+  // Add a separate useEffect specifically for scrolling logic
+  useEffect(() => {
+    // Only run scroll logic when we have messages and haven't scrolled yet
+    if (messages.length > 0 && !hasScrolledToUnread && !loading) {
+      console.log('[CHAT] Attempting to scroll to first unread message');
+      
+      // Helper function for date conversion
+      const getDateValue = (msg: ChatMessage): number => {
+        const createdAt = msg.createdAt;
+        if (!createdAt) return 0;
+        if (createdAt?.toDate) return createdAt.toDate().getTime();
+        if (createdAt instanceof Date) return createdAt.getTime();
+        return new Date(createdAt).getTime();
+      };
+      
+      // Sort messages by timestamp (oldest first)
+      const sortedMessages = [...messages].sort((a, b) => getDateValue(a) - getDateValue(b));
+      
+      // Find the first unread message
+      const firstUnreadMsg = sortedMessages.find(msg => 
+        !msg.read.includes(profile?.uid || '') && msg.senderId !== profile?.uid
+      );
+      
+      // Set a short timeout to ensure the list is rendered before scrolling
+      setTimeout(() => {
+        if (firstUnreadMsg) {
+          // We have unread messages - find its index in the processed list
+          const processedItems = processMessagesWithDateSeparators();
+          const unreadIndex = processedItems.findIndex(item => 
+            'id' in item && item.id === firstUnreadMsg.id
+          );
+          
+          if (unreadIndex !== -1) {
+            console.log(`[CHAT] Scrolling to first unread message at index ${unreadIndex}`);
+            flashListRef.current?.scrollToIndex({ 
+              index: unreadIndex, 
+              animated: true
+            });
+          }
+        } else {
+          // No unread messages, scroll to bottom (latest message)
+          console.log('[CHAT] No unread messages, scrolling to latest message');
+          flashListRef.current?.scrollToEnd({ animated: false });
+        }
+        
+        // Mark that we've completed the scrolling
+        setHasScrolledToUnread(true);
+        
+        // Mark messages as read after scrolling
+        if (messages.length > 0 && profile?.uid) {
+          const unreadIds = messages
+            .filter(msg => !msg.read.includes(profile.uid) && msg.senderId !== profile.uid)
+            .map(msg => msg.id);
+          
+          if (unreadIds.length > 0) {
+            console.log(`[CHAT] Marking ${unreadIds.length} messages as read`);
+            ChatService.markAsRead(currentGroop?.id || '', unreadIds, profile.uid)
+              .then(success => {
+                if (success) {
+                  console.log('[CHAT] Messages marked as read, refreshing unread count');
+                  refreshUnreadCount(); // Update the global unread count
+                }
+              });
+          }
+        }
+      }, 300);
+    }
+  }, [messages, hasScrolledToUnread, loading, profile?.uid]);
+
   // Send message
 const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
   if (!profile || !currentGroop) {
@@ -400,6 +458,18 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
         ListEmptyComponent={<EmptyChat />}
         onScroll={handleScroll}
         scrollEventThrottle={16}
+        onScrollToIndexFailed={(info) => {
+          console.log('[CHAT] Failed to scroll to index:', info.index);
+          // Schedule a retry
+          setTimeout(() => {
+            if (flashListRef.current) {
+              flashListRef.current.scrollToIndex({
+                index: Math.min(info.highestMeasuredFrameIndex, info.index),
+                animated: true
+              });
+            }
+          }, 500);
+        }}
       />
 
       {showScrollButton && (
