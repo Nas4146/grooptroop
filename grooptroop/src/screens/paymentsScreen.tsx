@@ -49,7 +49,25 @@ export default function PaymentsScreen() {
       
       // Get all payment items
       const items = await PaymentService.getPaymentItems(currentGroop.id, profile.uid);
-      setPaymentItems(items);
+      
+      // Sort items: pending first, then paid
+      const sortedItems = [...items].sort((a, b) => {
+        // First sort by payment status (unpaid first)
+        if (a.isPaid !== b.isPaid) {
+          return a.isPaid ? 1 : -1;  // false (unpaid) comes before true (paid)
+        }
+        
+        // For items with the same payment status, sort by type (accommodation first)
+        if (a.type !== b.type) {
+          return a.type === 'accommodation' ? -1 : 1;
+        }
+        
+        // For items with same payment status and type, sort by amount (higher first)
+        return b.amountDue - a.amountDue;
+      });
+      
+      console.log(`[PAYMENTS_SCREEN] Sorted ${sortedItems.length} payment items (${sortedItems.filter(i => !i.isPaid).length} pending)`);
+      setPaymentItems(sortedItems);
       
       // Calculate totals
       const summary = await PaymentService.getUserPaymentSummary(currentGroop.id, profile.uid);
@@ -124,6 +142,64 @@ export default function PaymentsScreen() {
       setTimeout(() => {
         fetchPayments();
       }, 500);
+    }
+  };
+
+  // Get the appropriate icon name based on item type and payment status
+  const getIconName = (item: PaymentItem): string => {
+    if (item.isPaid) {
+      return 'checkmark-circle-outline';
+    }
+    
+    switch(item.type) {
+      case 'accommodation':
+        return 'home-outline';
+      case 'event':
+        // Further differentiate event types if available
+        if (item.eventType === 'party') return 'wine-outline';
+        if (item.eventType === 'food') return 'restaurant-outline';
+        if (item.eventType === 'activity') return 'bicycle-outline';
+        return 'calendar-outline';
+      default:
+        return 'receipt-outline';
+    }
+  };
+
+  // Get background color for the icon
+  const getIconBackground = (item: PaymentItem): string => {
+    if (item.isPaid) {
+      return 'bg-green-100 p-3 rounded-full';
+    }
+    
+    switch(item.type) {
+      case 'accommodation':
+        return 'bg-blue-100 p-3 rounded-full';
+      case 'event':
+        if (item.eventType === 'party') return 'bg-rose-100 p-3 rounded-full';
+        if (item.eventType === 'food') return 'bg-amber-100 p-3 rounded-full';
+        if (item.eventType === 'activity') return 'bg-sky-100 p-3 rounded-full';
+        return 'bg-amber-100 p-3 rounded-full';
+      default:
+        return 'bg-gray-100 p-3 rounded-full';
+    }
+  };
+
+  // Get icon color
+  const getIconColor = (item: PaymentItem): string => {
+    if (item.isPaid) {
+      return '#10B981'; // Green color for paid items
+    }
+    
+    switch(item.type) {
+      case 'accommodation':
+        return '#3B82F6'; // Blue
+      case 'event':
+        if (item.eventType === 'party') return '#F43F5E'; // Rose
+        if (item.eventType === 'food') return '#F59E0B'; // Amber
+        if (item.eventType === 'activity') return '#0EA5E9'; // Sky
+        return '#F59E0B'; // Default amber for general events
+      default:
+        return '#6B7280'; // Gray for other types
     }
   };
 
@@ -218,52 +294,51 @@ export default function PaymentsScreen() {
             <Text style={tw`text-sm font-medium text-gray-500 mb-2`}>YOUR PAYMENTS</Text>
           </View>
         )}
-        renderItem={({ item }) => (
-          <TouchableOpacity 
-            style={tw`mx-4 mb-3 bg-white rounded-lg shadow-sm p-4 flex-row items-center`}
-            onPress={() => handlePayItem(item)}
-            disabled={item.isPaid}
-          >
-            <View style={tw`mr-3 ${item.isPaid ? 'bg-green-100' : item.type === 'accommodation' ? 'bg-blue-100' : 'bg-amber-100'} p-3 rounded-full`}>
-              <Ionicons 
-                name={item.type === 'accommodation' ? 'home-outline' : 'calendar-outline'} 
-                size={20} 
-                color={item.isPaid ? '#10B981' : item.type === 'accommodation' ? '#3B82F6' : '#F59E0B'} 
-              />
-            </View>
-            
-            <View style={tw`flex-1`}>
-              <Text style={tw`text-base font-medium text-neutral`}>{item.title}</Text>
-              {item.description && (
-                <Text style={tw`text-sm text-gray-500`} numberOfLines={1}>
-                  {item.description}
-                </Text>
-              )}
-              {item.date && (
-                <Text style={tw`text-xs text-gray-400`}>{item.date}</Text>
-              )}
-            </View>
-            
-            <View style={tw`items-end ml-3`}>
-              <Text style={tw`font-bold ${item.isPaid ? 'text-green-600' : 'text-secondary'}`}>
-                ${item.amountDue.toFixed(2)}
-              </Text>
-              <View style={tw`mt-1 flex-row items-center`}>
-                {item.isPaid ? (
-                  <>
-                    <View style={tw`h-2.5 w-2.5 rounded-full bg-green-500 mr-1.5`} />
-                    <Text style={tw`text-xs text-gray-500`}>Paid</Text>
-                  </>
-                ) : (
-                  <>
-                    <View style={tw`h-2.5 w-2.5 rounded-full bg-amber-500 mr-1.5`} />
-                    <Text style={tw`text-xs text-gray-500`}>Pending</Text>
-                  </>
-                )}
+        renderItem={({ item }) => {
+          // Debug log to see what's happening with item types
+          console.log(`[PAYMENTS_SCREEN] Rendering item: ${item.title}, type: ${item.type}, eventType: ${item.eventType}`);
+          
+          return (
+            <TouchableOpacity 
+              style={tw`mx-4 mb-3 bg-white rounded-lg shadow-sm p-4 flex-row items-center`}
+              onPress={() => handlePayItem(item)}
+              disabled={item.isPaid}
+            >
+              {/* Icon with colored background */}
+              <View style={tw`mr-3 ${getIconBackground(item)}`}>
+                <Ionicons 
+                  name={getIconName(item)} 
+                  size={20} 
+                  color={getIconColor(item)} 
+                />
               </View>
-            </View>
-          </TouchableOpacity>
-        )}
+              
+              <View style={tw`flex-1`}>
+                {/* Only show the title, remove description and date */}
+                <Text style={tw`text-base font-medium text-neutral`}>{item.title}</Text>
+              </View>
+              
+              <View style={tw`items-end ml-3`}>
+                <Text style={tw`font-bold ${item.isPaid ? 'text-green-600' : 'text-secondary'}`}>
+                  ${item.amountDue.toFixed(2)}
+                </Text>
+                <View style={tw`mt-1 flex-row items-center`}>
+                  {item.isPaid ? (
+                    <>
+                      <View style={tw`h-2.5 w-2.5 rounded-full bg-green-500 mr-1.5`} />
+                      <Text style={tw`text-xs text-gray-500`}>Paid</Text>
+                    </>
+                  ) : (
+                    <>
+                      <View style={tw`h-2.5 w-2.5 rounded-full bg-amber-500 mr-1.5`} />
+                      <Text style={tw`text-xs text-gray-500`}>Pending</Text>
+                    </>
+                  )}
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        }}
         ListEmptyComponent={() => (
           <View style={tw`py-10 items-center justify-center`}>
             <Ionicons name="receipt-outline" size={64} color="#CBD5E1" />

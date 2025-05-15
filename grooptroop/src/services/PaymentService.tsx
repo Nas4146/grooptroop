@@ -26,6 +26,7 @@ import {
   PaymentItem,
   PaymentSummary
 } from '../models/payments';
+import { EventData } from '../models/payments';
 
 export class PaymentService {
   // Get all payment items for a user (combines events and accommodations with payment status)
@@ -64,20 +65,29 @@ export class PaymentService {
       
       // Add all events with payment requirements to payment items
       eventsSnapshot.forEach(eventDoc => {
-        const event = { ...eventDoc.data(), id: eventDoc.id };
+        const event = { 
+          ...eventDoc.data(),
+          id: eventDoc.id 
+        } as EventData;
+        
         if (event.isPaymentRequired && event.costPerPerson) {
           // Check if this event has been paid by looking it up in the set
           const isPaid = paidEventIds.has(eventDoc.id);
           
+          console.log(`[PAYMENT_SERVICE] Processing event: ${event.title}, type: ${event.type}`);
+          
+          // Add to payment items
           paymentItems.push({
             id: eventDoc.id,
             title: event.title || 'Unnamed Event',
             description: event.description || '',
-            amountDue: parseFloat(event.costPerPerson),
-            totalCost: event.totalCost ? parseFloat(event.totalCost) : undefined,
+            amountDue: parseFloat(event.costPerPerson.toString()),
+            totalCost: event.totalCost ? parseFloat(event.totalCost.toString()) : undefined,
             isPaid: isPaid,
             date: event.date,
-            type: 'event',
+            // Ensure we properly set the item type based on the event type
+            type: event.type === 'accommodation' ? 'accommodation' : 'event',
+            eventType: this.validateEventType(event.type),            
             optional: !!event.isOptional
           });
         }
@@ -106,6 +116,26 @@ export class PaymentService {
       return [];
     }
   }
+
+  // Add this helper method to your PaymentService class:
+// Helper to validate event type
+private static validateEventType(type: string | undefined): 'party' | 'food' | 'activity' | 'other' | undefined {
+  if (!type) return undefined;
+  
+  // Check if the type is one of our valid types
+  if (['party', 'food', 'activity', 'other'].includes(type)) {
+    return type as 'party' | 'food' | 'activity' | 'other';
+  }
+  
+  // If type is 'accommodation', we'll still render that differently via the 'type' field
+  // so we can return 'other' for the eventType to satisfy TypeScript
+  if (type === 'accommodation') {
+    return 'other';
+  }
+  
+  // Default to 'other' for any unrecognized type
+  return 'other';
+}
 
   // Get all payments made by a specific user
   static async getUserPayments(groopId: string, userId: string): Promise<Payment[]> {
@@ -556,6 +586,7 @@ static async createDirectPayment(
       method: 'venmo' as PaymentMethod, // Default to Venmo for now
       notes: 'User reported payment was already made outside the app'
     };
+    
     
     // Add to Firestore
     const paymentRef = await addDoc(

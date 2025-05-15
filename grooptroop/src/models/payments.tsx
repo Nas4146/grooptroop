@@ -46,6 +46,7 @@ export interface PaymentItem {
   date?: string;
   paymentId?: string;
   type: PaymentType;
+  eventType?: 'party' | 'food' | 'activity' | 'other'; // Added for icon differentiation
   optional?: boolean;
 }
 
@@ -54,4 +55,22 @@ export interface PaymentSummary {
   totalOwed: number;
   totalPaid: number;
   remaining: number;
+}
+
+// Add this interface to your payments.tsx model file
+export interface EventData {
+  id: string;
+  title?: string;
+  description?: string;
+  date?: string;
+  time?: string;
+  isPaymentRequired?: boolean;
+  costPerPerson?: number;
+  totalCost?: number;
+  isPaid?: boolean;
+  type?: string;
+  isOptional?: boolean;
+  location?: string;
+  attendees?: number;
+  tags?: string[];
 }
