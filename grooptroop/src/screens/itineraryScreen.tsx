@@ -239,7 +239,7 @@ export default function ItineraryScreen() {
   // Make header collapse to a smaller size
   const headerHeight = scrollY.interpolate({
     inputRange: [0, 120],
-    outputRange: [150, 70],
+    outputRange: [180, 70], // Increased from 150 to 180 to allow for taller image
     extrapolate: 'clamp',
   });
 
@@ -296,24 +296,11 @@ export default function ItineraryScreen() {
           )}
         </View>
         
-        <View style={tw`flex-row justify-end px-4 mt-2`}>
-          <TouchableOpacity
-            style={tw`bg-gray-200 px-3 py-1 rounded-full flex-row items-center`}
-            onPress={async () => {
-              setLoading(true);
-              await ItineraryService.clearCache(currentGroop.id);
-              await fetchItinerary();
-            }}
-          >
-            <Ionicons name="refresh" size={14} color="#333" />
-            <Text style={tw`text-xs font-medium ml-1 text-gray-700`}>Refresh</Text>
-          </TouchableOpacity>
-        </View>
-        
         {/* Location image section */}
         {currentGroop.photoURL && (
           <View style={tw`items-center mt-3 mb-1`}>
-            <View style={tw`w-full h-20 rounded-lg overflow-hidden`}>
+            <View style={tw`w-full h-40 rounded-lg overflow-hidden`}>
+              {/* Changed h-20 to h-28 to make the image taller */}
               <Image
                 source={{ uri: currentGroop.photoURL }}
                 style={[tw`w-full h-full`, { resizeMode: 'cover' }]}
@@ -325,79 +312,88 @@ export default function ItineraryScreen() {
 
       {/* Quick access location info */}
       <View style={[
-        tw`mx-4 -mt-2 bg-white rounded-xl px-3 py-2.5 shadow-md`, 
+        tw`mx-4 -mt-2 bg-white rounded-xl px-3 py-3 shadow-md`, 
         {
           zIndex: 20,
           elevation: 4,
           position: 'relative',
         }
       ]}>
-<View style={tw`flex-row justify-between items-start mb-1`}>
-  <View>
-    <Text style={tw`font-bold text-neutral text-sm`}>Trip Home Base</Text>
-    
-    {/* Address information */}
-    <Text style={tw`text-gray-600 text-xs`}>{currentGroop?.accommodation?.address1 || 'Address not available'}</Text>
-    <Text style={tw`text-gray-600 text-xs`}>{currentGroop?.accommodation?.address2 || ''}</Text>
-  </View>
+        {/* Restructured layout to handle long addresses better */}
+        <View style={tw`flex-row items-start mb-2`}>
+          <View style={tw`flex-1 pr-3`}>
+            <Text style={tw`font-bold text-neutral text-sm`}>Trip Home Base</Text>
+            
+            {/* Address information - constrained width */}
+            <Text style={tw`text-gray-600 text-xs mt-0.5`} numberOfLines={2}>
+              {currentGroop?.accommodation?.address1 || 'Address not available'}
+            </Text>
+            {currentGroop?.accommodation?.address2 && (
+              <Text style={tw`text-gray-600 text-xs`}>
+                {currentGroop.accommodation.address2}
+              </Text>
+            )}
+          </View>
 
-  {/* Payment indicator moved to top right */}
-  <TouchableOpacity
-    style={tw`items-center`}
-    onPress={() => setAccommodationPaymentVisible(true)}
-  > 
-    <Ionicons 
-      name="card-outline" 
-      size={14} 
-      color={currentGroop?.accommodation?.isPaid ? "#22c55e" : "#f59e0b"} 
-      style={tw`mb-0.5 self-center`} 
-    />
-    <View style={tw`bg-gray-100 rounded-full px-2.5 py-1 flex-row items-center`}>
-      <View style={tw`h-4 w-4 rounded-full ${currentGroop?.accommodation?.isPaid ? 'bg-green-500' : 'bg-amber-500'} mr-1.5`} />
-      <Text style={tw`text-xs font-medium ${currentGroop?.accommodation?.isPaid ? 'text-green-700' : 'text-gray-700'}`}>
-        ${currentGroop?.accommodation?.costPerPerson || 0}
-      </Text>
-    </View>
-  </TouchableOpacity>
-</View>
+          {/* Payment indicator as a separate column */}
+          <View style={tw`items-center`}>
+            <TouchableOpacity
+              style={tw`items-center`}
+              onPress={() => setAccommodationPaymentVisible(true)}
+            > 
+              <Ionicons 
+                name="card-outline" 
+                size={14} 
+                color={currentGroop?.accommodation?.isPaid ? "#22c55e" : "#f59e0b"} 
+                style={tw`mb-0.5 self-center`} 
+              />
+              <View style={tw`bg-gray-100 rounded-full px-2.5 py-1 flex-row items-center`}>
+                <View style={tw`h-4 w-4 rounded-full ${currentGroop?.accommodation?.isPaid ? 'bg-green-500' : 'bg-amber-500'} mr-1.5`} />
+                <Text style={tw`text-xs font-medium ${currentGroop?.accommodation?.isPaid ? 'text-green-700' : 'text-gray-700'}`}>
+                  ${currentGroop?.accommodation?.costPerPerson || 0}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
             
         {/* Reorganized and centered button row: Copy, View Map, Message Group */}
         <View style={tw`flex-row justify-start mt-1.5`}>
-  {/* Copy button with visual feedback */}
-  <TouchableOpacity 
-    style={tw`bg-gray-100 rounded-lg px-2.5 py-0.5 flex-row items-center mr-2`}
-    onPress={() => {
-      try {
-        // Use the correct address field from accommodation data
-        const address = currentGroop?.accommodation?.address1 || 'Address not available';
-        console.log('[ITINERARY] Copying address:', address);
-        
-        Clipboard.setString(address);
-        
-        // Show visual feedback instead of Alert
-        setAddressCopied(true);
-        
-        // Reset after 2 seconds
-        setTimeout(() => {
-          setAddressCopied(false);
-        }, 2000);
-      } catch (error) {
-        console.error('[ITINERARY] Failed to copy address:', error);
-        Alert.alert('Error', 'Could not copy the address to clipboard');
-      }
-    }}
-  >
-    <Ionicons 
-      name={addressCopied ? "checkmark" : "copy-outline"} 
-      size={12} 
-      color={addressCopied ? "#22c55e" : "#1F2937"} 
-    />
-    <Text 
-      style={tw`text-xs ${addressCopied ? 'text-green-600 font-medium' : 'text-neutral'} ml-1`}
-    >
-      {addressCopied ? 'Copied' : 'Copy'}
-    </Text>
-  </TouchableOpacity>
+          {/* Copy button with visual feedback */}
+          <TouchableOpacity 
+            style={tw`bg-gray-100 rounded-lg px-2.5 py-0.5 flex-row items-center mr-2`}
+            onPress={() => {
+              try {
+                // Use the correct address field from accommodation data
+                const address = currentGroop?.accommodation?.address1 || 'Address not available';
+                console.log('[ITINERARY] Copying address:', address);
+                
+                Clipboard.setString(address);
+                
+                // Show visual feedback instead of Alert
+                setAddressCopied(true);
+                
+                // Reset after 2 seconds
+                setTimeout(() => {
+                  setAddressCopied(false);
+                }, 2000);
+              } catch (error) {
+                console.error('[ITINERARY] Failed to copy address:', error);
+                Alert.alert('Error', 'Could not copy the address to clipboard');
+              }
+            }}
+          >
+            <Ionicons 
+              name={addressCopied ? "checkmark" : "copy-outline"} 
+              size={12} 
+              color={addressCopied ? "#22c55e" : "#1F2937"} 
+            />
+            <Text 
+              style={tw`text-xs ${addressCopied ? 'text-green-600 font-medium' : 'text-neutral'} ml-1`}
+            >
+              {addressCopied ? 'Copied' : 'Copy'}
+            </Text>
+          </TouchableOpacity>
           
           {/* View Map button */}
           <TouchableOpacity 
