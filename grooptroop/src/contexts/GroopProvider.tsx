@@ -1,6 +1,8 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { useAuth } from './AuthProvider';
 import { GroopService, Groop } from '../services/GroopService';
+import { db } from '../lib/firebase'; 
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 
 interface GroopContextType {
   currentGroop: Groop | null;
@@ -111,6 +113,41 @@ const isMember = !!currentGroop && !!profile &&
       setIsLoading(false);
     }
   };
+
+  // Add this to your fetchGroopDetails function or similar
+const fetchAccommodation = async (groopId: string) => {
+  try {
+    const accommodationRef = collection(db, 'groops', groopId, 'accommodation');
+    const snapshot = await getDocs(accommodationRef);
+    
+    if (!snapshot.empty) {
+      // Get the first document in the accommodation collection
+      const accommodationData = snapshot.docs[0].data();
+      
+      // Update the currentGroop with accommodation data
+      setCurrentGroop(prev => prev ? {
+        ...prev,
+        accommodation: {
+          ...accommodationData,
+          isPaid: false // Set this based on payment status if needed
+        }
+      } : null);
+      
+      console.log('[GROOP] Loaded accommodation data:', accommodationData);
+    } else {
+      console.log('[GROOP] No accommodation data found');
+    }
+  } catch (error) {
+    console.error('[GROOP] Error fetching accommodation:', error);
+  }
+};
+
+// Call this after setting the current groop
+useEffect(() => {
+  if (currentGroop?.id) {
+    fetchAccommodation(currentGroop.id);
+  }
+}, [currentGroop?.id]);
 
   return (
     <GroopContext.Provider 

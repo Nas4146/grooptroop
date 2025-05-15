@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Animated, TouchableOpacity, Linking, Image, Platform, KeyboardAvoidingView } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Animated, TouchableOpacity, Linking, Image, Platform, KeyboardAvoidingView, Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,6 +29,7 @@ export default function ItineraryScreen() {
   const [totalPaid, setTotalPaid] = useState(0);
   const [totalTripCost, setTotalTripCost] = useState(0);
   const { profile } = useAuth();
+  const [addressCopied, setAddressCopied] = useState(false);
 
   useEffect(() => {
     fetchUserGroops();
@@ -362,25 +363,60 @@ export default function ItineraryScreen() {
             
         {/* Reorganized and centered button row: Copy, View Map, Message Group */}
         <View style={tw`flex-row justify-start mt-1.5`}>
-  {/* Copy button */}
+  {/* Copy button with visual feedback */}
   <TouchableOpacity 
     style={tw`bg-gray-100 rounded-lg px-2.5 py-0.5 flex-row items-center mr-2`}
     onPress={() => {
-      const address = `${currentGroop?.accommodation?.address1 || ''}, ${currentGroop?.accommodation?.address2 || ''}`.trim();
-      Clipboard.setString(address);
+      try {
+        // Use the correct address field from accommodation data
+        const address = currentGroop?.accommodation?.address1 || 'Address not available';
+        console.log('[ITINERARY] Copying address:', address);
+        
+        Clipboard.setString(address);
+        
+        // Show visual feedback instead of Alert
+        setAddressCopied(true);
+        
+        // Reset after 2 seconds
+        setTimeout(() => {
+          setAddressCopied(false);
+        }, 2000);
+      } catch (error) {
+        console.error('[ITINERARY] Failed to copy address:', error);
+        Alert.alert('Error', 'Could not copy the address to clipboard');
+      }
     }}
   >
-    <Ionicons name="copy-outline" size={12} color="#1F2937" />
-    <Text style={tw`text-xs text-neutral ml-1`}>Copy</Text>
+    <Ionicons 
+      name={addressCopied ? "checkmark" : "copy-outline"} 
+      size={12} 
+      color={addressCopied ? "#22c55e" : "#1F2937"} 
+    />
+    <Text 
+      style={tw`text-xs ${addressCopied ? 'text-green-600 font-medium' : 'text-neutral'} ml-1`}
+    >
+      {addressCopied ? 'Copied' : 'Copy'}
+    </Text>
   </TouchableOpacity>
           
           {/* View Map button */}
           <TouchableOpacity 
             style={tw`bg-gray-100 rounded-lg px-2.5 py-0.5 flex-row items-center mr-2`}
             onPress={() => {
-              const mapUrl = currentGroop?.accommodation?.mapUrl || 
-                `https://maps.google.com/?q=${encodeURIComponent(currentGroop?.accommodation?.address1 || '')},${encodeURIComponent(currentGroop?.accommodation?.city || '')}`;
-              Linking.openURL(mapUrl);
+              if (currentGroop?.accommodation?.address1) {
+                // Get the address
+                const address = currentGroop.accommodation.address1;
+                console.log('[ITINERARY] Address to open in maps:', address);
+                
+                // Always use the actual address from accommodation data to construct the URL
+                const encodedAddress = encodeURIComponent(address);
+                const mapUrl = `https://maps.google.com/?q=${encodedAddress}`;
+                
+                console.log('[ITINERARY] Opening map with URL:', mapUrl);
+                Linking.openURL(mapUrl);
+              } else {
+                Alert.alert('No Address', 'No address information available for this accommodation');
+              }
             }}
           >
             <Ionicons name="map" size={12} color="#1F2937" />

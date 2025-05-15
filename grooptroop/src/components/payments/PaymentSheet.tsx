@@ -491,60 +491,63 @@ const handleAlreadyPaid = async () => {
           </TouchableOpacity>
         )}
 
-        {/* I Already Paid option - MOVED below other payment options */}
+        {/* I Already Paid option - styled to look less prominent */}
         <TouchableOpacity
-          style={tw`flex-row items-center border-2 rounded-lg py-4 px-5 mb-3`}
+          style={tw`flex-row items-center border border-gray-200 rounded-lg py-4 px-5 mb-3`}
           onPress={handleAlreadyPaid}
           disabled={loading}
         >
-          <View style={tw`h-6 w-6 rounded-full items-center justify-center mr-3`}>
-            <Ionicons name="checkmark" size={18} color="#4F46E5" />
+          <View style={tw`h-6 w-6 rounded-full bg-gray-50 items-center justify-center mr-3`}>
+            <Ionicons name="checkmark" size={18} color="#9CA3AF" />
           </View>
-          <Text style={tw`text-indigo-600 font-bold flex-grow`}>I Already Paid</Text>
-          <Ionicons name="arrow-forward" size={18} color="#4F46E5" />
-        </TouchableOpacity>
+          <Text style={tw`text-gray-500 font-medium flex-grow`}>I Already Paid</Text>
+          {loading ? (
+    <ActivityIndicator size="small" color="#9CA3AF" />
+  ) : (
+    <Ionicons name="arrow-forward" size={18} color="#9CA3AF" />
+  )}
+</TouchableOpacity>
       </View>
     );
   };
 
   return (
     <Modal
+      transparent
+      animationType="slide"
       visible={visible}
-      transparent={true}
-      animationType="none"
       onRequestClose={handleCloseModal}
     >
       <View style={styles.overlay}>
-        <Animated.View
-          style={[
-            styles.contentContainer,
-            {
-              transform: [
-                {
-                  translateY: slideAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [300, 0],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          {/* Header */}
-          <View style={tw`border-b border-slate-200 px-5 py-4 flex-row justify-between items-center`}>
-            <Text style={tw`text-lg font-bold text-slate-800`}>{title}</Text>
-            <TouchableOpacity onPress={handleCloseModal}>
-              <Ionicons name="close" size={24} color="#64748b" />
-            </TouchableOpacity>
+        <Animated.View style={[styles.contentContainer, { transform: [{ translateY: slideAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [500, 0],
+          extrapolate: 'clamp'
+        }) }] }]}>
+          <View style={tw`p-4 border-b`}>
+            <Text style={tw`text-lg font-semibold text-center`}>
+              {title}
+            </Text>
           </View>
-
-          {/* Content - use the renderContent function */}
+          
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
             style={tw`flex-1`}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={100} // Adjust based on your header height
           >
-            {renderContent()}
+            <View style={tw`flex-1 p-4`}>
+              {/* Render the appropriate content based on payment status */}
+              {renderContent()}
+            </View>
           </KeyboardAvoidingView>
+          
+          {/* Close button */}
+          <TouchableOpacity
+            style={tw`absolute top-4 right-4`}
+            onPress={handleCloseModal}
+          >
+            <Ionicons name="close" size={24} color="#333" />
+          </TouchableOpacity>
         </Animated.View>
       </View>
     </Modal>
