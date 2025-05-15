@@ -42,6 +42,10 @@
     </array>
     <key>CFBundleVersion</key>
     <string>1.0.0</string>
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+      <string>venmo</string>
+    </array>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSRequiresIPhoneOS</key>
