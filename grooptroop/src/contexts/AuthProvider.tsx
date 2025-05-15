@@ -17,11 +17,12 @@ import { KeyExchangeService } from '../services/KeyExchangeService';
 import { NotificationService } from '../services/NotificationService';
 import { arrayUnion, serverTimestamp } from 'firebase/firestore';
 
-export interface UserAvatar {
-  type: 'initial' | 'image' | 'bitmoji';
-  value: string; // URL for image/bitmoji, or initials for type 'initial'
-  color?: string; // Background color for initials avatar
-}
+// Add to your existing UserAvatar type
+export type UserAvatar = 
+  | { type: 'initial'; value: string; color: string }
+  | { type: 'image'; value: string }
+  | { type: 'bitmoji'; value: string }
+  | { type: 'dicebear'; value: string; style: string; seed: string; params?: Record<string, any> };
 
 // Define our user type to include Firestore profile data
 export interface UserProfile {

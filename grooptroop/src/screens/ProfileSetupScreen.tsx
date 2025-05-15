@@ -21,18 +21,25 @@ import { UserAvatar } from '../contexts/AuthProvider';
 import { storage, db } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { doc, updateDoc } from 'firebase/firestore';
-import { AvatarService, AVATAR_COLORS } from '../services/AvatarService';
+import { AvatarService, AVATAR_COLORS, DICEBEAR_STYLES } from '../services/AvatarService';
 import BitmojiAvatar from '../components/avatar/BitmojiAvatar';
+import DiceBearSelector from '../components/avatar/DiceBearSelector';
+import DiceBearInlineCustomizer from '../components/avatar/DiceBearInlineCustomizer';
+import tw from 'twrnc';
 
 export default function ProfileSetupScreen({ navigation }: { navigation: any }) {
   const { user, profile, refreshProfile } = useAuth();
   const [displayName, setDisplayName] = useState('');
-  const [selectedAvatarType, setSelectedAvatarType] = useState<'initial' | 'bitmoji'>('initial');  
+  const [selectedAvatarType, setSelectedAvatarType] = useState<'initial' | 'bitmoji' | 'dicebear'>('initial');  
   const [selectedColor, setSelectedColor] = useState(AVATAR_COLORS[0]);
   const [avatarImage, setAvatarImage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bitmojiUrl, setBitmojiUrl] = useState<string | null>(null);
+  const [dicebearStyle, setDicebearStyle] = useState(DICEBEAR_STYLES[0].id);
+  const [dicebearSeed, setDicebearSeed] = useState('');
+  const [dicebearParams, setDicebearParams] = useState<Record<string, any>>({});
+  const [dicebearUrl, setDicebearUrl] = useState<string | null>(null);
   const [avatarContainerHeight] = useState(new Animated.Value(120));
   const prevAvatarType = useRef(selectedAvatarType);
   
@@ -62,45 +69,54 @@ export default function ProfileSetupScreen({ navigation }: { navigation: any }) 
     };
   }, [user, profile]);
 
-  useEffect(() => {
-    if (selectedAvatarType !== prevAvatarType.current) {
-      console.log('[PROFILE_SETUP] Avatar type changed, animating container');
-      
-      // Target height based on avatar type - increase for bitmoji to give more space
-      const targetHeight = selectedAvatarType === 'bitmoji' ? 600 : 120; // Increased from 520 to 600
-      
-      Animated.timing(avatarContainerHeight, {
-        toValue: targetHeight,
-        duration: 500,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false
-      }).start();
-      
-      prevAvatarType.current = selectedAvatarType;
-    }
+  // Update the useEffect for avatar type changes
+useEffect(() => {
+  if (selectedAvatarType !== prevAvatarType.current) {
+    console.log('[PROFILE_SETUP] Avatar type changed, animating container');
     
-    if (selectedAvatarType === 'bitmoji' && bitmojiUrl) {
-      console.log('[PROFILE_SETUP] Bitmoji state updated - type:', selectedAvatarType, 'URL:', bitmojiUrl);
-    }
-  }, [selectedAvatarType, bitmojiUrl]);
-
-  const getAvatarTypeMessage = () => {
-    console.log('[PROFILE_SETUP] Getting message for avatar type:', selectedAvatarType);
+    // Further reduced heights
+    let targetHeight = 80; // default for 'initial'
     
     if (selectedAvatarType === 'bitmoji') {
-      const bitmojiMessages = [
-        "Choose a Bitmoji that matches your vibe ✌️",
-        "Pick a Bitmoji that feels like you 🔥",
-      ];
-      return bitmojiMessages[Math.floor(Math.random() * bitmojiMessages.length)];
-    } else {
-      const initialMessages = [
-        "Simple and clean with your initials 🌟",
-        "Keep it minimal with your initials ✨",
-      ];
-      return initialMessages[Math.floor(Math.random() * initialMessages.length)];
+      targetHeight = 400; // reduced from 450
+    } else if (selectedAvatarType === 'dicebear') {
+      targetHeight = 350; // reduced from 380
     }
-  };
+    
+    Animated.timing(avatarContainerHeight, {
+      toValue: targetHeight,
+      duration: 500,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false
+    }).start();
+    
+    prevAvatarType.current = selectedAvatarType;
+  }
+}, [selectedAvatarType]);
+
+  const getAvatarTypeMessage = () => {
+  console.log('[PROFILE_SETUP] Getting message for avatar type:', selectedAvatarType);
+  
+  if (selectedAvatarType === 'bitmoji') {
+    const bitmojiMessages = [
+      "Choose a Bitmoji that matches your vibe ✌️",
+      "Pick a Bitmoji that feels like you 🔥",
+    ];
+    return bitmojiMessages[Math.floor(Math.random() * bitmojiMessages.length)];
+  } else if (selectedAvatarType === 'dicebear') {
+    const dicebearMessages = [
+      "Create a custom avatar that represents you 🎨",
+      "Design your perfect avatar with many styles 🌈",
+    ];
+    return dicebearMessages[Math.floor(Math.random() * dicebearMessages.length)];
+  } else {
+    const initialMessages = [
+      "Simple and clean with your initials 🌟",
+      "Keep it minimal with your initials ✨",
+    ];
+    return initialMessages[Math.floor(Math.random() * initialMessages.length)];
+  }
+};
 
   const BitmojiSelector = () => {
     const [bitmojiOptions, setBitmojiOptions] = useState<string[]>([]);
@@ -192,70 +208,84 @@ export default function ProfileSetupScreen({ navigation }: { navigation: any }) 
       );
     };
     
-    return (
-      <Animated.View 
-        style={[
-          styles.bitmojiSelectorContainer, 
-          animatedStyles,
-          { paddingBottom: 20 } // Add extra padding at bottom
-        ]}
+  return (
+    <Animated.View 
+      style={[
+        tw`w-full mt-2 pb-4`,
+        animatedStyles
+      ]}
+    >
+      {/* Categories with reduced height */}
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        style={tw`pb-2`}
       >
-        {renderCategories()}
-        
-        {loading ? (
-          <View style={styles.bitmojiLoading}>
-            <ActivityIndicator color="#7C3AED" size="large" />
-            <Text style={styles.bitmojiLoadingText}>Loading avatars...</Text>
-          </View>
-        ) : (
-          <Animated.View 
-            style={[
-              styles.bitmojiGrid, 
-              { 
-                opacity: animation,
-                paddingBottom: 30 // Add padding to prevent last row from being cut off
-              }
-            ]}
-          >
-            {bitmojiOptions.map((url, index) => (
-              <TouchableOpacity
-                key={index}
-                style={[
-                  styles.bitmojiOption,
-                  selectedBitmojiIndex === index && styles.selectedBitmojiOption,
-                  { marginBottom: 25 } // Increase spacing between rows
-                ]}
-                onPress={() => handleBitmojiSelect(url, index)}
-              >
-                <Image
-                  source={{ uri: url }}
-                  style={styles.bitmojiImage}
-                  onError={(e) => console.error(`[BITMOJI_SELECTOR] Image load error for index ${index}:`, e.nativeEvent.error)}
-                />
-                {selectedBitmojiIndex === index && (
-                  <View style={styles.bitmojiSelectedOverlay}>
-                    <Ionicons name="checkmark-circle" size={24} color="#7C3AED" />
-                  </View>
-                )}
-              </TouchableOpacity>
-            ))}
-          </Animated.View>
+        {['✨ Trending', '🔥 Fire', '🤩 Vibing', '😎 Cool', '💅 Aesthetic'].map(
+          (category, index) => (
+            <TouchableOpacity 
+              key={index} 
+              style={tw`px-3 py-1.5 bg-slate-100 rounded-full mr-2 border border-slate-200`}
+              onPress={() => {
+                console.log(`[BITMOJI_SELECTOR] Selected category: ${category}`);
+                loadBitmojiOptions();
+              }}
+            >
+              <Text style={tw`text-xs font-medium text-slate-700`}>{category}</Text>
+            </TouchableOpacity>
+          )
         )}
-      </Animated.View>
-    );
-  };
+      </ScrollView>
+      
+      {/* Loading state or grid */}
+      {loading ? (
+        <View style={tw`h-40 justify-center items-center`}>
+          <ActivityIndicator color="#7C3AED" size="large" />
+          <Text style={tw`mt-3 text-sm text-slate-500`}>Loading avatars...</Text>
+        </View>
+      ) : (
+        <View style={tw`flex-row flex-wrap justify-around mt-2 px-1 pb-2`}>
+          {bitmojiOptions.map((url, index) => (
+            <TouchableOpacity
+              key={index}
+              style={[
+                tw`w-[30%] aspect-square mb-3 rounded-xl overflow-hidden border bg-slate-50 mx-1`,
+                selectedBitmojiIndex === index ? tw`border-2 border-violet-600` : tw`border-slate-200`
+              ]}
+              onPress={() => handleBitmojiSelect(url, index)}
+            >
+              <Image
+                source={{ uri: url }}
+                style={tw`w-full h-full`}
+                resizeMode="contain"
+                onError={(e) => console.error(`[BITMOJI_SELECTOR] Image load error for index ${index}:`, e.nativeEvent.error)}
+              />
+              {selectedBitmojiIndex === index && (
+                <View style={tw`absolute inset-0 bg-violet-500/10 justify-center items-center`}>
+                  <Ionicons name="checkmark-circle" size={24} color="#7C3AED" />
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </Animated.View>
+  );
+};
 
-  const openBitmojiPicker = () => {
-    console.log('[PROFILE_SETUP] Switching to bitmoji avatar type');
-    setSelectedAvatarType('bitmoji');
-    
-    // If no bitmoji is selected yet, pre-select one
-    if (!bitmojiUrl) {
-      console.log('[PROFILE_SETUP] No bitmoji selected yet, selecting default');
-      const defaultBitmoji = AvatarService.getPlaceholderBitmojiUrl();
-      setBitmojiUrl(defaultBitmoji);
-    }
-  };
+// Handler for bitmoji picker
+const openBitmojiPicker = () => {
+  console.log('[PROFILE_SETUP] Switching to bitmoji avatar type');
+  setSelectedAvatarType('bitmoji');
+  
+  // If no bitmoji is selected yet, pre-select one
+  if (!bitmojiUrl) {
+    console.log('[PROFILE_SETUP] No bitmoji selected yet, selecting default');
+    const defaultBitmoji = AvatarService.getPlaceholderBitmojiUrl();
+    setBitmojiUrl(defaultBitmoji);
+  }
+};
+  
 
   // Upload avatar image to Firebase Storage
   const uploadAvatarImage = async (uri: string): Promise<string> => {
@@ -315,6 +345,11 @@ export default function ProfileSetupScreen({ navigation }: { navigation: any }) 
       } else if (selectedAvatarType === 'bitmoji' && bitmojiUrl) {
         console.log('[PROFILE_SETUP] Creating bitmoji avatar');
         userAvatar = AvatarService.createBitmojiAvatar(bitmojiUrl);
+      } else if (selectedAvatarType === 'dicebear' && dicebearSeed) {
+        console.log('[PROFILE_SETUP] Creating DiceBear avatar');
+        
+        // Use the AvatarService to create the DiceBear avatar
+        userAvatar = AvatarService.createDiceBearAvatar(dicebearSeed, dicebearStyle, dicebearParams);
       } else {
         console.log('[PROFILE_SETUP] Creating initial avatar via AvatarService');
         userAvatar = AvatarService.createInitialAvatar(displayName, selectedColor);
@@ -375,12 +410,47 @@ export default function ProfileSetupScreen({ navigation }: { navigation: any }) 
     }
   };
 
+  // Handler for DiceBear avatar changes
+  const handleDiceBearAvatarChange = (seed: string, style: string, params: Record<string, any>, url: string) => {
+    console.log('[PROFILE_SETUP] DiceBear avatar changed:', { seed, style });
+    setDicebearSeed(seed);
+    setDicebearStyle(style);
+    setDicebearParams(params);
+    setDicebearUrl(url);
+  };
+  
+  // Picker for DiceBear avatars
+  const openDiceBearPicker = () => {
+    console.log('[PROFILE_SETUP] Opening DiceBear avatar picker');
+    setSelectedAvatarType('dicebear');
+    
+    // If no DiceBear URL yet, create one with displayName as seed
+    if (!dicebearUrl) {
+      const seed = displayName.toLowerCase().replace(/\s+/g, '-') || 'user-' + Math.floor(Math.random() * 10000);
+      setDicebearSeed(seed);
+    }
+  };
+
   // Helper function to get avatar preview
   const getAvatarPreview = () => {
     console.log('[PROFILE_SETUP] Getting avatar preview for type:', selectedAvatarType);
     
+    // For DiceBear type
+    if (selectedAvatarType === 'dicebear') {
+      return (
+        <View style={tw`w-full items-center pt-0`}>
+          <DiceBearInlineCustomizer
+            initialSeed={dicebearSeed}
+            initialStyle={dicebearStyle}
+            initialParams={dicebearParams}
+            onAvatarChange={handleDiceBearAvatarChange}
+          />
+        </View>
+      );
+    }
+    
     // For Bitmoji type
-    if (selectedAvatarType === 'bitmoji') {
+    else if (selectedAvatarType === 'bitmoji') {
       // If we have a selected bitmoji, show it at the top of the selector
       const selectedPreview = bitmojiUrl ? (
         <View style={[styles.selectedBitmojiPreview, { marginBottom: 30 }]}>
@@ -414,29 +484,28 @@ export default function ProfileSetupScreen({ navigation }: { navigation: any }) 
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={tw`flex-1 bg-slate-50`}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.container}
+        style={tw`flex-1`}
       >
         <ScrollView 
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={tw`flex-grow px-4 pt-1 pb-6`}
           showsVerticalScrollIndicator={true}
-          scrollEventThrottle={16}
-          removeClippedSubviews={false} // Important to prevent clipping
-          keyboardShouldPersistTaps="handled" // Helps with keyboard interactions
+          keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.header}>
-            <Text style={styles.title}>Set Up Your Profile</Text>
-            <Text style={styles.subtitle}>{getAvatarTypeMessage()}</Text>         
+          {/* Header with reduced margins */}
+          <View style={tw`items-center mb-3`}>
+            <Text style={tw`text-xl font-bold text-slate-800 mb-1`}>Set Up Your Profile</Text>
+            <Text style={tw`text-xs text-slate-500 text-center max-w-[90%]`}>{getAvatarTypeMessage()}</Text>         
           </View>
-          
+            
           {/* Profile Setup Form */}
-          <View style={styles.formSection}>
+          <View style={tw`bg-white rounded-xl p-4 shadow-sm border border-indigo-50`}>
             {/* Display Name Input */}
-            <Text style={styles.label}>Display Name</Text>
+            <Text style={tw`text-sm font-semibold text-slate-700 mb-1.5`}>Display Name</Text>
             <TextInput
-              style={styles.input}
+              style={tw`border border-slate-200 rounded-lg py-2.5 px-3 text-base mb-4 bg-slate-50 border-l-2 border-l-violet-600`}
               value={displayName}
               onChangeText={setDisplayName}
               placeholder="Enter your name"
@@ -445,12 +514,12 @@ export default function ProfileSetupScreen({ navigation }: { navigation: any }) 
             />
             
             {/* Avatar Preview */}
-            <Text style={styles.label}>Your Avatar</Text>
+            <Text style={tw`text-sm font-semibold text-slate-700 mb-1.5`}>Your Avatar</Text>
             <Animated.View 
               style={[
-                styles.avatarPreviewContainer, 
+                tw`items-center justify-start my-2 py-1`,
                 { 
-                  minHeight: selectedAvatarType === 'bitmoji' ? 520 : 120, // Use minHeight instead of height to allow expansion
+                  minHeight: selectedAvatarType === 'bitmoji' ? 450 : 100,
                   height: avatarContainerHeight,
                   overflow: selectedAvatarType === 'bitmoji' ? 'visible' : 'hidden'
                 }
@@ -460,29 +529,35 @@ export default function ProfileSetupScreen({ navigation }: { navigation: any }) 
             </Animated.View>
             
             {/* Avatar Type Selection */}
-            <View style={styles.avatarTypeContainer}>
+            <View style={tw`flex-row justify-between mb-4`}>
               <TouchableOpacity
                 style={[
-                  styles.avatarTypeButton,
-                  selectedAvatarType === 'bitmoji' && styles.selectedAvatarType
+                  tw`flex-1 items-center justify-center py-2.5 rounded-lg border mx-1`,
+                  selectedAvatarType === 'bitmoji' 
+                    ? tw`border-violet-600 bg-violet-50 shadow` 
+                    : tw`border-slate-200 bg-slate-50`
                 ]}
                 onPress={openBitmojiPicker}
               >
                 <Ionicons 
                   name="happy-outline" 
-                  size={24} 
+                  size={22} 
                   color={selectedAvatarType === 'bitmoji' ? '#7C3AED' : '#666'} 
                 />
                 <Text style={[
-                  styles.avatarTypeText,
-                  selectedAvatarType === 'bitmoji' && styles.selectedAvatarTypeText
+                  tw`mt-1 text-xs`,
+                  selectedAvatarType === 'bitmoji' 
+                    ? tw`text-violet-600 font-semibold` 
+                    : tw`text-slate-500`
                 ]}>Bitmoji</Text>
               </TouchableOpacity>
               
               <TouchableOpacity
                 style={[
-                  styles.avatarTypeButton,
-                  selectedAvatarType === 'initial' && styles.selectedAvatarType
+                  tw`flex-1 items-center justify-center py-2.5 rounded-lg border mx-1`,
+                  selectedAvatarType === 'initial' 
+                    ? tw`border-violet-600 bg-violet-50 shadow` 
+                    : tw`border-slate-200 bg-slate-50`
                 ]}
                 onPress={() => {
                   console.log('[PROFILE_SETUP] Selecting initial avatar type');
@@ -492,32 +567,56 @@ export default function ProfileSetupScreen({ navigation }: { navigation: any }) 
               >
                 <Ionicons 
                   name="text" 
-                  size={24} 
+                  size={22} 
                   color={selectedAvatarType === 'initial' ? '#7C3AED' : '#666'} 
                 />
                 <Text style={[
-                  styles.avatarTypeText,
-                  selectedAvatarType === 'initial' && styles.selectedAvatarTypeText
+                  tw`mt-1 text-xs`,
+                  selectedAvatarType === 'initial' 
+                    ? tw`text-violet-600 font-semibold` 
+                    : tw`text-slate-500`
                 ]}>Initial</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  tw`flex-1 items-center justify-center py-2.5 rounded-lg border mx-1`,
+                  selectedAvatarType === 'dicebear' 
+                    ? tw`border-violet-600 bg-violet-50 shadow` 
+                    : tw`border-slate-200 bg-slate-50`
+                ]}
+                onPress={openDiceBearPicker}
+              >
+                <Ionicons 
+                  name="person" 
+                  size={22} 
+                  color={selectedAvatarType === 'dicebear' ? '#7C3AED' : '#666'} 
+                />
+                <Text style={[
+                  tw`mt-1 text-xs`,
+                  selectedAvatarType === 'dicebear' 
+                    ? tw`text-violet-600 font-semibold` 
+                    : tw`text-slate-500`
+                ]}>3D Style</Text>
               </TouchableOpacity>
             </View>
             
             {/* Color Picker for Initial Avatar */}
             {selectedAvatarType === 'initial' && (
-              <View style={styles.colorPickerContainer}>
-                <Text style={styles.colorLabel}>Choose Color</Text>
+              <View style={tw`my-1`}>
+                <Text style={tw`text-xs text-slate-500 mb-1.5`}>Choose Color</Text>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.colorPickerScroll}
+                  style={tw`py-1`}
                 >
                   {AVATAR_COLORS.map((color) => (
                     <TouchableOpacity
                       key={color}
                       style={[
-                        styles.colorOption,
+                        tw`w-8 h-8 rounded-full mr-3`,
                         { backgroundColor: color },
-                        selectedColor === color && styles.selectedColorOption
+                        selectedColor === color ? tw`border-2 border-slate-800` : {}
                       ]}
                       onPress={() => setSelectedColor(color)}
                     />
@@ -528,24 +627,24 @@ export default function ProfileSetupScreen({ navigation }: { navigation: any }) 
           </View>
           
           {/* Action Buttons */}
-          <View style={styles.buttonContainer}>
+          <View style={tw`flex-row justify-between mt-3`}>
             <TouchableOpacity 
-              style={styles.skipButton}
+              style={tw`flex-1 py-2.5 px-4 rounded-lg items-center justify-center bg-slate-50 border border-slate-200 mr-2`}
               onPress={skipSetup}
               disabled={isSubmitting}
             >
-              <Text style={styles.skipButtonText}>Skip for Now</Text>
+              <Text style={tw`text-slate-500 text-sm font-medium`}>Skip for Now</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
-              style={styles.saveButton}
+              style={tw`flex-1.5 py-2.5 px-4 rounded-lg items-center justify-center bg-violet-600 shadow-sm`}
               onPress={saveProfile}
               disabled={isSubmitting || !displayName.trim()}
             >
               {isSubmitting ? (
                 <ActivityIndicator color="white" size="small" />
               ) : (
-                <Text style={styles.saveButtonText}>Save Profile</Text>
+                <Text style={tw`text-white text-sm font-semibold`}>Save Profile</Text>
               )}
             </TouchableOpacity>
           </View>

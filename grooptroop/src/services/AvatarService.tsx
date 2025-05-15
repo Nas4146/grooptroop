@@ -17,6 +17,79 @@ export const AVATAR_COLORS = [
   '#FB5607', // Orange - adventurous
 ];
 
+// Update the DiceBear style options with more diverse options
+
+export const DICEBEAR_STYLES = [
+  { id: 'bottts', name: '🤖 Robots', description: 'Unique robot characters' },
+  { id: 'avataaars', name: '👤 People', description: 'Customizable human avatars' },
+  { id: 'micah', name: '👥 Abstract', description: 'Simple, diverse human faces' },
+  { id: 'lorelei', name: '🧒 Chibi', description: 'Cute chibi-style avatars' },
+  { id: 'miniavs', name: '😎 MiniAvs', description: '3D emoji characters' },
+  { id: 'personas', name: '🌈 Personas', description: 'Diverse human faces' },
+  { id: 'notionists', name: '💼 Professional', description: 'Professional look' },
+  { id: 'pixel-art', name: '🎮 Pixel', description: 'Retro pixel style' },
+  { id: 'croodles', name: '✏️ Doodles', description: 'Hand-drawn style' },
+  { id: 'thumbs', name: '👍 Thumbs', description: 'Unique thumbs up avatars' },
+];
+
+// Available style-specific parameters
+export const STYLE_PARAMETERS = {
+  bottts: {
+    // Robot colors
+    primaryColor: ['663399', '2a4b8d', '6d3e91', '1e1e1e', '3498db', '9b59b6', 'e74c3c', '2ecc71', 'f39c12'],
+    backgroundColor: ['b6e3f4', 'c0aede', 'd1d4f9', 'ffd5dc', 'ffdfbf', '1d3557', 'f28123', '4169e1', '006d77'],
+    textureChance: [0, 50, 100] // Chance of texture overlay
+  },
+  miniavs: {
+    // Human styles
+    skinColor: ['8d5524', 'c68642', 'e0ac69', 'f1c27d', 'ffdbac', '4a312c', 'aa8976', '6b4423', '2d170b'],
+    hairColor: ['000000', '6a4e42', '977961', '090806', '694013', 'e6be8a', 'f8e8b7', '774411', 'c2c2c2'],
+    backgroundColor: ['b6e3f4', 'c0aede', 'd1d4f9', 'ffd5dc', 'ffdfbf', '1d3557', 'f28123', '4169e1']
+  },
+  lorelei: {
+    // High variety of skin tones
+    skinColor: ['ca9e72', 'e5b39a', 'f5d0b5', '4a312c', '6b4423', '2d170b', '8d5524', 'c68642', 'e0ac69'],
+    shapeColor: ['0a5b83', '1c799f', '69d2e7', 'a7e8f8', 'e0f8ff', '2a4b8d', '3498db'],
+    backgroundColor: ['b6e3f4', 'c0aede', 'd1d4f9', 'ffd5dc', 'ffdfbf', '1d3557', 'f28123', '4169e1']
+  },
+  avataaars: {
+    // Most diverse options
+    skinColor: ['614335', 'd08b5b', 'ae5d29', 'edb98a', 'ffdbb4', 'fd9841', 'f8d25c', '86a8e7'],
+    hairColor: ['2c1b18', 'a55728', 'b58143', 'c93305-1', 'e8e1e1', '6a4e42', 'c93305-2', 'd4a181'],
+    backgroundColor: ['b6e3f4', 'c0aede', 'd1d4f9', 'ffd5dc', 'ffdfbf', '65c9ff', 'ffedef', '69d2e7'],
+    topType: ['longHair', 'shortHair', 'eyepatch', 'hat', 'hijab', 'turban', 'bigHair', 'bob', 'bun'],
+    accessoriesType: ['blank', 'kurt', 'prescription01', 'prescription02', 'round', 'sunglasses', 'wayfarers'],
+    facialHairType: ['blank', 'beardMedium', 'beardLight', 'beardMajestic', 'moustacheFancy', 'moustacheMagnum'],
+    clotheType: ['blazerShirt', 'blazerSweater', 'collarSweater', 'graphicShirt', 'hoodie', 'overall', 'shirtCrewNeck']
+  },
+  micah: {
+    // Abstract style with diverse colors
+    baseColor: ['0e0e0e', 'ffb300', 'd3a588', '73513c', '4c3228', '5c4444', 'ffdbb4', 'edb98a'],
+    earringsProbability: [0, 50, 100],
+    glassesProbability: [0, 50, 100],
+    hairColor: ['0e0e0e', '4c3228', 'ac6511', 'dc8e24', 'afafaf', 'ff9100', 'ffb300', 'ffffff'],
+    backgroundColor: ['26a4ff', 'ffc10e', 'fb765e', '48ad8e', '9368e3', 'fa80bc', '89e24e']
+  },
+  'pixel-art': {
+    // Pixel characters with diverse options
+    backgroundColor: ['b6e3f4', 'c0aede', 'd1d4f9', 'ffd5dc', 'ffdfbf', '1d3557', 'f28123', '4169e1'],
+    body: [1, 2, 3, 4],
+    skinColor: ['ffcab9', 'f8b788', 'e7975f', 'd47d4a', 'ae5d29', '8c4922', '573218']
+  },
+  personas: {
+    // New persona style - diverse and inclusive
+    backgroundColor: ['b6e3f4', 'c0aede', 'd1d4f9', 'ffd5dc', 'ffdfbf', '1d3557', 'f28123', '4169e1'],
+    skinColor: ['614335', 'd08b5b', 'ae5d29', 'edb98a', 'ffdbb4', 'fd9841', 'f8d25c', '86a8e7'],
+    hairColor: ['2c1b18', 'a55728', 'b58143', 'c93305-1', 'e8e1e1', '6a4e42', 'c93305-2', 'd4a181']
+  },
+  notionists: {
+    // Professional and clean style
+    backgroundColor: ['f5f5f5', 'eeeeee', 'e0e0e0', 'bdbdbd', '9e9e9e', '757575'],
+    skinColor: ['614335', 'd08b5b', 'ae5d29', 'edb98a', 'ffdbb4', 'fd9841', 'f8d25c'],
+    hairColor: ['2c1b18', 'a55728', 'b58143', 'c93305', 'e8e1e1', '6a4e42', 'c93305']
+  }
+};
+
 export class AvatarService {
   // Get initials from a display name
   static getInitials(name: string | undefined | null): string {
@@ -57,6 +130,7 @@ export class AvatarService {
     return avatar;
   }
 
+  
   // Open image picker to select avatar
   static async pickImage(options?: ImagePicker.ImagePickerOptions): Promise<string | null> {
     console.log('[AVATAR] Opening image picker with options:', options ? JSON.stringify(options) : 'default');
@@ -84,6 +158,7 @@ export class AvatarService {
     }
   }
 
+  
   // Upload avatar image to Firebase Storage
   static async uploadAvatarImage(uri: string, userId: string): Promise<string> {
     console.log('[AVATAR] Starting upload of avatar image for user:', userId);
@@ -236,5 +311,151 @@ static getTrendingBitmojis(): string[] {
   
   console.log('[AVATAR] Retrieved trending bitmojis collection with', trendingBitmojis.length, 'items');
   return trendingBitmojis;
+}
+
+// Update the getDiceBearAvatarUrl method
+
+// Add a cache to avoid repeated requests for the same URLs
+static urlCache: Record<string, string> = {};
+
+static getDiceBearAvatarUrl(
+  seed: string,
+  style: string = 'adventurer',
+  size: number = 256,
+  params: Record<string, any> = {}
+): string {
+  console.log(`[AVATAR] Creating DiceBear avatar URL with style: ${style}, seed: ${seed}`);
+  
+  try {
+    // Ensure the seed is URL-safe
+    const safeSeed = encodeURIComponent(seed.trim());
+    
+    // Create a cache key from the parameters
+    const cacheKey = `${style}-${safeSeed}-${size}-${JSON.stringify(params)}`;
+    
+    // Return cached URL if available
+    if (this.urlCache[cacheKey]) {
+      console.log('[AVATAR] Using cached URL for:', cacheKey);
+      return this.urlCache[cacheKey];
+    }
+    
+    // Validate style
+    const validStyle = DICEBEAR_STYLES.find(s => s.id === style)?.id || 'adventurer';
+    
+    // Build query parameters
+    const queryParams = new URLSearchParams();
+    queryParams.append('seed', safeSeed);
+    queryParams.append('size', size.toString());
+    
+    // Add any additional parameters
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        queryParams.append(key, value.toString());
+      }
+    });
+    
+    // Use PNG format by default for React Native compatibility
+    const url = `https://api.dicebear.com/9.x/${validStyle}/png?${queryParams.toString()}`;
+    console.log(`[AVATAR] Generated DiceBear URL: ${url.substring(0, 100)}...`);
+    
+    // Cache the URL
+    this.urlCache[cacheKey] = url;
+    
+    return url;
+  } catch (error) {
+    console.error('[AVATAR] Error generating DiceBear URL:', error);
+    // Return a safe fallback URL
+    return `https://api.dicebear.com/9.x/bottts/png?seed=fallback&size=${size}`;
+  }
+}
+
+// Create a DiceBear avatar in UserAvatar format
+static createDiceBearAvatar(seed: string, style: string = 'adventurer', params: Record<string, any> = {}): UserAvatar {
+  console.log(`[AVATAR] Creating DiceBear avatar object with style: ${style}, seed: ${seed}`);
+  
+  const avatar = {
+    type: 'dicebear' as const,
+    value: this.getDiceBearAvatarUrl(seed, style, 256, params),
+    style: style,
+    seed: seed,
+    params: params
+  };
+  
+  console.log('[AVATAR] DiceBear avatar created successfully:', avatar.type, avatar.style);
+  return avatar;
+}
+
+// Get preview images for a specific DiceBear style
+static getDiceBearStylePreviews(style: string, count: number = 6): string[] {
+  console.log(`[AVATAR] Getting ${count} previews for style: ${style}`);
+  
+  // Gen Z appealing seed words
+  const seedWords = [
+    'vibes', 'aesthetic', 'slay', 'based', 'fire', 'lit', 
+    'mood', 'drip', 'iconic', 'energy', 'chill', 'vibe',
+    'yeet', 'flex', 'rizz', 'bussin', 'cap', 'no-cap'
+  ];
+  
+  // Generate previews with different seeds
+  const previews = Array(count).fill(0).map((_, i) => {
+    const seed = seedWords[i % seedWords.length] + i;
+    return this.getDiceBearAvatarUrl(seed, style, 128);
+  });
+  
+  console.log(`[AVATAR] Generated ${previews.length} previews for style: ${style}`);
+  return previews;
+}
+
+// Upload a DiceBear avatar to Firebase Storage
+static async uploadDiceBearAvatar(uid: string, seed: string, style: string, params: Record<string, any> = {}): Promise<string> {
+  console.log(`[AVATAR] Uploading DiceBear avatar to Firebase for user: ${uid}`);
+  
+  try {
+    // Generate the URL for a PNG version
+    const pngUrl = this.getDiceBearAvatarUrl(seed, style, 256, { ...params, format: 'png' });
+    
+    // Fetch the PNG data
+    console.log('[AVATAR] Fetching PNG from DiceBear API');
+    const response = await fetch(pngUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch DiceBear avatar: ${response.statusText}`);
+    }
+    
+    const blob = await response.blob();
+    
+    // Upload to Firebase Storage
+    const filename = `dicebear-${style}-${Date.now()}`;
+    const storageRef = ref(storage, `avatars/${uid}/${filename}.png`);
+    console.log('[AVATAR] Uploading to Firebase Storage:', storageRef.fullPath);
+    
+    await uploadBytes(storageRef, blob, { contentType: 'image/png' });
+    
+    // Get the download URL
+    const downloadURL = await getDownloadURL(storageRef);
+    console.log('[AVATAR] Upload successful, download URL:', downloadURL.substring(0, 60) + '...');
+    
+    return downloadURL;
+  } catch (error) {
+    console.error('[AVATAR] Error uploading DiceBear avatar:', error);
+    throw error;
+  }
+}
+
+// Generate random parameters for a given style
+static getRandomStyleParams(style: string): Record<string, any> {
+  const styleParams = STYLE_PARAMETERS[style as keyof typeof STYLE_PARAMETERS];
+  if (!styleParams) return {};
+  
+  const params: Record<string, any> = {};
+  
+  Object.entries(styleParams).forEach(([key, options]) => {
+    if (Array.isArray(options) && options.length > 0) {
+      // Select a random option
+      params[key] = options[Math.floor(Math.random() * options.length)];
+    }
+  });
+  
+  console.log(`[AVATAR] Generated random params for ${style}:`, params);
+  return params;
 }
 }
