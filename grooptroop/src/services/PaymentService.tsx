@@ -317,39 +317,72 @@ export class PaymentService {
       console.log(`[PAYMENT_SERVICE] Opening Venmo with URL: ${venmoUrl}`);
       
       // Check if Venmo is installed and can be opened
-      const canOpen = await Linking.canOpenURL(venmoUrl);
-      
-      if (!canOpen) {
-        console.log('[PAYMENT_SERVICE] Venmo app is not installed or cannot be opened');
+      try {
+        const canOpen = await Linking.canOpenURL(venmoUrl);
+        
+        if (!canOpen) {
+          console.log('[PAYMENT_SERVICE] Venmo app is not installed or cannot be opened');
+          
+          // Update payment status
+          await updateDoc(doc(db, 'groops', groopId, 'payments', paymentRef.id), {
+            status: 'failed',
+            notes: 'Venmo app is not installed or cannot be opened',
+            updatedAt: Timestamp.now()
+          });
+          
+          // Clear active payment
+          await this.clearActivePaymentInfo();
+          
+          return { 
+            success: false, 
+            error: 'Venmo app is not installed or not configured properly. Please install Venmo or check app permissions.',
+            errorDetail: {
+              code: 'venmo_not_installed',
+              message: 'Venmo app is not installed or cannot be opened'
+            }
+          };
+        }
+        
+        // Open Venmo
+        await Linking.openURL(venmoUrl);
+        
+        // Return success with the payment ID for later confirmation
+        return { 
+          success: true, 
+          paymentId: paymentRef.id
+        };
+      } catch (error) {
+        console.error('[PAYMENT_SERVICE] Error opening Venmo:', error);
         
         // Update payment status
         await updateDoc(doc(db, 'groops', groopId, 'payments', paymentRef.id), {
           status: 'failed',
-          notes: 'Venmo app is not installed or cannot be opened',
+          notes: `Error opening Venmo: ${error instanceof Error ? error.message : String(error)}`,
           updatedAt: Timestamp.now()
         });
         
         // Clear active payment
         await this.clearActivePaymentInfo();
         
+        // Provide more specific error message for iOS permissions issue
+        let errorMessage = 'Failed to open Venmo. Please try again.';
+        const errorString = String(error);
+        
+        if (errorString.includes('LSApplicationQueriesSchemes') && Platform.OS === 'ios') {
+          errorMessage = 'This app needs to be configured to open Venmo. Please contact support.';
+        } else if (errorString.includes('Activity not found') && Platform.OS === 'android') {
+          errorMessage = 'Venmo app is not installed on your device. Please install Venmo first.';
+        }
+        
         return { 
           success: false, 
-          error: 'Venmo app is not installed. Please install Venmo or use another payment method.',
+          error: errorMessage,
           errorDetail: {
-            code: 'venmo_not_installed',
-            message: 'Venmo app is not installed or cannot be opened'
+            code: 'venmo_open_failed',
+            message: error instanceof Error ? error.message : String(error)
           }
         };
       }
-      
-      // Open Venmo
-      await Linking.openURL(venmoUrl);
-      
-      // Return success with the payment ID for later confirmation
-      return { 
-        success: true, 
-        paymentId: paymentRef.id
-      };
     } catch (error) {
       console.error('[PAYMENT_SERVICE] Error initiating Venmo payment:', error);
       return { 

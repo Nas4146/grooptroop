@@ -52,6 +52,9 @@ export default ({ config }) => {
       bundleIdentifier: "com.nick.grooptroop",
       buildNumber: "1.0.0",
       infoPlist: {
+        LSApplicationQueriesSchemes: [
+          'venmo'
+        ],
         CFBundleURLTypes: [
           {
             CFBundleURLSchemes: [
