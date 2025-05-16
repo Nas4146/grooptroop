@@ -67,12 +67,19 @@ export default function ChatScreen() {
   const [initialScrollComplete, setInitialScrollComplete] = useState(false);
   const [hasScrolledToUnread, setHasScrolledToUnread] = useState(false);
 
+  // 1. Add a ref to store the current scroll offset and a flag for recent reactions
+  const scrollOffsetRef = useRef(0);
+  const hasRecentReaction = useRef(false);
+
   // Handle scroll events
   const handleScroll = (event: any) => {
     const offsetY = event.nativeEvent.contentOffset.y;
     const contentHeight = event.nativeEvent.contentSize.height;
     const layoutHeight = event.nativeEvent.layoutMeasurement.height;
   
+    // Store current scroll offset for reaction handling
+    scrollOffsetRef.current = offsetY;
+    
     // Show button when user has scrolled up a bit
     setShowScrollButton(offsetY < contentHeight - layoutHeight - 100);
   };
@@ -204,16 +211,6 @@ export default function ChatScreen() {
       return () => {};
     }, [refreshUnreadCount, profile])
   );
-
-  useEffect(() => {
-    if (messages.length > 0) {
-      // Short timeout to ensure the list is rendered before scrolling
-      const timer = setTimeout(() => {
-        flashListRef.current?.scrollToEnd();
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [messages]);
 
   // Load messages
   useEffect(() => {
@@ -352,7 +349,49 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
   const handleReaction = useCallback(async (messageId: string, emoji: string) => {
     if (!profile || !currentGroop) return;
     
-    await ChatService.addReaction(currentGroop.id, messageId, emoji, profile.uid);
+    // Get current scroll position before adding reaction
+    const currentScrollOffset = scrollOffsetRef.current;
+    
+    // Save layout info to prevent jumping
+    let layoutHeight = 0;
+    let contentHeight = 0;
+    
+    try {
+      // Get current layout measurements to maintain position
+      const info = await new Promise<any>(resolve => {
+        flashListRef.current?.measureInWindow((x, y, width, height) => {
+          resolve({ x, y, width, height });
+        });
+      });
+      
+      if (info) {
+        layoutHeight = info.height;
+      }
+    } catch (error) {
+      console.log('[CHAT] Could not measure FlashList window', error);
+    }
+    
+    // Set flag to prevent auto-scroll
+    hasRecentReaction.current = true;
+    
+    // Add the reaction without waiting for it to complete
+    ChatService.addReaction(currentGroop.id, messageId, emoji, profile.uid)
+      .catch(err => console.error('[CHAT] Error adding reaction:', err));
+    
+    // Instead of using setTimeout, use requestAnimationFrame for smoother transitions
+    requestAnimationFrame(() => {
+      if (flashListRef.current && hasRecentReaction.current) {
+        flashListRef.current.scrollToOffset({
+          offset: currentScrollOffset,
+          animated: false
+        });
+        
+        // Reset flag after a short delay
+        setTimeout(() => {
+          hasRecentReaction.current = false;
+        }, 500);
+      }
+    });
   }, [profile, currentGroop]);
   
   // Handle reply
