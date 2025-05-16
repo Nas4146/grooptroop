@@ -451,9 +451,24 @@ export default function ItineraryScreen() {
             <Text style={tw`text-gray-500`}>No itinerary items found</Text>
           </View>
         ) : (
-          itinerary.map((day) => (
-            <DaySection key={day.date} day={day} />
-          ))
+          itinerary.map((day) => {
+            // Filter out accommodation events from each day's events
+            const filteredEvents = day.events.filter(event => event.type !== 'accommodation');
+            
+            // Create a new day object with filtered events
+            const filteredDay = {
+              ...day,
+              events: filteredEvents
+            };
+            
+            // Only render days that have events after filtering
+            if (filteredEvents.length > 0) {
+              return <DaySection key={day.date} day={filteredDay} />;
+            }
+            
+            // If all events were filtered out (only accommodations), don't render this day
+            return null;
+          })
         )}
       </ScrollView>
       
