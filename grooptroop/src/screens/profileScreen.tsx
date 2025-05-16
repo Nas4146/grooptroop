@@ -1,12 +1,22 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Alert, SafeAreaView, ScrollView } from 'react-native';
 import { useAuth } from '../contexts/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../utils/tw';
 import Avatar from '../components/common/Avatar';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../navigation/types';
+import EditAvatarModal from '../components/profile/EditAvatarModal';
+import { UserAvatar } from '../contexts/AuthProvider';
 
-export default function ProfileScreen({ navigation }) {
+// Define the navigation prop type
+type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
+export default function ProfileScreen({ navigation }: { navigation: ProfileScreenNavigationProp }) {
   const { user, profile, isLoading, signOut } = useAuth();
+  const [isEditAvatarModalVisible, setEditAvatarModalVisible] = useState(false);
+  const [forceUpdate, setForceUpdate] = useState(Date.now());
+  const [localAvatar, setLocalAvatar] = useState<UserAvatar | null>(null);
 
   const handleSignOut = async () => {
     try {
@@ -20,10 +30,22 @@ export default function ProfileScreen({ navigation }) {
   };
   
   const handleEditAvatar = () => {
-    console.log('[PROFILE] Editing avatar');
-    // Navigate to a simplified version of the profile setup that only handles avatar
-    navigation.navigate('ProfileSetup', { editMode: true });
+    console.log('[PROFILE] Opening edit avatar modal');
+    setEditAvatarModalVisible(true);
   };
+
+  const handleCloseAvatarModal = () => {
+    console.log('[PROFILE] Closing edit avatar modal');
+    setEditAvatarModalVisible(false);
+  };
+  
+  const handleAvatarUpdated = useCallback((newAvatar: UserAvatar) => {
+    console.log('[PROFILE] Received updated avatar:', newAvatar.type);
+    // Store the new avatar locally to avoid a full profile refresh
+    setLocalAvatar(newAvatar);
+    // Force a re-render of the avatar component
+    setForceUpdate(Date.now());
+  }, []);
 
   if (isLoading) {
     return (
@@ -32,6 +54,9 @@ export default function ProfileScreen({ navigation }) {
       </SafeAreaView>
     );
   }
+
+  // Use localAvatar if available, otherwise use profile.avatar
+  const displayAvatar = localAvatar || profile?.avatar;
 
   return (
     <SafeAreaView style={tw`flex-1 bg-light`}>
@@ -49,10 +74,11 @@ export default function ProfileScreen({ navigation }) {
             style={tw`relative`}
           >
             <Avatar
-              avatar={profile?.avatar}
+              avatar={displayAvatar}
               displayName={profile?.displayName}
               size={96} // Equivalent to w-24 h-24
               style={tw`shadow-sm`}
+              forceUpdate={forceUpdate} // Force avatar to refresh when profile changes
             />
             
             {/* Edit button overlay */}
@@ -136,6 +162,13 @@ export default function ProfileScreen({ navigation }) {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Edit Avatar Modal */}
+      <EditAvatarModal 
+        visible={isEditAvatarModalVisible} 
+        onClose={handleCloseAvatarModal}
+        onAvatarUpdated={handleAvatarUpdated}
+      />
     </SafeAreaView>
   );
 }
