@@ -409,11 +409,6 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
     // The refreshing state will be reset when new messages come in
   }, []);
   
-  // Navigate to members screen
-  const navigateToMembers = useCallback(() => {
-    navigation.navigate('GroupMembers', { groopId: currentGroop?.id });
-  }, [navigation, currentGroop]);
-  
   // Add this new useEffect to manage keyboard behavior
   useEffect(() => {
     // Function to handle keyboard showing
@@ -493,9 +488,8 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
   minimal={true} 
   showMembers={true}
   isChatScreen={true}
-  isItineraryScreen={false} // Add this prop (defaults to false)
+  isItineraryScreen={false}
   onShowEncryptionInfo={() => setShowEncryptionInfo(true)}
-  onPressMembers={navigateToMembers}
 />
 
     <KeyboardAvoidingView 

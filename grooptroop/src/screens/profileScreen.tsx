@@ -265,11 +265,34 @@ export default function ProfileScreen({ navigation }: { navigation: ProfileScree
               <Text style={tw`text-sm font-medium text-primary`}>Member Since</Text>
             </View>
             <Text style={tw`text-neutral font-medium ml-6`}>
-              {profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-              }) : 'Unknown'}
+              {(() => {
+                // Handle different date formats properly
+                try {
+                  if (!profile?.createdAt) return 'Unknown';
+                  
+                  // Handle Firestore Timestamp objects
+                  if (profile.createdAt?.toDate) {
+                    return profile.createdAt.toDate().toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    });
+                  }
+                  
+                  // Handle Date objects or ISO strings
+                  const date = new Date(profile.createdAt);
+                  if (isNaN(date.getTime())) return 'Unknown';
+                  
+                  return date.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  });
+                } catch (error) {
+                  console.log('[PROFILE] Error formatting date:', error);
+                  return 'Unknown';
+                }
+              })()}
             </Text>
           </View>
           

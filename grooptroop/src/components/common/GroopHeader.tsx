@@ -8,6 +8,12 @@ import Avatar from './Avatar';
 import { UserProfile } from '../../contexts/AuthProvider';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import MembersModal from './MembersModal';
+import { MainTabParamList } from '../../navigation/types';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+
+// Create a proper navigation type
+type GroopHeaderNavigationProp = BottomTabNavigationProp<MainTabParamList>;
 
 interface GroopHeaderProps {
   minimal?: boolean;
@@ -33,9 +39,10 @@ export default function GroopHeader({
   onShowEncryptionInfo
 }: GroopHeaderProps) {
   const { currentGroop } = useGroop();
-  const navigation = useNavigation();
+  const navigation = useNavigation<GroopHeaderNavigationProp>();
   const [memberProfiles, setMemberProfiles] = useState<MemberData[]>([]);
   const [isLoadingMembers, setIsLoadingMembers] = useState(true);
+  const [showMembersModal, setShowMembersModal] = useState(false);
 
   if (!currentGroop) return null;
 
@@ -45,19 +52,19 @@ export default function GroopHeader({
   const MAX_AVATARS = 3;
 
   useEffect(() => {
-  console.log(`[GROOP_HEADER] Component mounted with memberCount: ${memberCount}`);
+    console.log(`[GROOP_HEADER] Component mounted with memberCount: ${memberCount}`);
   
-  const startTime = Date.now();
+    const startTime = Date.now();
   
-  return () => {
-    const totalTime = Date.now() - startTime;
-    console.log(`[GROOP_HEADER] Component was mounted for ${totalTime}ms`);
-  };
-}, []);
+    return () => {
+      const totalTime = Date.now() - startTime;
+      console.log(`[GROOP_HEADER] Component was mounted for ${totalTime}ms`);
+    };
+  }, []);
 
-// Log each render
-console.log(`[GROOP_HEADER] Rendering with ${memberProfiles.length} member profiles loaded`);
-console.log(`[GROOP_HEADER] isLoadingMembers: ${isLoadingMembers}`);
+  // Log each render
+  console.log(`[GROOP_HEADER] Rendering with ${memberProfiles.length} member profiles loaded`);
+  console.log(`[GROOP_HEADER] isLoadingMembers: ${isLoadingMembers}`);
 
   // Load member profiles
   useEffect(() => {
@@ -72,11 +79,10 @@ console.log(`[GROOP_HEADER] isLoadingMembers: ${isLoadingMembers}`);
         console.log(`[GROOP_HEADER] Fetching profiles for ${currentGroop.members.length} members`);
         setIsLoadingMembers(true);
         
-        // Only fetch the first MAX_AVATARS members for efficiency
-        const membersToFetch = currentGroop.members.slice(0, MAX_AVATARS);
+        // Fetch ALL members instead of just MAX_AVATARS so we have complete data for the modal
         const memberData: MemberData[] = [];
         
-        for (const memberId of membersToFetch) {
+        for (const memberId of currentGroop.members) {
           try {
             console.log(`[GROOP_HEADER] Fetching profile for member: ${memberId.substring(0, 5)}...`);
             const memberRef = doc(db, 'users', memberId);
@@ -120,29 +126,32 @@ console.log(`[GROOP_HEADER] isLoadingMembers: ${isLoadingMembers}`);
   }, [currentGroop]);
 
   const getAvatarFallback = (index: number) => {
-  // Create a deterministic color based on index
-  const colors = ['#FF6B6B', '#4ECDC4', '#7C3AED', '#F59E0B', '#3A86FF'];
-  return (
-    <View 
-      style={[
-        tw`w-full h-full items-center justify-center`,
-        { backgroundColor: colors[index % colors.length] }
-      ]}
-    >
-      <Text style={tw`text-[8px] text-white font-bold`}>
-        {`U${index + 1}`}
-      </Text>
-    </View>
-  );
-};
+    // Create a deterministic color based on index
+    const colors = ['#FF6B6B', '#4ECDC4', '#7C3AED', '#F59E0B', '#3A86FF'];
+    return (
+      <View 
+        style={[
+          tw`w-full h-full items-center justify-center`,
+          { backgroundColor: colors[index % colors.length] }
+        ]}
+      >
+        <Text style={tw`text-[8px] text-white font-bold`}>
+          {`U${index + 1}`}
+        </Text>
+      </View>
+    );
+  };
 
-  // Default handler for member press if not provided
+  // Handle member press - now just open modal
   const handlePressMembers = () => {
+    // If custom handler is provided, use that instead
     if (onPressMembers) {
       onPressMembers();
-    } else {
-      navigation.navigate('GroupMembers', { groopId: currentGroop.id });
+      return;
     }
+    
+    console.log('[GROOP_HEADER] Opening members modal');
+    setShowMembersModal(true);
   };
 
   // For itinerary screen, we return null as the itinerary screen handles its own header
@@ -151,39 +160,39 @@ console.log(`[GROOP_HEADER] isLoadingMembers: ${isLoadingMembers}`);
   }
 
   // Render a member avatar - either with the Avatar component or a placeholder
-const renderMemberAvatar = (member: MemberData, index: number) => {
-  console.log(`[GROOP_HEADER] Rendering avatar for member: ${member.displayName}, index: ${index}`);
-  
-  // Calculate a slight offset for a staggered effect
-  const verticalOffset = index % 2 === 0 ? 0 : -1;
+  const renderMemberAvatar = (member: MemberData, index: number) => {
+    console.log(`[GROOP_HEADER] Rendering avatar for member: ${member.displayName}, index: ${index}`);
     
-  return (
-    <TouchableOpacity 
-      key={member.uid || index} 
-      style={[
-        tw`w-5 h-5 rounded-full border-2 border-white overflow-hidden shadow-sm`,
-        { transform: [{ translateY: verticalOffset }] }
-      ]}
-      onPress={handlePressMembers}
-    >
-      {/* Avatar with error handling */}
-      <View style={tw`w-full h-full`}>
-        {member ? (
-          <Avatar
-            avatar={member.avatar}
-            displayName={member.displayName}
-            size={20}
-          />
-        ) : getAvatarFallback(index)}
-      </View>
+    // Calculate a slight offset for a staggered effect
+    const verticalOffset = index % 2 === 0 ? 0 : -1;
       
-      {/* Add a subtle "active" indicator for the first member */}
-      {index === 0 && (
-        <View style={tw`absolute bottom-0 right-0 w-1.5 h-1.5 bg-green-400 rounded-full border border-white`} />
-      )}
-    </TouchableOpacity>
-  );
-};
+    return (
+      <TouchableOpacity 
+        key={member.uid || index} 
+        style={[
+          tw`w-5 h-5 rounded-full border-2 border-white overflow-hidden shadow-sm`,
+          { transform: [{ translateY: verticalOffset }] }
+        ]}
+        onPress={handlePressMembers}
+      >
+        {/* Avatar with error handling */}
+        <View style={tw`w-full h-full`}>
+          {member ? (
+            <Avatar
+              avatar={member.avatar}
+              displayName={member.displayName}
+              size={20}
+            />
+          ) : getAvatarFallback(index)}
+        </View>
+        
+        {/* Add a subtle "active" indicator for the first member */}
+        {index === 0 && (
+          <View style={tw`absolute bottom-0 right-0 w-1.5 h-1.5 bg-green-400 rounded-full border border-white`} />
+        )}
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={tw`${minimal ? 'pt-2' : 'pt-1'} pb-0 rounded-b-3xl`}>
@@ -197,6 +206,7 @@ const renderMemberAvatar = (member: MemberData, index: number) => {
           }
         ]}
       >
+        {/* Original GroopHeader content - unchanged */}
         <View style={tw`flex-row justify-between items-center mb-0.5`}>
           {/* Show "Trip Chat" for chat screen, groop name otherwise */}
           <Text style={tw`font-bold text-neutral text-sm flex-1`} numberOfLines={1}>
@@ -248,7 +258,7 @@ const renderMemberAvatar = (member: MemberData, index: number) => {
                 {/* Itinerary Button - matches location bubble style but with different color */}
                 <TouchableOpacity
                   style={tw`ml-2 bg-primary rounded-full px-2 py-0.5 flex-row items-center`}
-                  onPress={() => navigation.navigate('Itinerary')}
+                  onPress={() => navigation.navigate('ItineraryTab')}
                 >
                   <Ionicons name="calendar-outline" size={12} color="white" />
                   <Text style={tw`ml-0.5 text-white text-[10px] font-medium`}>Itinerary</Text>
@@ -278,7 +288,7 @@ const renderMemberAvatar = (member: MemberData, index: number) => {
             {/* Itinerary Button - To the right of Share Location */}
             <TouchableOpacity 
               style={tw`flex-row items-center bg-primary rounded-full px-2.5 py-0.5`}
-              onPress={() => navigation.navigate('Itinerary')}
+              onPress={() => navigation.navigate('ItineraryTab')}
             >
               <Ionicons name="calendar-outline" size={12} color="white" />
               <Text style={tw`ml-1 text-white text-[10px] font-medium`}>Itinerary</Text>
@@ -286,35 +296,49 @@ const renderMemberAvatar = (member: MemberData, index: number) => {
           </View>
         )}
         
-        {/* Members count and avatars row */}
+        {/* Members count and avatars row - now fully clickable to open modal */}
         {showMembers && memberCount > 0 && (
           <View style={tw`flex-row items-center mt-2 justify-between`}>
-            <View style={tw`flex-row items-center`}>
+            {/* Make the entire row clickable */}
+            <TouchableOpacity 
+              style={tw`flex-row items-center flex-1`}
+              onPress={handlePressMembers}
+            >
               <Ionicons name="people" size={12} color="#333" />
               <Text style={tw`ml-1 text-neutral text-[10px] font-medium`}>
                 {memberCount} {memberCount === 1 ? 'Member' : 'Members'}
               </Text>
-            </View>
+            </TouchableOpacity>
             
             <View style={tw`flex-row`}>
               {/* Member avatars - right aligned */}
-              <View style={tw`flex-row -space-x-1.5`}>
+              <View style={tw`flex-row`}>
                 {isLoadingMembers ? (
                   // Show placeholder dots while loading
                   [...Array(Math.min(memberCount, MAX_AVATARS))].map((_, i) => (
                     <View 
                       key={`loading-${i}`} 
-                      style={tw`w-5 h-5 rounded-full bg-gray-200 border-2 border-white`}
+                      style={[
+                        tw`w-5 h-5 rounded-full bg-gray-200 border-2 border-white`,
+                        i > 0 ? { marginLeft: -6 } : null
+                      ]}
                     />
                   ))
                 ) : (
-                  // Render actual member avatars
-                  memberProfiles.map((member, index) => renderMemberAvatar(member, index))
+                  // Render actual member avatars - first MAX_AVATARS only
+                  memberProfiles.slice(0, MAX_AVATARS).map((member, index) => (
+                    <View key={member.uid || index} style={index > 0 ? { marginLeft: -6 } : null}>
+                      {renderMemberAvatar(member, index)}
+                    </View>
+                  ))
                 )}
                 
                 {memberCount > MAX_AVATARS && (
                   <TouchableOpacity 
-                    style={tw`w-5 h-5 rounded-full bg-primary border-2 border-white items-center justify-center shadow-sm`}
+                    style={[
+                      tw`w-5 h-5 rounded-full bg-primary border-2 border-white items-center justify-center shadow-sm`,
+                      { marginLeft: -6 }
+                    ]}
                     onPress={handlePressMembers}
                   >
                     <Text style={tw`text-[8px] text-white font-bold`}>+{memberCount - MAX_AVATARS}</Text>
@@ -325,6 +349,14 @@ const renderMemberAvatar = (member: MemberData, index: number) => {
           </View>
         )}
       </View>
+
+      {/* Members Modal */}
+      <MembersModal
+        visible={showMembersModal}
+        onClose={() => setShowMembersModal(false)}
+        members={memberProfiles}
+        groopName={currentGroop.name}
+      />
     </View>
   );
 }
