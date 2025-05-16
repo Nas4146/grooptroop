@@ -1,5 +1,15 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, TouchableOpacity, Alert, SafeAreaView, ScrollView } from 'react-native';
+import React, { useState, useCallback, useRef } from 'react';
+import { 
+  View, 
+  Text, 
+  TouchableOpacity, 
+  Alert, 
+  SafeAreaView, 
+  ScrollView,
+  TextInput,
+  ActivityIndicator,
+  Animated
+} from 'react-native';
 import { useAuth } from '../contexts/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../utils/tw';
@@ -8,6 +18,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import EditAvatarModal from '../components/profile/EditAvatarModal';
 import { UserAvatar } from '../contexts/AuthProvider';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 // Define the navigation prop type
 type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -17,6 +29,18 @@ export default function ProfileScreen({ navigation }: { navigation: ProfileScree
   const [isEditAvatarModalVisible, setEditAvatarModalVisible] = useState(false);
   const [forceUpdate, setForceUpdate] = useState(Date.now());
   const [localAvatar, setLocalAvatar] = useState<UserAvatar | null>(null);
+  
+  // Name editing states
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState(profile?.displayName || '');
+  const [isSavingName, setIsSavingName] = useState(false);
+  const [localDisplayName, setLocalDisplayName] = useState<string | null>(null);
+  const inputRef = useRef<TextInput>(null);
+  
+  // Toast animation
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const toastOpacity = useRef(new Animated.Value(0)).current;
 
   const handleSignOut = async () => {
     try {
@@ -46,6 +70,85 @@ export default function ProfileScreen({ navigation }: { navigation: ProfileScree
     // Force a re-render of the avatar component
     setForceUpdate(Date.now());
   }, []);
+  
+  // Start editing name
+  const startEditingName = () => {
+    console.log('[PROFILE] Starting name edit');
+    setNameValue(localDisplayName || profile?.displayName || '');
+    setIsEditingName(true);
+    // Focus on input after a short delay to ensure it's rendered
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+  };
+  
+  // Cancel name edit
+  const cancelNameEdit = () => {
+    console.log('[PROFILE] Canceling name edit');
+    setNameValue(localDisplayName || profile?.displayName || '');
+    setIsEditingName(false);
+  };
+  
+  // Save name change
+  const saveNameChange = async () => {
+    if (!nameValue.trim()) {
+      Alert.alert('Error', 'Display name cannot be empty');
+      return;
+    }
+    
+    if (!user) {
+      Alert.alert('Error', 'You need to be logged in to update your name');
+      return;
+    }
+    
+    try {
+      console.log('[PROFILE] Saving new display name:', nameValue.trim());
+      setIsSavingName(true);
+      
+      // Update Firestore
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        displayName: nameValue.trim()
+      });
+      
+      console.log('[PROFILE] Name updated successfully');
+      
+      // Update local state to avoid full refresh
+      setLocalDisplayName(nameValue.trim());
+      
+      // Show toast notification
+      showToastMessage('Name updated successfully');
+      
+      // Exit edit mode
+      setIsEditingName(false);
+      
+    } catch (error) {
+      console.error('[PROFILE] Error updating name:', error);
+      Alert.alert('Error', 'Failed to update display name. Please try again.');
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+  
+  // Show toast message
+  const showToastMessage = (message: string) => {
+    setToastMessage(message);
+    setShowToast(true);
+    
+    Animated.sequence([
+      Animated.timing(toastOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.delay(2000),
+      Animated.timing(toastOpacity, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start(() => setShowToast(false));
+  };
 
   if (isLoading) {
     return (
@@ -57,9 +160,23 @@ export default function ProfileScreen({ navigation }: { navigation: ProfileScree
 
   // Use localAvatar if available, otherwise use profile.avatar
   const displayAvatar = localAvatar || profile?.avatar;
+  // Use localDisplayName if available, otherwise use profile.displayName
+  const displayName = localDisplayName || profile?.displayName || 'Anonymous User';
 
   return (
     <SafeAreaView style={tw`flex-1 bg-light`}>
+      {/* Toast notification */}
+      {showToast && (
+        <Animated.View 
+          style={[
+            tw`absolute top-5 self-center py-2 px-4 rounded-lg bg-green-600 z-50 mx-4`,
+            { opacity: toastOpacity }
+          ]}
+        >
+          <Text style={tw`text-white font-medium text-center`}>{toastMessage}</Text>
+        </Animated.View>
+      )}
+      
       <ScrollView contentContainerStyle={tw`flex-grow`}>
         {/* Header with title */}
         <View style={tw`px-4 pt-2 pb-4`}>
@@ -75,7 +192,7 @@ export default function ProfileScreen({ navigation }: { navigation: ProfileScree
           >
             <Avatar
               avatar={displayAvatar}
-              displayName={profile?.displayName}
+              displayName={displayName}
               size={96} // Equivalent to w-24 h-24
               style={tw`shadow-sm`}
               forceUpdate={forceUpdate} // Force avatar to refresh when profile changes
@@ -87,9 +204,49 @@ export default function ProfileScreen({ navigation }: { navigation: ProfileScree
             </View>
           </TouchableOpacity>
           
-          <Text style={tw`text-2xl font-bold text-neutral mt-3`}>
-            {profile?.displayName || 'Anonymous User'}
-          </Text>
+          {/* Editable display name */}
+          {isEditingName ? (
+            <View style={tw`flex-row items-center mt-3`}>
+              <TextInput
+                ref={inputRef}
+                style={tw`text-2xl font-bold text-neutral border-b border-primary px-2 min-w-[200px] text-center`}
+                value={nameValue}
+                onChangeText={setNameValue}
+                maxLength={30}
+                autoCapitalize="words"
+                selectTextOnFocus
+              />
+              <View style={tw`flex-row ml-2`}>
+                <TouchableOpacity 
+                  style={tw`p-1.5 bg-green-100 rounded-full mr-2`}
+                  onPress={saveNameChange}
+                  disabled={isSavingName}
+                >
+                  {isSavingName ? (
+                    <ActivityIndicator size="small" color="#10B981" />
+                  ) : (
+                    <Ionicons name="checkmark" size={18} color="#10B981" />
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={tw`p-1.5 bg-red-100 rounded-full`}
+                  onPress={cancelNameEdit}
+                >
+                  <Ionicons name="close" size={18} color="#EF4444" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity 
+              style={tw`flex-row items-center mt-3`}
+              onPress={startEditingName}
+            >
+              <Text style={tw`text-2xl font-bold text-neutral`}>
+                {displayName}
+              </Text>
+              <Ionicons name="create-outline" size={18} color="#6B7280" style={tw`ml-2`} />
+            </TouchableOpacity>
+          )}
           
           <View style={tw`flex-row items-center mt-1`}>
             <View style={tw`h-2 w-2 rounded-full ${profile?.isAnonymous ? 'bg-amber-400' : 'bg-green-500'} mr-2`} />
