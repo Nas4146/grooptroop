@@ -162,7 +162,7 @@ export default function EventDetailsModal({
                 <Text style={tw`text-lg font-bold text-neutral mb-2`}>Payment Details</Text>
                 <View style={tw`flex-row justify-between`}>
                   <Text style={tw`text-gray-700`}>Cost per person:</Text>
-                  <Text style={tw`font-bold text-secondary`}>
+                  <Text style={tw`font-bold text-neutral`}>
                     ${typeof event.costPerPerson === 'number' ? event.costPerPerson.toFixed(2) : '0.00'}
                   </Text>
                 </View>
@@ -172,12 +172,12 @@ export default function EventDetailsModal({
                     ${typeof event.totalCost === 'number' ? event.totalCost.toFixed(2) : '0.00'}
                   </Text>
                 </View>
-                <View style={tw`flex-row justify-between mt-1`}>
-                  <Text style={tw`text-gray-700`}>Status:</Text>
-                  <Text style={tw`font-bold ${event.paid ? 'text-green-600' : 'text-amber-600'}`}>
-                    {event.paid === true ? 'Paid' : 'Pending'}
-                  </Text>
-                </View>
+<View style={tw`flex-row justify-between mt-1`}>
+  <Text style={tw`text-gray-700`}>Status:</Text>
+  <Text style={tw`font-bold ${event.paid ? 'text-green-600' : 'text-amber-600'}`}>
+    {event.paid === true ? 'Paid' : 'Pending'}
+  </Text>
+</View>
                 
                 {/* Only show Pay Now button if event is not paid and has a cost */}
                 {event.paid !== true && typeof event.costPerPerson === 'number' && event.costPerPerson > 0 && (

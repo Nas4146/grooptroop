@@ -253,13 +253,16 @@ export default function EventCard({
       </View>
       
       {/* Event Details Modal */}
-      <EventDetailsModal
-        visible={detailsModalVisible}
-        event={event}
-        groopId={currentGroop?.id || ''}
-        onClose={() => setDetailsModalVisible(false)}
-        onPayment={handlePayment}
-      />
+<EventDetailsModal
+  visible={detailsModalVisible}
+  event={{
+    ...event,
+    paid: isPaid  // Make sure we pass the correct payment status
+  }}
+  groopId={currentGroop?.id || ''}
+  onClose={() => setDetailsModalVisible(false)}
+  onPayment={handlePayment}
+/>
 
       {/* Payment Sheet Modal - now with isPaid prop */}
       <PaymentSheet
