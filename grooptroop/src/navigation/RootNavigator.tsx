@@ -2,9 +2,10 @@ import React, { useEffect } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthProvider';
-import BottomTabbNavigator from './BottomTabNavigator';
+import GroopsContentSwitcher from '../components/navigation/GroopsContentSwitcher';
 import ProfileSetupScreen from '../screens/ProfileSetupScreen';
 import SimpleLoginScreen from '../screens/SimpleLoginScreen';
+import tw from '../utils/tw';
 
 const RootStack = createNativeStackNavigator();
 
@@ -12,17 +13,17 @@ export default function RootNavigator() {
   const { isAuthenticated, isLoading, profile } = useAuth();
   
   useEffect(() => {
-    console.log(`[NAVIGATION] RootNavigator rendering with isAuthenticated=${isAuthenticated}, isLoading=${isLoading}`);
+    console.log(`[NAVIGATION] 🔄 RootNavigator rendering with isAuthenticated=${isAuthenticated}, isLoading=${isLoading}`);
     if (profile) {
-      console.log(`[NAVIGATION] User profile loaded, hasCompletedOnboarding=${profile.hasCompletedOnboarding}`);
+      console.log(`[NAVIGATION] 👤 User profile loaded, hasCompletedOnboarding=${profile.hasCompletedOnboarding}`);
     }
   }, [isAuthenticated, isLoading, profile]);
   
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={tw`flex-1 justify-center items-center bg-gray-50`}>
         <ActivityIndicator size="large" color="#7C3AED" />
-        <Text style={styles.loadingText}>Loading...</Text>
+        <Text style={tw`mt-3 text-gray-600`}>Loading...</Text>
       </View>
     );
   }
@@ -30,20 +31,17 @@ export default function RootNavigator() {
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       {!isAuthenticated ? (
-        // Not authenticated - show login
+        // Auth screen
         <RootStack.Screen name="Auth" component={SimpleLoginScreen} />
       ) : profile && !profile.hasCompletedOnboarding ? (
-        // Authenticated but needs profile setup
+        // Profile setup screen
         <RootStack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
       ) : (
-        // Fully authenticated with completed profile
-        <RootStack.Screen name="MainApp" component={BottomTabbNavigator} />
+        // Main app with groop checking
+        <RootStack.Screen name="MainApp" component={GroopsContentSwitcher} />
       )}
       
-      {/* Modal screens */}
-      <RootStack.Group screenOptions={{ presentation: 'modal' }}>
-        {/* Add your modal screens here */}
-      </RootStack.Group>
+      {/* Your other modal screens */}
     </RootStack.Navigator>
   );
 }

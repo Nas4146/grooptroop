@@ -56,13 +56,13 @@ export class InvitationService {
    */
   static async acceptInvitation(groopId: string, userId: string) {
     try {
-      console.log(`[INVITATION] User ${userId} accepting invitation for groop ${groopId}`);
+      console.log(`[INVITATION] 🔗 User ${userId} accepting invitation for groop ${groopId}`);
       
       // Check if the user is already a member
       const isMember = await GroopService.isMember(groopId, userId);
       
       if (isMember) {
-        console.log('[INVITATION] User is already a member of this groop');
+        console.log('[INVITATION] ⚠️ User is already a member of this groop');
         return { 
           success: true, 
           message: 'You are already a member of this groop.',
@@ -70,8 +70,13 @@ export class InvitationService {
         };
       }
       
-      // Add user to groop
-      await GroopService.addMember(groopId, userId);
+      // Add user to groop members array
+      const groopRef = doc(db, 'groops', groopId);
+      await updateDoc(groopRef, {
+        members: arrayUnion(userId)
+      });
+      
+      console.log('[INVITATION] ✅ User added to groop members');
       
       // Record the invitation acceptance
       await addDoc(collection(db, 'invitationAcceptances'), {
@@ -80,7 +85,7 @@ export class InvitationService {
         acceptedAt: serverTimestamp()
       });
       
-      console.log('[INVITATION] Successfully joined groop');
+      console.log('[INVITATION] 📝 Successfully recorded invitation acceptance');
       
       return { 
         success: true, 
@@ -88,7 +93,7 @@ export class InvitationService {
         alreadyMember: false
       };
     } catch (error) {
-      console.error('[INVITATION] Error accepting invitation:', error);
+      console.error('[INVITATION] ❌ Error accepting invitation:', error);
       return { 
         success: false, 
         message: 'Failed to join the groop. Please try again.',

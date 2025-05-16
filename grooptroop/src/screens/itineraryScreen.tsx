@@ -421,7 +421,10 @@ export default function ItineraryScreen() {
           
           <TouchableOpacity 
             style={tw`bg-gray-100 rounded-lg px-2.5 py-0.5 flex-row items-center`}
-            onPress={() => navigation.navigate('Chat')}
+            onPress={() => {
+              console.log('[ITINERARY] Navigating to Chat tab');
+              navigation.navigate('ChatTab');
+            }}
           >
             <Ionicons name="chatbubble-ellipses-outline" size={12} color="#1F2937" />
             <Text style={tw`text-xs text-neutral ml-1`}>Message Group</Text>

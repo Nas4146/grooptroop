@@ -128,52 +128,56 @@ import {
     // Get all groops for a user
     static async getUserGroops(userId: string): Promise<Groop[]> {
       try {
-        console.log('[GROOP] Fetching groops for user:', userId);
+        console.log('[GROOP_SERVICE] ⚡️ Getting groops for user:', userId);
         
-        // Get user document to check groops array
-        const userRef = doc(db, 'users', userId);
-        const userDoc = await getDoc(userRef);
+        // IMPORTANT: Only get groops where the user is explicitly listed as a member
+        // This is the most important query to fix access control
+        const q = query(
+          collection(db, 'groops'), 
+          where('members', 'array-contains', userId)
+        );
         
-        if (userDoc.exists()) {
-          console.log('[GROOP] User document found, groops array:', userDoc.data().groops);
-        } else {
-          console.log('[GROOP] User document not found!');
-        }
-        
-        // Original query
-        const q = query(collection(db, 'groops'), where('members', 'array-contains', userId));
+        console.log('[GROOP_SERVICE] 🔍 Executing firestore query for user groops');
         const querySnapshot = await getDocs(q);
         
-        console.log('[GROOP] Query returned', querySnapshot.docs.length, 'documents');
+        console.log('[GROOP_SERVICE] 📊 Query returned', querySnapshot.docs.length, 'groops');
         
         const groops: Groop[] = [];
-        querySnapshot.forEach((doc) => {
+        
+        querySnapshot.docs.forEach((doc) => {
           const data = doc.data();
-          groops.push({
-            id: doc.id,
-            name: data.name,
-            description: data.description,
-            photoURL: data.photoURL,
-            location: data.location,
-            address: data.address,
-            airbnbUrl: data.airbnbUrl,
-            mapUrl: data.mapUrl,
-            startDate: data.startDate?.toDate(),
-            endDate: data.endDate?.toDate(),
-            dateRange: data.dateRange,
-            accommodationCost: data.accommodationCost,
-            totalTripCost: data.totalTripCost,
-            createdAt: data.createdAt?.toDate(),
-            createdBy: data.createdBy,
-            members: data.members || [],
-            organizers: data.organizers || []
-          });
+          console.log(`[GROOP_SERVICE] Processing groop: ${doc.id} (${data.name})`);
+          
+          // Add extra check that user is indeed in members array
+          if (data.members && Array.isArray(data.members) && data.members.includes(userId)) {
+            groops.push({
+              id: doc.id,
+              name: data.name,
+              description: data.description,
+              photoURL: data.photoURL,
+              location: data.location,
+              address: data.address,
+              airbnbUrl: data.airbnbUrl,
+              mapUrl: data.mapUrl,
+              startDate: data.startDate?.toDate(),
+              endDate: data.endDate?.toDate(),
+              dateRange: data.dateRange,
+              accommodationCost: data.accommodationCost,
+              totalTripCost: data.totalTripCost,
+              createdAt: data.createdAt?.toDate(),
+              createdBy: data.createdBy,
+              members: data.members || [],
+              organizers: data.organizers || []
+            });
+          } else {
+            console.warn(`[GROOP_SERVICE] ⚠️ User ${userId} not found in members array for groop ${doc.id} despite query results`);
+          }
         });
         
-        console.log('[GROOP] Found', groops.length, 'groops for user');
+        console.log('[GROOP_SERVICE] ✅ Final groops list contains', groops.length, 'groops');
         return groops;
       } catch (error) {
-        console.error('[GROOP] Error fetching user groops:', error);
+        console.error('[GROOP_SERVICE] ❌ Error fetching user groops:', error);
         throw error;
       }
     }
