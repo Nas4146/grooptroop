@@ -21,9 +21,7 @@ export default function ItineraryScreen() {
   const [itinerary, setItinerary] = useState<ItineraryDay[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [budgetExpanded, setBudgetExpanded] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
-  const budgetAnimation = useRef(new Animated.Value(0)).current;
   const [accommodationPaymentVisible, setAccommodationPaymentVisible] = useState(false);
   const [totalOwed, setTotalOwed] = useState(0);
   const [totalPaid, setTotalPaid] = useState(0);
@@ -41,32 +39,6 @@ export default function ItineraryScreen() {
       fetchItineraryData();
     }, [])
   );
-
-  // Animation configs
-  const animateBudget = (expand: boolean) => {
-    Animated.spring(budgetAnimation, {
-      toValue: expand ? 1 : 0,
-      useNativeDriver: false,
-      friction: 8,
-      tension: 40
-    }).start();
-  };
-
-  // Derived animated values - Fix the string format for percentages
-  const budgetWidth = budgetAnimation.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['20%', '100%']
-  });
-  
-  const budgetRight = budgetAnimation.interpolate({
-    inputRange: [0, 1],
-    outputRange: [16, 0]
-  });
-  
-  const budgetBorderRadius = budgetAnimation.interpolate({
-    inputRange: [0, 1],
-    outputRange: [20, 0]
-  });
 
   const fetchItinerary = async () => {
     if (!currentGroop) {
@@ -228,13 +200,6 @@ export default function ItineraryScreen() {
       </View>
     );
   }
-
-  // Toggle budget expansion and trigger animation
-  const toggleBudget = () => {
-    const newState = !budgetExpanded;
-    setBudgetExpanded(newState);
-    animateBudget(newState);
-  };
 
   // Make header collapse to a smaller size
   const headerHeight = scrollY.interpolate({
@@ -474,107 +439,6 @@ export default function ItineraryScreen() {
           })
         )}
       </ScrollView>
-      
-      {/* Animated expandable budget button/footer */}
-      <Animated.View 
-        style={[
-          tw`absolute bottom-4 bg-white shadow-lg border border-gray-200`,
-          {
-            width: budgetWidth,
-            right: budgetRight,
-            borderRadius: budgetBorderRadius,
-            overflow: 'hidden'
-          }
-        ]}
-      >
-        <TouchableOpacity 
-          style={tw`flex-1`} 
-          onPress={toggleBudget}
-          activeOpacity={0.9}
-        >
-          <View style={tw`px-4 py-2.5`}>
-            {/* Always visible budget content */}
-            <View style={tw`flex-row justify-between items-center`}>
-              <View style={tw`flex-row items-center`}>
-                <View style={tw`w-2 h-2 rounded-full bg-accent mr-2`}></View>
-                <Text style={tw`text-sm font-bold text-neutral`}>$$</Text>
-                
-                {/* Only show in collapsed state */}
-                {!budgetExpanded && (
-                  <View style={tw`bg-secondary bg-opacity-10 rounded-full ml-2 px-2`}>
-                    <Text style={tw`text-base font-bold text-secondary`}>${totalOwed.toFixed(2)}</Text>
-                  </View>
-                )}
-              </View>
-              
-              {/* Arrow indicator that rotates */}
-              <Animated.View style={{
-                transform: [{
-                  rotate: budgetAnimation.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['0deg', '180deg']
-                  })
-                }]
-              }}>
-                <Ionicons 
-                  name="chevron-up" 
-                  size={18} 
-                  color="#1F2937" 
-                />
-              </Animated.View>
-            </View>
-            
-            {/* Additional content that appears when expanded */}
-            {budgetExpanded && (
-              <View style={tw`mt-2`}>
-                <View style={tw`flex-row justify-between items-center`}>
-                  <View>
-                    <Text style={tw`text-xs text-gray-500`}>You owe</Text>
-                    <Text style={tw`text-base font-bold text-secondary`}>${totalOwed.toFixed(2)}</Text>
-                  </View>
-                  
-                  <View>
-                    <Text style={tw`text-xs text-gray-500`}>You've paid</Text>
-                    <Text style={tw`text-base font-bold text-accent`}>${totalPaid.toFixed(2)}</Text>
-                  </View>
-                  
-                  <View>
-                    <Text style={tw`text-xs text-gray-500`}>Total trip</Text>
-                    <Text style={tw`text-base font-bold text-neutral`}>${totalTripCost.toFixed(2)}</Text>
-                  </View>
-                </View>
-                
-                {/* Progress bar for payment */}
-                <View style={tw`mt-2 h-1.5 bg-gray-200 rounded-full overflow-hidden`}>
-                  <View 
-                    style={[
-                      tw`h-full bg-gradient-to-r from-accent to-primary rounded-full`, 
-                      {
-                        width: `${totalOwed > 0 ? Math.min(100, (totalPaid / totalOwed) * 100) : 0}%`
-                      }
-                    ]}
-                  />
-                </View>
-                
-                {/* Pay now button - only shows in expanded state */}
-                <TouchableOpacity 
-                  style={tw`bg-primary rounded-full py-2 mt-3 items-center`}
-                  onPress={() => {
-                    const remaining = totalOwed - totalPaid;
-                    if (remaining > 0) {
-                      setAccommodationPaymentVisible(true);
-                    } else {
-                      alert('You have already paid for this accommodation.');
-                    }
-                  }}
-                >
-                  <Text style={tw`text-white font-bold text-sm`}>Pay Now</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        </TouchableOpacity>
-      </Animated.View>
       
       {/* Payment Sheet Modal */}
       <PaymentSheet
