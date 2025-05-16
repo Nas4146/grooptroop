@@ -135,25 +135,29 @@ export default function EventCard({
               isSelected 
               ? 'bg-sky-100 border border-sky-300' 
               : `bg-white border ${mood.border}`
-            } ${event.isOptional ? 'opacity-80' : 'opacity-100'}`}
+            }`}
           >
             <View style={tw`flex-row justify-between items-start pr-1.5`}>
               <View style={tw`flex-1 pr-1`}>
                 {/* Row with title and mood emoji */}
                 <View style={tw`flex-row items-center flex-wrap`}>
-                  <Text style={tw`text-base font-bold ${
-                    event.isOptional ? 'text-gray-500' : 'text-gray-800'
-                  }`}>
+                  <Text style={tw`text-base font-bold text-gray-800`}>
                     {event.title || ''}
                   </Text>
                   <Text style={tw`ml-1.5 text-base`}>{mood.emoji}</Text>
                 </View>
                 
-                {/* Optional tag */}
-                {event.isOptional && (
+                {/* Locked-in indicator for events requiring payment */}
+                {event.isPaymentRequired && (
                   <View style={tw`flex-row items-center mt-0.5`}>
-                    <View style={tw`bg-gray-100 rounded-full px-1.5 py-0.5`}>
-                      <Text style={tw`text-xs font-medium text-gray-500`}>Optional</Text>
+                    <View style={tw`bg-blue-100 rounded-full px-1.5 py-0.5 flex-row items-center`}>
+                      <Ionicons 
+                        name="lock-closed-outline" 
+                        size={10} 
+                        color="#3B82F6" 
+                        style={tw`mr-0.5`} 
+                      />
+                      <Text style={tw`text-xs font-medium text-blue-600`}>Reserved</Text>
                     </View>
                   </View>
                 )}

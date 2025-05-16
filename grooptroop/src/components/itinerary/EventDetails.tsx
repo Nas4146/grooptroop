@@ -70,6 +70,13 @@ export default function EventDetailsModal({
     );
   };
 
+  // Update the safeText helper function for better safety
+  const safeText = (value: any) => {
+    if (value === null || value === undefined) return '';
+    // For values that might not be strings
+    return String(value);
+  };
+
   return (
     <Modal
       visible={visible}
@@ -95,10 +102,10 @@ export default function EventDetailsModal({
             
             <View style={tw`flex-row items-center mt-2`}>
               <Ionicons name="time-outline" size={16} color="#666" />
-              <Text style={tw`ml-1 text-gray-600`}>{event.time || 'Time TBD'}</Text>
+              <Text style={tw`ml-1 text-gray-600`}>{event.time ? safeText(event.time) : 'Time TBD'}</Text>
               <Text style={tw`mx-2 text-gray-400`}>|</Text>
               <Ionicons name="calendar-outline" size={16} color="#666" />
-              <Text style={tw`ml-1 text-gray-600`}>{event.date || 'Date TBD'}</Text>
+              <Text style={tw`ml-1 text-gray-600`}>{event.date ? safeText(event.date) : 'Date TBD'}</Text>
             </View>
             
             {event.location && (
@@ -107,7 +114,7 @@ export default function EventDetailsModal({
                 onPress={handleLocationPress}
               >
                 <Ionicons name="location-outline" size={16} color="#666" />
-                <Text style={tw`ml-1 text-gray-600 underline`}>{event.location}</Text>
+                <Text style={tw`ml-1 text-gray-600 underline`}>{safeText(event.location)}</Text>
                 <Ionicons name="open-outline" size={14} color="#666" style={tw`ml-1`} />
               </TouchableOpacity>
             )}
@@ -149,25 +156,31 @@ export default function EventDetailsModal({
               )}
             </View>
 
+            {/* Payment details section - updated to handle values more strictly */}
             {event.isPaymentRequired && (
               <View style={tw`mt-6 bg-amber-50 p-4 rounded-lg`}>
                 <Text style={tw`text-lg font-bold text-neutral mb-2`}>Payment Details</Text>
                 <View style={tw`flex-row justify-between`}>
                   <Text style={tw`text-gray-700`}>Cost per person:</Text>
-                  <Text style={tw`font-bold text-secondary`}>${event.costPerPerson?.toFixed(2) || 0}</Text>
+                  <Text style={tw`font-bold text-secondary`}>
+                    ${typeof event.costPerPerson === 'number' ? event.costPerPerson.toFixed(2) : '0.00'}
+                  </Text>
                 </View>
                 <View style={tw`flex-row justify-between mt-1`}>
                   <Text style={tw`text-gray-700`}>Total cost:</Text>
-                  <Text style={tw`font-bold text-neutral`}>${event.totalCost?.toFixed(2) || 0}</Text>
+                  <Text style={tw`font-bold text-neutral`}>
+                    ${typeof event.totalCost === 'number' ? event.totalCost.toFixed(2) : '0.00'}
+                  </Text>
                 </View>
                 <View style={tw`flex-row justify-between mt-1`}>
                   <Text style={tw`text-gray-700`}>Status:</Text>
                   <Text style={tw`font-bold ${event.paid ? 'text-green-600' : 'text-amber-600'}`}>
-                    {event.paid ? 'Paid' : 'Pending'}
+                    {event.paid === true ? 'Paid' : 'Pending'}
                   </Text>
                 </View>
                 
-                {!event.paid && event.costPerPerson && event.costPerPerson > 0 && (
+                {/* Only show Pay Now button if event is not paid and has a cost */}
+                {event.paid !== true && typeof event.costPerPerson === 'number' && event.costPerPerson > 0 && (
                   <TouchableOpacity 
                     style={tw`bg-primary py-2 rounded-lg items-center mt-3`}
                     onPress={onPayment}
@@ -177,11 +190,14 @@ export default function EventDetailsModal({
                 )}
               </View>
             )}
-            
-            {event.isOptional && (
+
+            {/* Lock icon section - make sure this is properly handling text too */}
+            {event.isPaymentRequired && (
               <View style={tw`mt-4 bg-blue-50 p-3 rounded-lg flex-row items-center`}>
-                <Ionicons name="information-circle-outline" size={20} color="#3B82F6" />
-                <Text style={tw`text-blue-700 ml-2`}>This event is optional</Text>
+                <Ionicons name="lock-closed-outline" size={20} color="#3B82F6" />
+                <Text style={tw`text-blue-700 ml-2`}>
+                  Reserved event
+                </Text>
               </View>
             )}
 
