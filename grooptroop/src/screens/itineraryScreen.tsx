@@ -14,6 +14,8 @@ import PaymentSheet from '../components/payments/PaymentSheet';
 import { PaymentService } from '../services/PaymentService';
 import { useAuth } from '../contexts/AuthProvider';
 import GroopHeader from '../components/common/GroopHeader';
+import { useComponentPerformance } from '../utils/usePerformance';
+import { SimplePerformance } from '../utils/simplePerformance';
 
 export default function ItineraryScreen() {
   const { currentGroop, userGroops, fetchUserGroops, setCurrentGroop } = useGroop();
@@ -28,6 +30,9 @@ export default function ItineraryScreen() {
   const [totalTripCost, setTotalTripCost] = useState(0);
   const { profile } = useAuth();
   const [addressCopied, setAddressCopied] = useState(false);
+
+  // This will automatically track mount/unmount and renders
+  const perf = useComponentPerformance('ItineraryScreen');
 
   useEffect(() => {
     fetchUserGroops();
@@ -452,4 +457,15 @@ export default function ItineraryScreen() {
     </SafeAreaView>
     </KeyboardAvoidingView>
   );
+}
+
+// In a service file
+async function loadUserData(userId) {
+  const traceId = SimplePerformance.startTrace('loadUserData');
+  try {
+    // Your code
+    return await fetchUserFromApi(userId);
+  } finally {
+    SimplePerformance.endTrace(traceId);
+  }
 }

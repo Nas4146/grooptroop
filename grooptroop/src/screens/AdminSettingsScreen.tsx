@@ -13,6 +13,7 @@ import {
   Clipboard
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,9 +23,10 @@ import tw from '../utils/tw';
 import GroopHeader from '../components/common/GroopHeader';
 import * as Haptics from 'expo-haptics';
 import { InvitationService } from '../services/InvitationService';
+import { RootStackParamList } from '../navigation/types';
 
 export default function AdminSettingsScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { currentGroop } = useGroop();
   const { profile } = useAuth();
   const [venmoUsername, setVenmoUsername] = useState('');
@@ -345,6 +347,25 @@ export default function AdminSettingsScreen() {
                 <Text style={tw`text-lg font-bold text-neutral`}>Notification Settings</Text>
               </View>
               <Text style={tw`text-gray-500 italic`}>Coming soon...</Text>
+            </View>
+            
+            {/* Performance Monitor Section - New */}
+            <View style={tw`mb-8 bg-white p-4 rounded-xl shadow-sm`}>
+              <View style={tw`flex-row items-center mb-4`}>
+                <Ionicons name="speedometer-outline" size={24} color="#7C3AED" style={tw`mr-3`} />
+                <Text style={tw`text-lg font-bold text-neutral`}>Performance Monitor</Text>
+              </View>
+              
+              <Text style={tw`text-sm text-gray-600 mb-4`}>
+                Monitor the performance of your groop and identify areas for improvement.
+              </Text>
+              
+              <TouchableOpacity
+                style={tw`bg-primary py-3 rounded-lg items-center flex-row justify-center`}
+                onPress={() => navigation.navigate('DevPerformance')}
+              >
+                <Text style={tw`text-white font-bold`}>Open Performance Monitor</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </ScrollView>

@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthProvider';
 import GroopsContentSwitcher from '../components/navigation/GroopsContentSwitcher';
 import ProfileSetupScreen from '../screens/ProfileSetupScreen';
 import SimpleLoginScreen from '../screens/SimpleLoginScreen';
+import DevPerformanceScreen from '../screens/DevPerformanceScreen';
 import tw from '../utils/tw';
 
 const RootStack = createNativeStackNavigator();
@@ -42,6 +43,15 @@ export default function RootNavigator() {
       )}
       
       {/* Your other modal screens */}
+      <RootStack.Screen 
+        name="DevPerformance" 
+        component={DevPerformanceScreen} 
+        options={{ 
+          title: "Performance Monitor",
+          // Optional: only show in development
+          // headerShown: __DEV__
+        }} 
+      />
     </RootStack.Navigator>
   );
 }

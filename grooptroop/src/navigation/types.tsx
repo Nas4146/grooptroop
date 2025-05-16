@@ -28,6 +28,7 @@ export type RootStackParamList = {
   EventDetails: { eventId: string };
   GroupMembers: { groopId?: string };
   AdminSettings: undefined;
+  DevPerformance: undefined; // No parameters needed for this screen
 };
 
 
