@@ -20,6 +20,8 @@ export interface ChatMessage {
   createdAt: Timestamp;
   reactions: { [key: string]: string[] };
   replyTo?: string;
+  replyToText?: string; // Added field for the text of the replied message
+  replyToSenderName?: string; // Added field for the name of the replied message sender
   imageUrl?: string;
   read: string[];
   isEncrypted?: boolean;

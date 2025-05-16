@@ -68,10 +68,12 @@ export class ChatService {
           text: messageText,
           senderId: data.senderId,
           senderName: data.senderName,
-          senderAvatar: data.senderAvatar,  // Now this could be a UserAvatar object
+          senderAvatar: data.senderAvatar,
           createdAt: data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt),
           reactions: data.reactions || {},
           replyTo: data.replyTo,
+          replyToText: data.replyToText, // Add this line
+          replyToSenderName: data.replyToSenderName, // Add this line
           imageUrl: data.imageUrl,
           read: data.read || [],
           isEncrypted: data.isEncrypted || false,
@@ -241,6 +243,44 @@ export class ChatService {
       // Only add these fields if they have values
       if (message.replyTo) {
         messageData.replyTo = message.replyTo;
+        
+        // Fetch the original message to get its text and sender
+        try {
+          const replyToDoc = await getDoc(doc(messagesRef, message.replyTo));
+          if (replyToDoc.exists()) {
+            const replyToData = replyToDoc.data();
+            
+            // Add reply text and sender name to the message data
+            if (replyToData.isEncrypted) {
+              // Handle encrypted replies - try to decrypt
+              try {
+                // Make sure we're using the correct function name from your EncryptionService
+                const decryptedText = await EncryptionService.decryptMessage(replyToData.text, groopId);
+                messageData.replyToText = decryptedText || "[Encrypted message]";
+                
+                // Add debug logging to verify the reply text is being set
+                console.log(`[CHAT] Decrypted reply text (${decryptedText ? 'success' : 'failed'}): Length ${decryptedText?.length || 0}`);
+              } catch (err) {
+                console.error("[CHAT] Error decrypting replied message:", err);
+                messageData.replyToText = "[Encrypted message]";
+              }
+            } else {
+              messageData.replyToText = replyToData.text;
+              console.log(`[CHAT] Setting plain text reply: "${replyToData.text.substring(0, 30)}..."`);
+            }
+            
+            messageData.replyToSenderName = replyToData.senderName;
+            
+            console.log("[CHAT] Added reply context:", {
+              replyTo: message.replyTo,
+              replyToSenderName: messageData.replyToSenderName,
+              replyToTextLength: messageData.replyToText?.length || 0
+            });
+          }
+        } catch (error) {
+          console.error('[CHAT] Error fetching replied message:', error);
+          // Still create the message even if we can't fetch reply info
+        }
       }
       
       if (message.imageUrl) {

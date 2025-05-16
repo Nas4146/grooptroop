@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ChatMessage } from '../../models/chat';
 import tw from '../../utils/tw';
 import Avatar from '../common/Avatar';
+import * as Haptics from 'expo-haptics';
 
 // Common emoji reactions
 const COMMON_REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🔥'];
@@ -181,15 +182,19 @@ const renderLegacyAvatar = () => {
         )}
         
         {/* Message bubble */}
-<TouchableOpacity
+        <TouchableOpacity
   style={[
     tw`max-w-[80%] rounded-2xl p-3`,
     isFromCurrentUser ? 
       tw`bg-primary rounded-tr-none` : 
       tw`bg-gray-200 rounded-tl-none shadow-sm`
   ]}
-  onLongPress={() => setShowReactions(true)}
-  delayLongPress={200}
+  onLongPress={() => {
+    // Add haptic feedback on long press
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setShowReactions(true);
+  }}
+  delayLongPress={200} // This makes sure it's intentional
   activeOpacity={0.9}
 >
   {/* Optional: Add a subtle gradient or pattern for Gen Z appeal */}
@@ -205,8 +210,17 @@ const renderLegacyAvatar = () => {
                 style={tw`text-xs ${isFromCurrentUser ? 'text-gray-100' : 'text-gray-600'}`}
                 numberOfLines={1}
               >
-                Replying to message
+                {message.replyToSenderName || 'message'}
               </Text>
+              {message.replyToText && (
+                <Text 
+                  style={tw`text-xs ${isFromCurrentUser ? 'text-gray-200' : 'text-gray-700'}`}
+                  numberOfLines={2}
+                  ellipsizeMode="tail"
+                >
+                  {message.replyToText}
+                </Text>
+              )}
             </View>
           )}
           
@@ -258,35 +272,52 @@ const renderLegacyAvatar = () => {
           tw`flex-row bg-white rounded-full p-1 shadow-md border border-gray-100 mt-2`,
           isFromCurrentUser ? tw`mr-2` : tw`ml-10`
         ]}>
-          {COMMON_REACTIONS.map(emoji => (
+          {/* Emoji reactions */}
+          <View style={tw`flex-row`}>
+            {COMMON_REACTIONS.map(emoji => (
+              <TouchableOpacity
+                key={emoji}
+                style={tw`p-1.5 ${hasUserReacted(emoji) ? 'bg-gray-100 rounded-full' : ''}`}
+                onPress={() => {
+                  // Add haptic feedback when selecting a reaction
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  onReactionPress(message.id, emoji);
+                  setShowReactions(false);
+                }}
+              >
+                <Text style={tw`text-lg`}>{emoji}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          
+          {/* Vertical separator */}
+          <View style={tw`w-px h-6 bg-gray-200 mx-1 my-auto`} />
+          
+          {/* Action buttons with better centering */}
+          <View style={tw`flex-row items-center`}>
+            {/* Reply button */}
             <TouchableOpacity
-              key={emoji}
-              style={tw`p-1.5 ${hasUserReacted(emoji) ? 'bg-gray-100 rounded-full' : ''}`}
+              style={tw`p-1.5 rounded-full bg-primary bg-opacity-10`}
               onPress={() => {
-                onReactionPress(message.id, emoji);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowReactions(false);
+                onReplyPress(message.id);
+              }}
+            >
+              <Ionicons name="return-down-back" size={18} color="#7C3AED" />
+            </TouchableOpacity>
+            
+            {/* Close button */}
+            <TouchableOpacity
+              style={tw`p-1.5 ml-1`}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setShowReactions(false);
               }}
             >
-              <Text style={tw`text-lg`}>{emoji}</Text>
+              <Ionicons name="close" size={18} color="#6B7280" />
             </TouchableOpacity>
-          ))}
-          
-          <TouchableOpacity
-            style={tw`p-1.5`}
-            onPress={() => {
-              setShowReactions(false);
-              onReplyPress(message.id);
-            }}
-          >
-            <Ionicons name="return-down-back" size={18} color="#374151" />
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={tw`p-1.5`}
-            onPress={() => setShowReactions(false)}
-          >
-            <Ionicons name="close" size={18} color="#374151" />
-          </TouchableOpacity>
+          </View>
         </View>
       )}
     </View>
