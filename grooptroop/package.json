@@ -21,6 +21,7 @@
     "@react-navigation/bottom-tabs": "^7.3.10",
     "@react-navigation/native": "^7.1.9",
     "@react-navigation/native-stack": "^7.3.13",
+    "@sentry/react-native": "~6.10.0",
     "@shopify/flash-list": "1.7.3",
     "dotenv": "^16.5.0",
     "expo": "~52.0.46",
@@ -74,6 +75,7 @@
     "jest-environment-jsdom": "^29.7.0",
     "jest-expo": "52.0.6",
     "postcss": "^8.5.3",
+    "react-native-flipper": "^0.273.0",
     "react-test-renderer": "^18.3.1",
     "tailwindcss": "3.4.17",
     "typescript": "^5.3.3"

@@ -15,9 +15,13 @@ import { SimplePerformance } from './src/utils/simplePerformance';
 import { useComponentPerformance } from './src/utils/usePerformance';
 import { setupAppMonitoring } from './src/utils/appPerformanceMonitor';
 import { NetworkMonitor } from './src/utils/networkMonitor';
+import { SentryPerformance } from './src/utils/sentryPerformance';
 
 // Import the root navigator
 import RootNavigator from './src/navigation/RootNavigator';
+
+// Initialize Sentry early in the application lifecycle
+SentryPerformance.initialize('YOUR_SENTRY_DSN'); // Replace with your Sentry DSN
 
 // Start app load trace at the top level
 const appLoadTraceId = SimplePerformance.startTrace('app_load');
@@ -41,6 +45,18 @@ const AppContent = () => {
   useEffect(() => {
     if (!isLoading) {
       SimplePerformance.logEvent('app', `App mounted ${isAuthenticated ? 'authenticated' : 'unauthenticated'}`);
+      
+      // End the app load trace
+      SimplePerformance.endTrace(appLoadTraceId);
+      
+      // Set user context in Sentry if authenticated
+      if (isAuthenticated && user) {
+        SentryPerformance.setUser({
+          id: user.id,
+          username: user.username || undefined,
+          email: user.email || undefined
+        });
+      }
     }
   }, [isLoading, isAuthenticated]);
   
@@ -81,6 +97,28 @@ const AppContent = () => {
 export default function App() {
   // Track app startup time
   useComponentPerformance('App');
+  
+  // Initialize Flipper plugins in development mode
+  useEffect(() => {
+    if (__DEV__) {
+      const { Platform } = require('react-native');
+      
+      // Initialize Flipper plugins
+      if (Platform.OS === 'android') {
+        require('react-native-flipper').addPlugin({
+          getId() {
+            return 'ReactDevTools';
+          },
+          onConnect() {
+            console.log('[PERF] React DevTools connected via Flipper');
+          },
+          onDisconnect() {
+            console.log('[PERF] React DevTools disconnected');
+          }
+        });
+      }
+    }
+  }, []);
   
   return (
     <GestureHandlerRootView style={tw`flex-1`}>
