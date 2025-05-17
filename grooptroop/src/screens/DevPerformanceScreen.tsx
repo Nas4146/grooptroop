@@ -1,9 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Platform, ScrollView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Platform, ScrollView, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SimplePerformance } from '../utils/simplePerformance';
 import { useComponentPerformance } from '../utils/usePerformance';
 import { Ionicons } from '@expo/vector-icons';
+import { MemoryMonitor } from '../utils/memoryMonitor';
+import { FrameRateMonitor } from '../utils/frameRateMonitor';
+import { PerformanceProfiler } from '../utils/performanceProfiles';
+import { NetworkMonitor } from '../utils/networkMonitor';
+import { CPUMonitor } from '../utils/cpuMonitor';
+import { PerformanceExporter } from '../utils/performanceExporter';
+import { UserPerceptionMetrics } from '../utils/userPerceptionMetrics';
 
 export default function DevPerformanceScreen({ navigation }) {
   useComponentPerformance('DevPerformanceScreen');
@@ -11,6 +18,9 @@ export default function DevPerformanceScreen({ navigation }) {
   const [traces, setTraces] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [testingInProgress, setTestingInProgress] = useState(false);
+  const [isProfileActive, setIsProfileActive] = useState(false);
+  const [currentProfileName, setCurrentProfileName] = useState<string | null>(null);
+  const [diagnosticResults, setDiagnosticResults] = useState<any>(null);
 
   // Load performance data
   useEffect(() => {
@@ -160,6 +170,71 @@ export default function DevPerformanceScreen({ navigation }) {
     setTestingInProgress(false);
   };
   
+  // Test memory usage
+  const runMemoryTest = async () => {
+    setTestingInProgress(true);
+    
+    // Clear existing results first
+    SimplePerformance.clearHistory();
+    MemoryMonitor.clearSnapshots();
+    
+    // Take initial snapshot
+    await MemoryMonitor.takeSnapshot('memory_test_start');
+    
+    // Allocate some memory to see the difference
+    const memoryHog: any[] = [];
+    for (let i = 0; i < 1000; i++) {
+      memoryHog.push({
+        id: i,
+        data: new Array(1000).fill('Memory test data').join(''),
+        timestamp: Date.now()
+      });
+    }
+    
+    // Take another snapshot after allocation
+    await MemoryMonitor.takeSnapshot('memory_test_after_allocation');
+    
+    // Clear the array to free memory
+    memoryHog.length = 0;
+    
+    // Force garbage collection if possible (only works in some environments)
+    if (global.gc) {
+      global.gc();
+    }
+    
+    // Take final snapshot
+    await MemoryMonitor.takeSnapshot('memory_test_end');
+    
+    // Refresh the data
+    handleRefresh();
+    setTestingInProgress(false);
+  };
+  
+  // Test frame rate
+  const runFrameRateTest = () => {
+    setTestingInProgress(true);
+    
+    // Clear existing results first
+    SimplePerformance.clearHistory();
+    
+    // Start monitoring frame rate
+    FrameRateMonitor.startMonitoring('ui_test');
+    
+    // Create some UI load to simulate heavy rendering
+    const start = Date.now();
+    while (Date.now() - start < 500) {
+      // Block the main thread for 500ms
+      const dummy = Math.random() * 1000;
+    }
+    
+    // Stop monitoring after 1 second
+    setTimeout(() => {
+      FrameRateMonitor.stopMonitoring();
+      handleRefresh();
+      setTestingInProgress(false);
+    }, 1000);
+  };
+
   // Get category statistics
   const categoryStats = SimplePerformance.getCategoryStats();
   
@@ -331,6 +406,104 @@ export default function DevPerformanceScreen({ navigation }) {
               {testingInProgress ? 'Running Tests...' : 'Test Network Performance'}
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.testButton,
+              testingInProgress && styles.testButtonDisabled,
+              { marginTop: 12, backgroundColor: '#8B5CF6' }
+            ]}
+            onPress={runMemoryTest}
+            disabled={testingInProgress}
+          >
+            <Text style={styles.testButtonText}>
+              {testingInProgress ? 'Running Tests...' : 'Test Memory Usage'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.testButton,
+              testingInProgress && styles.testButtonDisabled,
+              { marginTop: 12, backgroundColor: '#EC4899' }
+            ]}
+            onPress={runFrameRateTest}
+            disabled={testingInProgress}
+          >
+            <Text style={styles.testButtonText}>
+              {testingInProgress ? 'Running Tests...' : 'Test Frame Rate'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Profile section */}
+        <View style={styles.contentSection}>
+          <Text style={styles.sectionTitle}>Performance Profiles</Text>
+          
+          {/* Profile controls */}
+          <View style={styles.profileControls}>
+            <TextInput
+              style={styles.profileInput}
+              placeholder="Profile name"
+              value={currentProfileName || ''}
+              onChangeText={setCurrentProfileName}
+              editable={!isProfileActive}
+            />
+            
+            {!isProfileActive ? (
+              <TouchableOpacity
+                style={[styles.button, { backgroundColor: '#8B5CF6' }]}
+                onPress={() => {
+                  if (currentProfileName) {
+                    PerformanceProfiler.startProfile(currentProfileName);
+                    setIsProfileActive(true);
+                  }
+                }}
+                disabled={!currentProfileName}
+              >
+                <Text style={styles.buttonText}>Start Profile</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.button, { backgroundColor: '#DC2626' }]}
+                onPress={() => {
+                  const results = PerformanceProfiler.stopProfile();
+                  console.log(`[PERF] Profile results:`, results);
+                  setIsProfileActive(false);
+                }}
+              >
+                <Text style={styles.buttonText}>Stop Profile</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          
+          {/* Run diagnostics */}
+          <View style={styles.profileControls}>
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: '#059669', marginTop: 12 }]}
+              onPress={async () => {
+                setTestingInProgress(true);
+                const results = await PerformanceProfiler.runDiagnostic(
+                  'navigation',
+                  async () => {
+                    // Simulate navigation actions
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                    // Any other actions you want to test
+                  }
+                );
+                setDiagnosticResults(results);
+                setTestingInProgress(false);
+              }}
+              disabled={testingInProgress}
+            >
+              <Text style={styles.buttonText}>Run Navigation Diagnostic</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: '#2563EB', marginTop: 12, marginLeft: 8 }]}
+              onPress={() => PerformanceExporter.exportData()}
+            >
+              <Text style={styles.buttonText}>Export Data</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Stats section */}
@@ -603,5 +776,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#111827',
+  },
+  profileControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  profileInput: {
+    flex: 1,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 4,
+    marginRight: 8,
   },
 });

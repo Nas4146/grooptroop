@@ -13,6 +13,7 @@ import { GroopProvider } from './src/contexts/GroopProvider';
 import { NotificationProvider } from './src/contexts/NotificationProvider';
 import { SimplePerformance } from './src/utils/simplePerformance';
 import { useComponentPerformance } from './src/utils/usePerformance';
+import { setupAppMonitoring } from './src/utils/appPerformanceMonitor';
 
 // Import the root navigator
 import RootNavigator from './src/navigation/RootNavigator';
@@ -25,6 +26,12 @@ const AppContent = () => {
   const { isAuthenticated, isLoading } = useAuth();
   const perf = useComponentPerformance('AppContent');
   const navigationRef = useNavigationContainerRef();
+  
+  // Add this to use the app monitoring
+  useEffect(() => {
+    // Initialize app-wide performance monitoring
+    setupAppMonitoring(navigationRef);
+  }, [navigationRef]);
   
   // Track when app is fully mounted and ready
   useEffect(() => {
