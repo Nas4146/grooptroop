@@ -14,6 +14,7 @@ import { NotificationProvider } from './src/contexts/NotificationProvider';
 import { SimplePerformance } from './src/utils/simplePerformance';
 import { useComponentPerformance } from './src/utils/usePerformance';
 import { setupAppMonitoring } from './src/utils/appPerformanceMonitor';
+import { NetworkMonitor } from './src/utils/networkMonitor';
 
 // Import the root navigator
 import RootNavigator from './src/navigation/RootNavigator';
@@ -31,6 +32,9 @@ const AppContent = () => {
   useEffect(() => {
     // Initialize app-wide performance monitoring
     setupAppMonitoring(navigationRef);
+    
+    // Initialize network monitoring
+    NetworkMonitor.initializeFetchMonitoring();
   }, [navigationRef]);
   
   // Track when app is fully mounted and ready
