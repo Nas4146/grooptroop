@@ -98,28 +98,6 @@ export default function App() {
   // Track app startup time
   useComponentPerformance('App');
   
-  // Initialize Flipper plugins in development mode
-  useEffect(() => {
-    if (__DEV__) {
-      const { Platform } = require('react-native');
-      
-      // Initialize Flipper plugins
-      if (Platform.OS === 'android') {
-        require('react-native-flipper').addPlugin({
-          getId() {
-            return 'ReactDevTools';
-          },
-          onConnect() {
-            console.log('[PERF] React DevTools connected via Flipper');
-          },
-          onDisconnect() {
-            console.log('[PERF] React DevTools disconnected');
-          }
-        });
-      }
-    }
-  }, []);
-  
   return (
     <GestureHandlerRootView style={tw`flex-1`}>
       <SafeAreaProvider>
