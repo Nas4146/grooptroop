@@ -15,7 +15,7 @@ import { SimplePerformance } from './src/utils/simplePerformance';
 import { useComponentPerformance } from './src/utils/usePerformance';
 import { setupAppMonitoring } from './src/utils/appPerformanceMonitor';
 import { NetworkMonitor } from './src/utils/networkMonitor';
-import { SentryPerformance } from './src/utils/sentryPerformance';
+import { SentryPerformance, Sentry } from './src/utils/sentryPerformance';
 
 // Import the root navigator
 import RootNavigator from './src/navigation/RootNavigator';
@@ -25,10 +25,11 @@ SentryPerformance.initialize('YOUR_SENTRY_DSN'); // Replace with your Sentry DSN
 
 // Start app load trace at the top level
 const appLoadTraceId = SimplePerformance.startTrace('app_load');
+const appStartTransaction = SentryPerformance.startTransaction('app.startup', 'app.lifecycle');
 
 // Main app content with navigation
 const AppContent = () => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const perf = useComponentPerformance('AppContent');
   const navigationRef = useNavigationContainerRef();
   
@@ -39,6 +40,39 @@ const AppContent = () => {
     
     // Initialize network monitoring
     NetworkMonitor.initializeFetchMonitoring();
+    
+    // Track screen views in Sentry
+    if (navigationRef.current) {
+      const trackedRoutes = new Set<string>();
+      
+      navigationRef.addListener('state', () => {
+        const currentRouteName = navigationRef.getCurrentRoute()?.name;
+        
+        if (currentRouteName && !trackedRoutes.has(currentRouteName)) {
+          trackedRoutes.add(currentRouteName);
+          
+          // Track first view of each unique screen
+          const screenLoadSpan = Sentry.startTransaction({
+            name: `screen.${currentRouteName}.load`,
+            op: 'navigation'
+          });
+          
+          // Finish the span after the screen should be rendered
+          setTimeout(() => {
+            screenLoadSpan.finish();
+          }, 1000);
+          
+          SentryPerformance.trackScreenView(currentRouteName);
+        }
+      });
+    }
+    
+    // Return cleanup function
+    return () => {
+      if (navigationRef.current) {
+        // Clean up listeners if needed
+      }
+    };
   }, [navigationRef]);
   
   // Track when app is fully mounted and ready
@@ -49,6 +83,9 @@ const AppContent = () => {
       // End the app load trace
       SimplePerformance.endTrace(appLoadTraceId);
       
+      // Finish the app start transaction
+      appStartTransaction.finish();
+      
       // Set user context in Sentry if authenticated
       if (isAuthenticated && user) {
         SentryPerformance.setUser({
@@ -56,9 +93,27 @@ const AppContent = () => {
           username: user.username || undefined,
           email: user.email || undefined
         });
+        
+        // Add user properties as tags
+        Sentry.setTag('user.hasCompletedOnboarding', String(user.hasCompletedOnboarding || false));
+        Sentry.setTag('user.isAdmin', String(user.isAdmin || false));
       }
+      
+      // Track memory usage periodically
+      const memoryInterval = setInterval(() => {
+        // This is a simple placeholder. In a real app, you would use
+        // a proper way to measure memory usage
+        SentryPerformance.trackMemoryUsage({
+          jsHeapSize: global.performance?.memory?.usedJSHeapSize,
+          nativeMemoryUsage: undefined
+        });
+      }, 60000); // Check every minute
+      
+      return () => {
+        clearInterval(memoryInterval);
+      };
     }
-  }, [isLoading, isAuthenticated]);
+  }, [isLoading, isAuthenticated, user]);
   
   console.log('[APP] AppContent rendering. Auth status:', isAuthenticated ? 'logged in' : 'not logged in');
   
@@ -80,11 +135,23 @@ const AppContent = () => {
         console.log(`[APP ${timestamp}] Navigation container is ready`);
         // End the app load trace when navigation is ready
         SimplePerformance.endTrace(appLoadTraceId);
+        
+        // Track navigation initialization in Sentry
+        Sentry.addBreadcrumb({
+          category: 'navigation',
+          message: 'Navigation container ready',
+          level: 'info'
+        });
       }}
       onStateChange={(state) => {
         const timestamp = new Date().toLocaleTimeString();
         const currentRouteName = navigationRef.getCurrentRoute()?.name;
         console.log(`[APP ${timestamp}] Navigation state changed, current route: ${currentRouteName}`);
+        
+        // Track screen transitions
+        SentryPerformance.trackUIAction('screenTransition', {
+          toScreen: currentRouteName
+        });
       }}
     >
       <RootNavigator isAuthenticated={isAuthenticated} />
