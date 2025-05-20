@@ -194,6 +194,28 @@ export default function GroopHeader({
     );
   };
 
+  const MemberAvatar = ({ profile, index }: { profile: any, index: number }) => {
+    console.log(`[GROOP_HEADER] Rendering avatar for member: ${profile.displayName}, index: ${index}`);
+    console.log(`[GROOP_HEADER] Avatar data:`, profile.avatar);
+    
+    // Ensure the avatar data is properly passed to the Avatar component
+    return (
+      <View style={[
+        tw`w-7 h-7 rounded-full border-2 border-white overflow-hidden`,
+        { marginLeft: index === 0 ? 0 : -8, zIndex: 10 - index }
+      ]}>
+        <Avatar
+          user={profile.displayName}
+          size="sm"
+          avatarType={profile.avatar?.type}
+          avatarSeed={profile.avatar?.seed}
+          avatarUrl={profile.avatar?.url}
+          backgroundColor={profile.avatar?.color}
+        />
+      </View>
+    );
+  };
+
   return (
     <View style={tw`${minimal ? 'pt-2' : 'pt-1'} pb-0 rounded-b-3xl`}>
       <View 

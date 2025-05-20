@@ -35,9 +35,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import DateSeparator from '../components/chat/DateSeparator';
 import { ChatItemType } from '../models/chat';
 import GroopHeader from '../components/common/GroopHeader';
-import { SentryService } from '../utils/sentryService';
+import { SentryService, usePerformance, SentrySpan } from '../utils/sentryService';
 import ChatPerformanceMonitor from '../utils/chatPerformanceMonitor';
-import { usePerformance } from '../utils/sentryService';
 
 type ChatScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type ChatScreenRouteProp = RouteProp<RootStackParamList, 'Chat'>; // Or whatever the route name is in your stack
@@ -327,12 +326,17 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
     return;
   }
   
-  // Define messageId outside the try-catch so it's available in both blocks
+  // Define messageId for tracking
   const messageId = `msg_${Date.now()}`;
   
   try {
-    // Track message send performance
-    ChatPerformanceMonitor.trackMessageSendStart(messageId, text.length);
+    // Always use direct try/catch blocks for better error handling
+    try {
+      console.log('[CHAT] Starting performance tracking for message', messageId);
+      ChatPerformanceMonitor.trackMessageSendStart(messageId, text.length);
+    } catch (e) {
+      console.log('[CHAT] Error starting performance tracking:', e);
+    }
     
     console.log(`[CHAT] Sending message to groop: ${currentGroop.id}`);
     console.log('[CHAT] Current user profile:', JSON.stringify({
@@ -341,12 +345,12 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
       avatarType: profile.avatar?.type
     }));
     
-    // Use the proper avatar object from the profile
+    // Send the actual message
     await ChatService.sendMessage(currentGroop.id, {
       text,
       senderId: profile.uid,
       senderName: profile.displayName || 'Anonymous',
-      senderAvatar: profile.avatar, // Pass the whole avatar object instead of photoURL or avatarColor
+      senderAvatar: profile.avatar,
       replyTo: replyingTo?.id,
       imageUrl
     });
@@ -359,12 +363,30 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
       flashListRef.current?.scrollToEnd();
     }, 200);
     
-    // When message sending completes successfully
-    ChatPerformanceMonitor.trackMessageSendComplete(messageId, true);
+    // Track successful send - in its own try/catch
+    try {
+      console.log('[CHAT] Completing performance tracking for message', messageId);
+      ChatPerformanceMonitor.trackMessageSendComplete(messageId, true);
+    } catch (e) {
+      console.log('[CHAT] Error completing performance tracking:', e);
+    }
+    
   } catch (error) {
-    // Track failed message send
-    ChatPerformanceMonitor.trackMessageSendComplete(messageId, false);
     console.error('[CHAT] Error sending message:', error);
+    
+    // Track failed send - in its own try/catch
+    try {
+      console.log('[CHAT] Tracking failed message send', messageId);
+      ChatPerformanceMonitor.trackMessageSendComplete(messageId, false);
+    } catch (e) {
+      console.log('[CHAT] Error tracking message failure:', e);
+    }
+    
+    // Log error
+    SentryService.captureError(error as Error, {
+      context: 'ChatScreen.sendMessage',
+      groopId: currentGroop.id
+    });
   }
 }, [profile, currentGroop, replyingTo]);
   
@@ -470,118 +492,103 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
 
   // Sentry and performance monitoring
   const chatId = route.params?.chatId || currentGroop?.id || 'unknown_chat';
-  const sentryTransaction = useRef<{
-    finish: () => void;
-    setData: (key: string, value: any) => void;
-    setTag: (key: string, value: string) => void;
-    startChild: (name: string, op: string) => { finish: () => void };
-  } | null>(null);
+  const sentryTransaction = useRef<SentrySpan | null>(null);
   const perf = usePerformance('ChatScreen');
   
   // Start monitoring when component mounts
   useEffect(() => {
-    // Start chat performance monitoring
-    if (currentGroop?.id) {
-      ChatPerformanceMonitor.startChatMonitoring(currentGroop.id);
+    console.log('[CHAT] Setting up performance monitoring for', chatId);
+    
+    try {
+      // Start chat performance monitoring
+      if (currentGroop?.id) {
+        ChatPerformanceMonitor.startChatMonitoring(currentGroop.id);
+      }
       
-      // Cleanup when unmounting
-      return () => {
-        ChatPerformanceMonitor.stopChatMonitoring();
-      };
-    }
-  }, [currentGroop?.id]);
-  
-  // Replace the Sentry transaction initialization with this safer version
-
-useEffect(() => {
-  try {
-    // Check if startTransaction exists before calling it
-    if (typeof SentryService.startTransaction === 'function') {
       sentryTransaction.current = SentryService.startTransaction(
         `Chat:${chatId}`, 
         'chat_session'
       );
       
-      // Only set tags if transaction was created successfully
-      if (sentryTransaction.current && typeof sentryTransaction.current.setTag === 'function') {
+      // Set relevant tags
+      if (sentryTransaction.current) {
         sentryTransaction.current.setTag('chat_id', chatId);
+        sentryTransaction.current.setTag('groop_name', currentGroop?.name || 'unknown');
+        sentryTransaction.current.setTag('user_id', profile?.uid || 'unknown');
       }
-    } else {
-      console.log('[CHAT] Sentry transaction not available - skipping performance monitoring');
-    }
-    
-    // Track operation timing
-    if (typeof perf.trackOperation === 'function') {
-      const initialLoadOp = perf.trackOperation('initialLoad');
       
-      // Check if end is a function before calling it
-      if (initialLoadOp && typeof initialLoadOp.end === 'function') {
-        setTimeout(() => {
-          initialLoadOp.end();
-        }, 500);
-      }
+      // Track initial load operation
+      const initialLoadOp = perf.trackOperation('initialLoad');
+      setTimeout(() => {
+        initialLoadOp.end();
+      }, 500);
+      
+      // Cleanup function runs when component unmounts
+      return () => {
+        // Stop ChatPerformanceMonitor
+        ChatPerformanceMonitor.stopChatMonitoring();
+        
+        // Finish the transaction
+        if (sentryTransaction.current) {
+          sentryTransaction.current.finish();
+        }
+      };
+    } catch (e) {
+      console.error('[CHAT] Error initializing performance monitoring:', e);
     }
-    
-    // Cleanup function runs when component unmounts
-    return () => {
-      // Finish the transaction if it exists and has finish method
-      if (sentryTransaction.current && typeof sentryTransaction.current.finish === 'function') {
-        sentryTransaction.current.finish();
-      }
-    };
-  } catch (e) {
-    console.error('[CHAT] Error initializing performance monitoring:', e);
-  }
-}, [chatId]);
+  }, [chatId, currentGroop?.id, currentGroop?.name, profile?.uid]);
 
   // Monitor message sends
   const monitoredSendMessage = useCallback(async (messageText: string) => {
     const messageId = `msg_${Date.now()}`;
-    let messageSendSpan = undefined;
+    let messageSendSpan = null;
     
     try {
-      // Track message sending performance if available
+      // Track message sending performance
       if (typeof ChatPerformanceMonitor?.trackMessageSendStart === 'function') {
         ChatPerformanceMonitor.trackMessageSendStart(messageId, messageText.length);
       }
       
-      // Create a child span only if possible
-      if (sentryTransaction.current && typeof sentryTransaction.current.startChild === 'function') {
+      // Create child span for message sending
+      if (sentryTransaction.current) {
         messageSendSpan = sentryTransaction.current.startChild(
-          `SendMessage:${messageId.slice(0, 6)}`, 
-          'message.send'
+          `send_message`,
+          `Send message ${messageId.slice(0, 6)}`
         );
+        
+        messageSendSpan.setData('messageLength', messageText.length);
+        messageSendSpan.setData('messageId', messageId);
       }
 
-      // Your message sending logic here
+      // Your existing message sending logic
       await sendMessage(messageText);
       
-      // Mark as successfully sent if function exists
+      // Mark as successfully sent
       if (typeof ChatPerformanceMonitor?.trackMessageSendComplete === 'function') {
         ChatPerformanceMonitor.trackMessageSendComplete(messageId, true);
       }
       
-      if (messageSendSpan && typeof messageSendSpan.finish === 'function') {
+      // Finish the span
+      if (messageSendSpan) {
         messageSendSpan.finish();
       }
     } catch (error) {
-      // Track failed sends if function exists
+      // Track failed sends
       if (typeof ChatPerformanceMonitor?.trackMessageSendComplete === 'function') {
         ChatPerformanceMonitor.trackMessageSendComplete(messageId, false);
       }
       
-      // Report error to Sentry if available
-      if (typeof SentryService?.captureError === 'function') {
-        SentryService.captureError(error as Error, { 
-          messageId, 
-          chatId: route.params?.chatId || currentGroop?.id || 'unknown_chat',
-          messageLength: messageText.length 
-        });
-      } else {
-        console.error('[CHAT] Error sending message:', error);
-      }
+      // Log error using SentryService instead of direct Sentry
+      SentryService.captureError(error as Error, {
+        messageId,
+        chatId: route.params?.chatId || currentGroop?.id || 'unknown_chat',
+        messageLength: messageText.length
+      });
       
-      if (messageSendSpan && typeof messageSendSpan.finish === 'function') {
+      // Finish the span with error status
+      if (messageSendSpan) {
+        messageSendSpan.setStatus('error');
+        messageSendSpan.setData('error', (error as Error).message);
         messageSendSpan.finish();
       }
     }
@@ -598,20 +605,23 @@ useEffect(() => {
       </View>
     );
     
-    // Track rendering performance after the message renders
+    // Track rendering performance
     const endTime = performance.now();
-    ChatPerformanceMonitor.trackMessageRender(message.id, startTime, endTime);
+    if (typeof ChatPerformanceMonitor?.trackMessageRender === 'function') {
+      ChatPerformanceMonitor.trackMessageRender(message.id, startTime, endTime);
+    }
     
     return renderedMessage;
   };
   
   // Track user interactions
   const onTyping = () => {
-    // Track user interaction
+    // Use custom perf hook
     perf.trackInteraction('user_typing');
   };
   
   const onScrollChat = () => {
+    // Use custom perf hook
     const scrollOp = perf.trackOperation('chatScroll');
     
     // End the operation after scrolling completes
@@ -620,18 +630,6 @@ useEffect(() => {
     }, 100);
   };
   
-  // Add this near the top of your component to check if Sentry is available
-
-const isSentryAvailable = typeof SentryService?.startTransaction === 'function';
-
-// Then use this flag to conditionally run Sentry-related code
-// For example:
-useEffect(() => {
-  if (isSentryAvailable) {
-    // Sentry code here
-  }
-}, []);
-
   if (!currentGroop) {
     return (
       <SafeAreaView style={tw`flex-1 justify-center items-center bg-light`}>

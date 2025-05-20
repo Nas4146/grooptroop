@@ -1,8 +1,7 @@
 import * as Sentry from '@sentry/react-native';
+import { SentryService, SentrySpan } from './sentryService';
 import { FrameRateMonitor } from './frameRateMonitor';
 import { MemoryMonitor } from './memoryMonitor';
-import * as FileSystem from 'expo-file-system';
-import { SentryService } from './sentryService';
 
 // Define performance budgets
 export const CHAT_PERFORMANCE_BUDGETS = {
@@ -27,11 +26,28 @@ type MessagePerformanceData = {
   messageSize?: number;
 };
 
+// Define a session history type
+type ChatSessionHistory = {
+  id: string;
+  startTime: number;
+  endTime: number;
+  duration: number;
+  messagesSent: number;
+  messagesReceived: number;
+  avgSendTime: number;
+  maxSendTime: number;
+  minSendTime: number;
+  successRate: number;
+  jsHeapSize: number;
+  frameDrops: number;
+};
+
 class ChatPerformanceMonitor {
   // Store performance data for messages
   private messagePerformance: Record<string, MessagePerformanceData> = {};
-  private isMonitoringChat = false;
-  private currentChatId: string | null = null;
+  private isActive = false;
+  private activeChatId: string = '';
+  private startTime: number = 0;
   private frameCheckInterval: NodeJS.Timeout | null = null;
   private memoryUsageInterval: NodeJS.Timeout | null = null;
   private messagesSent = 0;
@@ -43,46 +59,80 @@ class ChatPerformanceMonitor {
   private jsHeapSize = 0;
   private frameDrops = 0;
   private slowRenders = 0;
-  private sentryTransaction: Sentry.Span | null = null;
+  // Update the type to use SentrySpan
+  private sentryTransaction: SentrySpan | null = null;
+  
+  private messageMetrics: Array<{
+    id: string;
+    sendDuration?: number;
+    success: boolean;
+    size: number;
+  }> = [];
+
+  private stats = {
+    averageSendTime: 0,
+    maxSendTime: 0,
+    minSendTime: 0,
+    messageCount: 0,
+    successRate: 100
+  };
+  
+  // Add as class property
+  private sessionHistory: ChatSessionHistory[] = [];
+  private maxHistoryLength = 10; // Keep the 10 most recent sessions
   
   /**
    * Start monitoring performance for a specific chat
    */
   startChatMonitoring(chatId: string): void {
-    if (this.isMonitoringChat) {
+    if (this.isActive) {
       this.stopChatMonitoring();
     }
     
-    this.currentChatId = chatId;
-    this.isMonitoringChat = true;
-    this.chatSessionStartTime = Date.now();
-    this.messagesSent = 0;
-    this.messagesReceived = 0;
-    this.networkLatencies = [];
-    this.renderTimes = [];
-    this.frameDrops = 0;
-    this.slowRenders = 0;
+    console.log(`[CHAT] Starting performance monitoring for chat ${chatId}`);
+    this.isActive = true;
+    this.activeChatId = chatId;
+    this.startTime = Date.now();
+    this.chatSessionStartTime = Date.now(); // Reset this to ensure correct duration
+    this.messagePerformance = {};
     
     // Take initial memory snapshot
     MemoryMonitor.takeSnapshot(`chat_${chatId}_start`);
     this.lastMemoryUsage = 0;
     this.jsHeapSize = 0;
     
+    // Reset counters
+    this.messagesSent = 0;
+    this.messagesReceived = 0;
+    this.networkLatencies = [];
+    this.renderTimes = [];
+    this.frameDrops = 0;
+    this.slowRenders = 0;
+    this.messageMetrics = [];
+    
+    // Reset stats
+    this.stats = {
+      averageSendTime: 0,
+      maxSendTime: 0,
+      minSendTime: 0,
+      messageCount: 0,
+      successRate: 100
+    };
+    
     // Start monitoring frame rate for smooth scrolling
     FrameRateMonitor.startMonitoring(`chat_${chatId}`);
     
     // Start Sentry transaction for this chat session
-    if (!__DEV__) {
-      this.sentryTransaction = Sentry.startTransaction({
-        name: `Chat Session: ${chatId}`,
-        op: 'chat.session'
-      });
-      
-      // Add initial data - Add null check here
-      if (this.sentryTransaction) {
-        this.sentryTransaction.setTag('chat_id', chatId);
-        this.sentryTransaction.setTag('environment', __DEV__ ? 'development' : 'production');
-      }
+    // Note: Removed the __DEV__ condition - we want this in dev too for testing
+    this.sentryTransaction = SentryService.startTransaction(
+      `Chat Session: ${chatId}`,
+      'chat.session'
+    );
+    
+    // Add tags to the transaction
+    if (this.sentryTransaction) {
+      this.sentryTransaction.setTag('chat_id', chatId);
+      this.sentryTransaction.setTag('monitor_type', 'chat_session');
     }
     
     // Periodically check memory usage
@@ -123,177 +173,171 @@ class ChatPerformanceMonitor {
    * Stop monitoring the current chat
    */
   stopChatMonitoring(): void {
-    if (!this.isMonitoringChat) return;
+    if (!this.isActive) return;
     
-    // Clean up monitoring resources
+    console.log(`[CHAT] Stopping performance monitoring for chat ${this.activeChatId}`);
+    
+    // Save current session to history before clearing
+    const sessionEndTime = Date.now();
+    const sessionDuration = (sessionEndTime - this.chatSessionStartTime) / 1000;
+    
+    // Add current session to history
+    this.addSessionToHistory({
+      id: this.activeChatId,
+      startTime: this.chatSessionStartTime,
+      endTime: sessionEndTime,
+      duration: sessionDuration,
+      messagesSent: this.messagesSent,
+      messagesReceived: this.messagesReceived,
+      avgSendTime: this.stats.averageSendTime,
+      maxSendTime: this.stats.maxSendTime,
+      minSendTime: this.stats.minSendTime,
+      successRate: this.stats.successRate,
+      jsHeapSize: this.jsHeapSize,
+      frameDrops: this.frameDrops
+    });
+    
+    // Stop frame rate monitoring
     FrameRateMonitor.stopMonitoring();
     
+    // Take final memory snapshot
+    const endSnapshot = MemoryMonitor.takeSnapshot(`chat_${this.activeChatId}_end`);
+    const startSnapshot = MemoryMonitor.getSnapshot(`chat_${this.activeChatId}_start`);
+    
+    if (startSnapshot && endSnapshot) {
+      const memoryDiff = endSnapshot.jsHeapSize - startSnapshot.jsHeapSize;
+      this.jsHeapSize = endSnapshot.jsHeapSize;
+      
+      // Log memory usage difference
+      SentryService.logEvent(
+        'memory', 
+        `Chat ${this.activeChatId} memory change: ${Math.round(memoryDiff / 1024 / 1024)}MB`,
+        {
+          startHeapSize: startSnapshot.jsHeapSize,
+          endHeapSize: endSnapshot.jsHeapSize,
+          diff: memoryDiff
+        }
+      );
+    }
+    
+    // Finish transaction
+    if (this.sentryTransaction) {
+      // Add final metrics
+      this.sentryTransaction.setData('session_duration_ms', sessionEndTime - this.startTime);
+      this.sentryTransaction.setData('messages_sent', this.messagesSent);
+      
+      // Finish the transaction
+      this.sentryTransaction.finish();
+      this.sentryTransaction = null;
+    }
+    
+    // Clear intervals if they exist
     if (this.memoryUsageInterval) {
       clearInterval(this.memoryUsageInterval);
       this.memoryUsageInterval = null;
     }
     
-    // Take final memory snapshot
-    if (this.currentChatId) {
-      MemoryMonitor.takeSnapshot(`chat_${this.currentChatId}_end`);
-    }
-    
-    // Calculate final metrics
-    const sessionDuration = (Date.now() - this.chatSessionStartTime) / 1000;
-    const avgNetworkLatency = this.networkLatencies.length > 0 ? 
-      this.networkLatencies.reduce((a, b) => a + b, 0) / this.networkLatencies.length : 0;
-    
-    // Calculate P95 network latency
-    let p95NetworkLatency = 0;
-    if (this.networkLatencies.length > 0) {
-      const sortedLatencies = [...this.networkLatencies].sort((a, b) => a - b);
-      const p95Index = Math.floor(sortedLatencies.length * 0.95);
-      p95NetworkLatency = sortedLatencies[p95Index];
-    }
-    
-    const avgRenderTime = this.renderTimes.length > 0 ? 
-      this.renderTimes.reduce((a, b) => a + b, 0) / this.renderTimes.length : 0;
-    
-    // Log session summary - Replace SimplePerformance.logEvent with SentryService.logEvent
-    SentryService.logEvent('chat-session', `Chat session summary:
-      - Duration: ${sessionDuration.toFixed(1)}s
-      - Messages sent: ${this.messagesSent}
-      - Messages received: ${this.messagesReceived}
-      - Avg network latency: ${avgNetworkLatency.toFixed(1)}ms
-      - P95 network latency: ${p95NetworkLatency.toFixed(1)}ms
-      - Avg message render: ${avgRenderTime.toFixed(1)}ms
-      - Frame drops: ${this.frameDrops}
-      - Slow renders: ${this.slowRenders}
-      - Final JS heap: ${(this.jsHeapSize / (1024 * 1024)).toFixed(1)}MB
-    `);
-    
-    // Send data to Sentry Performance Monitoring
-    if (!__DEV__ && this.currentChatId && this.sentryTransaction) {
-      // Add metrics as data to the transaction
-      this.sentryTransaction.setData('metrics', {
-        duration: sessionDuration,
-        messagesSent: this.messagesSent,
-        messagesReceived: this.messagesReceived,
-        avgNetworkLatency,
-        p95NetworkLatency,
-        avgRenderTime,
-        frameDrops: this.frameDrops,
-        slowRenders: this.slowRenders,
-        jsHeapSize: this.jsHeapSize / (1024 * 1024) // Convert to MB for readability
-      });
-      
-      // Set measurements that will appear in Sentry Performance
-      this.sentryTransaction.setMeasurement('duration_seconds', sessionDuration, 'second');
-      this.sentryTransaction.setMeasurement('messages_sent', this.messagesSent, 'none');
-      this.sentryTransaction.setMeasurement('messages_received', this.messagesReceived, 'none');
-      this.sentryTransaction.setMeasurement('avg_network_latency', avgNetworkLatency, 'millisecond');
-      this.sentryTransaction.setMeasurement('p95_network_latency', p95NetworkLatency, 'millisecond');
-      this.sentryTransaction.setMeasurement('avg_render_time', avgRenderTime, 'millisecond');
-      this.sentryTransaction.setMeasurement('frame_drops', this.frameDrops, 'none');
-      this.sentryTransaction.setMeasurement('slow_renders', this.slowRenders, 'none');
-      this.sentryTransaction.setMeasurement('js_heap_size', this.jsHeapSize / (1024 * 1024), 'megabyte');
-      
-      // Check for performance issues
-      if (avgNetworkLatency > CHAT_PERFORMANCE_BUDGETS.MESSAGE_SEND_RTT) {
-        this.sentryTransaction.setTag('has_network_issues', 'true');
-      }
-      
-      if (this.slowRenders > 0) {
-        this.sentryTransaction.setTag('has_render_issues', 'true');
-      }
-      
-      if (this.frameDrops > 5) {
-        this.sentryTransaction.setTag('has_frame_drops', 'true');
-      }
-      
-      // Finish the transaction
-      this.sentryTransaction.finish();
-      this.sentryTransaction = null;
-      
-      // Replace SimplePerformance.logEvent with SentryService.logEvent
-      SentryService.logEvent('chat', 'Chat metrics sent to Sentry');
-    }
-    
-    this.isMonitoringChat = false;
-    this.currentChatId = null;
-    this.messagePerformance = {};
+    // Reset state
+    this.isActive = false;
+    this.activeChatId = '';
   }
-
+  
   /**
    * Track when a message send operation starts
    */
   trackMessageSendStart(messageId: string, messageSize?: number): void {
-    if (!this.isMonitoringChat) return;
+    if (!this.isActive) return;
     
+    console.log(`[CHAT_PERF] Starting performance tracking for message: ${messageId}`);
+    
+    // Initialize tracking for this message
     this.messagePerformance[messageId] = {
-      messageId,
-      sendStartTime: Date.now(),
-      messageSize
+      id: messageId,
+      startTime: Date.now(),
+      size: messageSize || 0,
+      sendComplete: false,
+      renderTime: 0
     };
     
-    // Create span for message sending in Sentry
-    if (this.sentryTransaction) {
+    // Skip Sentry span creation if transaction isn't ready
+    if (!this.sentryTransaction) {
+      console.log('[CHAT_PERF] No active Sentry transaction, skipping span creation');
+      return;
+    }
+    
+    try {
+      // Create span for message sending
       const span = this.sentryTransaction.startChild({
-        op: 'chat.message.send',
-        description: `Send message ${messageId.slice(0, 6)}`,
-        data: {
-          messageId,
-          messageSize
-        }
+        op: 'message.send',
+        description: `Send message ${messageId.slice(0, 6)}`
       });
       
-      // Store the span in the message data for later use
-      // We need to cast to any because we're adding a property not in the type
-      (this.messagePerformance[messageId] as any).sentrySpan = span;
+      if (span) {
+        span.setData('messageId', messageId);
+        if (messageSize) {
+          span.setData('messageSize', messageSize);
+        }
+        
+        // Store the span reference
+        this.messagePerformance[messageId].sentrySpan = span;
+        console.log('[CHAT_PERF] Created span for message:', messageId);
+      }
+    } catch (e) {
+      console.error('[CHAT_PERF] Error creating span:', e);
     }
   }
   
   /**
    * Track when a message send operation completes
    */
-  trackMessageSendComplete(messageId: string, success: boolean = true): void {
-    if (!this.isMonitoringChat) return;
+  trackMessageSendComplete(messageId: string, success: boolean): void {
+    if (!this.isActive) {
+      console.log('[CHAT_PERF] Performance monitoring not active');
+      return;
+    }
     
-    const msgData = this.messagePerformance[messageId];
-    if (msgData && msgData.sendStartTime) {
-      msgData.sendEndTime = Date.now();
-      
-      const latency = msgData.sendEndTime - msgData.sendStartTime;
-      this.networkLatencies.push(latency);
-      this.messagesSent++;
-      
-      // Finish the span if it exists
-      if ((msgData as any).sentrySpan) {
-        const span = (msgData as any).sentrySpan;
-        
-        // Add data about the result
-        span.setData('success', success);
-        span.setData('latency', latency);
-        span.setData('messageSize', msgData.messageSize);
-        
-        if (!success) {
-          span.setStatus('internal_error');
-        }
-        
-        span.finish();
-      }
-      
-      if (latency > CHAT_PERFORMANCE_BUDGETS.MESSAGE_SEND_RTT) {
-        // Replace SimplePerformance.logEvent with SentryService.logEvent
-        SentryService.logEvent('chat-network', 
-          `⚠️ Message send latency exceeds budget: ${latency}ms / ${CHAT_PERFORMANCE_BUDGETS.MESSAGE_SEND_RTT}ms`,
-          undefined, true);
-      }
-      
-      if (success) {
-        // Replace SimplePerformance.logEvent with SentryService.logEvent
-        SentryService.logEvent('chat-network', 
-          `Message ${messageId.slice(0, 6)} sent in ${latency}ms (${msgData.messageSize ? (msgData.messageSize / 1024).toFixed(1) + 'KB' : 'unknown size'})`);
-      } else {
-        // Replace SimplePerformance.logEvent with SentryService.logEvent
-        SentryService.logEvent('chat-network', 
-          `⚠️ Failed to send message ${messageId.slice(0, 6)} after ${latency}ms`,
-          undefined, true);
+    if (!this.messagePerformance[messageId]) {
+      console.log('[CHAT_PERF] No tracking data found for message:', messageId);
+      return;
+    }
+    
+    const now = Date.now();
+    const messageData = this.messagePerformance[messageId];
+    const duration = now - messageData.startTime;
+    
+    console.log(`[CHAT_PERF] Message ${messageId} send completed in ${duration}ms. Success: ${success}`);
+    
+    // Update message data
+    messageData.sendComplete = true;
+    messageData.sendDuration = duration;
+    messageData.sendSuccess = success;
+    
+    // Count message sent (whether successful or not)
+    this.messagesSent++;
+    
+    // Add to metrics collection
+    this.messageMetrics.push({
+      id: messageId,
+      sendDuration: duration,
+      success: success,
+      size: messageData.size
+    });
+    
+    // Calculate and update stats
+    this.updateStats();
+    
+    // Finish the span if it exists
+    if (messageData.sentrySpan) {
+      try {
+        messageData.sentrySpan.setData('duration', duration);
+        messageData.sentrySpan.setData('success', success);
+        messageData.sentrySpan.finish();
+        console.log('[CHAT_PERF] Finished span for message:', messageId);
+      } catch (e) {
+        console.error('[CHAT_PERF] Error finishing span:', e);
+      } finally {
+        // Clear reference to avoid memory leaks
+        messageData.sentrySpan = null;
       }
     }
   }
@@ -302,41 +346,44 @@ class ChatPerformanceMonitor {
    * Track when a message is received
    */
   trackMessageReceived(messageId: string, messageSize?: number): void {
-    if (!this.isMonitoringChat) return;
+    if (!this.isActive) return;
     
-    // Create entry if it doesn't exist
+    // Track message receipt
+    const receiveTime = Date.now();
+    
+    // Initialize if this is the first time we're seeing this message
     if (!this.messagePerformance[messageId]) {
       this.messagePerformance[messageId] = {
-        messageId,
-        receiveStartTime: Date.now(),
-        messageSize
+        id: messageId,
+        receiveTime,
+        renderTime: 0,
+        size: messageSize || 0
       };
     } else {
-      this.messagePerformance[messageId].receiveStartTime = Date.now();
+      this.messagePerformance[messageId].receiveTime = receiveTime;
     }
-    
-    this.messagesReceived++;
     
     // Create span for message receipt in Sentry
     if (this.sentryTransaction) {
-      const span = this.sentryTransaction.startChild({
-        op: 'chat.message.receive',
-        description: `Receive message ${messageId.slice(0, 6)}`,
-        data: {
-          messageId,
-          messageSize
-        }
-      });
+      const span = this.sentryTransaction.startChild(
+        'message_receive',
+        `Receive message ${messageId.slice(0, 6)}`
+      );
       
-      // Store the span in the message data for later use
-      (this.messagePerformance[messageId] as any).receiveSentrySpan = span;
+      span.setData('messageId', messageId);
+      if (messageSize) {
+        span.setData('messageSize', messageSize);
+      }
       
-      // We'll finish this span when rendering is complete
-      // or after a timeout in case rendering doesn't happen
+      // Store the span for later finishing
+      this.messagePerformance[messageId].receiveSentrySpan = span;
+      
+      // Finish after a timeout if render doesn't happen
       setTimeout(() => {
-        if ((this.messagePerformance[messageId] as any).receiveSentrySpan) {
-          (this.messagePerformance[messageId] as any).receiveSentrySpan.finish();
-          (this.messagePerformance[messageId] as any).receiveSentrySpan = null;
+        const msgData = this.messagePerformance[messageId];
+        if (msgData && msgData.receiveSentrySpan) {
+          msgData.receiveSentrySpan.finish();
+          msgData.receiveSentrySpan = null;
         }
       }, 5000);
     }
@@ -345,48 +392,51 @@ class ChatPerformanceMonitor {
   /**
    * Track message render performance
    */
-  trackMessageRender(messageId: string, startTime: number, endTime: number): void {
-    if (!this.isMonitoringChat) return;
+  trackMessageRender(messageId: string, startTime?: number, endTime?: number): void {
+    if (!this.isActive) return;
     
-    const renderTime = endTime - startTime;
-    this.renderTimes.push(renderTime);
+    // Calculate render time
+    const renderTime = endTime && startTime ? (endTime - startTime) : 0;
+    const now = Date.now();
     
-    // Create a render span
+    // Initialize if this is the first time we're seeing this message
+    if (!this.messagePerformance[messageId]) {
+      this.messagePerformance[messageId] = {
+        id: messageId,
+        renderTime,
+        renderTimestamp: now
+      };
+    } else {
+      this.messagePerformance[messageId].renderTime = renderTime;
+      this.messagePerformance[messageId].renderTimestamp = now;
+    }
+    
+    // Add to Sentry breadcrumbs
+    SentryService.logEvent(
+      'chat',
+      `Message ${messageId.slice(0, 6)} rendered in ${renderTime}ms`,
+      { messageId, renderTime }
+    );
+    
+    // Create a render span for this message
     if (this.sentryTransaction) {
-      const span = this.sentryTransaction.startChild({
-        op: 'chat.message.render',
-        description: `Render message ${messageId.slice(0, 6)}`,
-        startTimestamp: startTime / 1000, // Sentry uses seconds
-        endTimestamp: endTime / 1000,
-        data: {
-          messageId,
-          renderTime
-        }
-      });
+      const span = this.sentryTransaction.startChild(
+        'message_render',
+        `Render message ${messageId.slice(0, 6)}`
+      );
       
-      // Finish the span immediately since we know start/end times
+      span.setData('messageId', messageId);
+      span.setData('renderTime', renderTime);
+      
+      // Finish the span right away
       span.finish();
       
       // Also finish the receive span if it exists
-      if ((this.messagePerformance[messageId] as any).receiveSentrySpan) {
-        (this.messagePerformance[messageId] as any).receiveSentrySpan.finish();
-        (this.messagePerformance[messageId] as any).receiveSentrySpan = null;
+      const msgData = this.messagePerformance[messageId];
+      if (msgData && msgData.receiveSentrySpan) {
+        msgData.receiveSentrySpan.finish();
+        msgData.receiveSentrySpan = null;
       }
-    }
-    
-    // Check if render time exceeds budget
-    if (renderTime > CHAT_PERFORMANCE_BUDGETS.MESSAGE_LIST_RENDER) {
-      // Replace SimplePerformance.logEvent with SentryService.logEvent
-      SentryService.logEvent('chat-render', 
-        `⚠️ Message render time exceeds budget: ${renderTime.toFixed(1)}ms / ${CHAT_PERFORMANCE_BUDGETS.MESSAGE_LIST_RENDER}ms`,
-        undefined, true);
-      this.slowRenders++;
-    }
-    
-    // Update message data
-    if (this.messagePerformance[messageId]) {
-      this.messagePerformance[messageId].renderStartTime = startTime;
-      this.messagePerformance[messageId].renderEndTime = endTime;
     }
   }
   
@@ -394,7 +444,7 @@ class ChatPerformanceMonitor {
    * Track when a frame drop occurs in the chat UI
    */
   trackFrameDrop(): void {
-    if (!this.isMonitoringChat) return;
+    if (!this.isActive) return;
     this.frameDrops++;
     
     // Record frame drops in Sentry
@@ -411,9 +461,18 @@ class ChatPerformanceMonitor {
    * Get real-time chat performance metrics
    */
   getChatPerformanceMetrics(): any {
-    return {
-      chatId: this.currentChatId,
-      isActive: this.isMonitoringChat,
+    // Ensure session duration doesn't overflow or return invalid values
+    let sessionDuration = 0;
+    if (this.isActive && this.chatSessionStartTime > 0) {
+      sessionDuration = (Date.now() - this.chatSessionStartTime) / 1000;
+      
+      // Cap max duration at 24 hours to prevent unrealistic values
+      sessionDuration = Math.min(sessionDuration, 24 * 60 * 60);
+    }
+    
+    const metrics = {
+      chatId: this.activeChatId,
+      isActive: this.isActive,
       messagesSent: this.messagesSent,
       messagesReceived: this.messagesReceived,
       avgNetworkLatency: this.networkLatencies.length > 0 ? 
@@ -421,9 +480,79 @@ class ChatPerformanceMonitor {
       jsHeapSize: this.jsHeapSize,
       frameDrops: this.frameDrops,
       slowRenders: this.slowRenders,
-      sessionDuration: (Date.now() - this.chatSessionStartTime) / 1000
+      sessionDuration: sessionDuration,
+      // Add the new stats
+      stats: this.stats,
+      // Add session history
+      sessionHistory: this.sessionHistory 
     };
+    
+    console.log('[CHAT_PERF] Returning metrics:', metrics);
+    return metrics;
+  }
+  
+  /**
+   * Update performance statistics
+   */
+  updateStats(): void {
+    if (this.messageMetrics.length === 0) return;
+    
+    // Calculate stats from collected metrics
+    const sendDurations = this.messageMetrics
+      .filter(m => typeof m.sendDuration === 'number')
+      .map(m => m.sendDuration as number);
+    
+    if (sendDurations.length === 0) return;
+    
+    const successCount = this.messageMetrics.filter(m => m.success).length;
+    
+    this.stats.averageSendTime = Math.round(
+      sendDurations.reduce((sum, val) => sum + val, 0) / sendDurations.length
+    );
+    this.stats.maxSendTime = Math.max(...sendDurations);
+    this.stats.minSendTime = Math.min(...sendDurations);
+    this.stats.messageCount = this.messageMetrics.length;
+    this.stats.successRate = Math.round((successCount / this.messageMetrics.length) * 100);
+    
+    console.log('[CHAT_PERF] Updated stats:', this.stats);
+  }
+  
+  // Add a method to manage the session history
+  private addSessionToHistory(session: ChatSessionHistory): void {
+    console.log(`[CHAT_PERF] Adding session to history: ${session.id}`);
+    
+    // Add to front of array (newest first)
+    this.sessionHistory.unshift(session);
+    
+    // Limit the history length
+    if (this.sessionHistory.length > this.maxHistoryLength) {
+      this.sessionHistory = this.sessionHistory.slice(0, this.maxHistoryLength);
+    }
+    
+    console.log(`[CHAT_PERF] History now contains ${this.sessionHistory.length} sessions`);
+  }
+  
+  // Add a method to get the session history
+  getSessionHistory(): ChatSessionHistory[] {
+    return this.sessionHistory;
   }
 }
 
+// Export a singleton instance
 export default new ChatPerformanceMonitor();
+
+// Add where needed:
+const reportFrameDrop = (frameDelta: number) => {
+  // Use SentryService instead of direct Sentry calls
+  SentryService.logEvent(
+    'performance', 
+    `Frame drop detected: ${frameDelta.toFixed(2)}ms`,
+    { chatId: activeChatId }
+  );
+};
+
+// And for any transactions:
+const frameMonitoringTransaction = SentryService.startTransaction(
+  'ChatFrameMonitoring',
+  'ui.performance'
+);

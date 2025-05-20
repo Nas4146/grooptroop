@@ -1,17 +1,6 @@
 import * as Sentry from '@sentry/react-native';
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  PerformanceTrace, 
-  PerformanceMetrics, 
-  SentrySpan,
-  LogEntry,
-  ChatPerformanceMetrics,
-  NetworkRequest,
-  PerformanceBudgetViolation
-} from './monitoringTypes';
-import { SpanStatus } from '@sentry/core';
-import { NavigationContainerRef } from '@react-navigation/native';
-import { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
+import { useRef, useEffect } from 'react';
+import { PerformanceBudgetViolation, LogEntry, TraceEntry, ChatPerformanceMetrics } from './monitoringTypes';
 
 /**
  * Comprehensive Sentry service that handles all error tracking and performance monitoring
@@ -19,378 +8,244 @@ import { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 export class SentryService {
   private static _initialized = false;
   private static _eventHistory: LogEntry[] = [];
-  private static _transactionHistory: PerformanceTrace[] = [];
+  private static _transactionHistory: TraceEntry[] = [];
   private static _budgetViolations: PerformanceBudgetViolation[] = [];
   private static _performanceBudgets: Record<string, number> = {
     'render': 16,
-    'network-request': 500,
+    'network-request': 500, 
     'component-operation': 50
   };
   private static _chatMetrics: ChatPerformanceMetrics | null = null;
 
   /**
-   * Initialize Sentry with your configuration
-   */
-  static initialize(dsn: string, debug: boolean = __DEV__): void {
-    if (this._initialized) {
-      console.log('[SENTRY] Already initialized, skipping');
-      return;
-    }
-    
-    try {
-      // Only configure if not already initialized globally
-      Sentry.init({
-        dsn,
-        debug,
-        enableAutoSessionTracking: true,
-        tracesSampleRate: __DEV__ ? 1.0 : 0.2,
-        enableAutoPerformanceTracing: true,
-        attachStacktrace: true,
-        environment: __DEV__ ? 'development' : 'production',
-      });
-
-      console.log('[SENTRY] Initialized successfully');
-      this._initialized = true;
-    } catch (e) {
-      console.error('[SENTRY] Initialization error:', e);
-    }
-  }
-
-  /**
    * Check if Sentry is properly initialized
    */
   static isInitialized(): boolean {
-    return this._initialized && typeof Sentry.startTransaction === 'function';
-  }
-
-  /**
-   * Create a new transaction for performance monitoring
-   */
-  static startTransaction(name: string, operation: string): SentrySpan {
-    if (!this.isInitialized()) {
-      console.warn('[SENTRY] Tried to start transaction but Sentry is not properly initialized');
-      return this.getFallbackSpan();
-    }
-    
     try {
-      const transaction = Sentry.startTransaction({
-        name,
-        op: operation
-      });
-      
-      // Store transaction in history for later retrieval
-      this._transactionHistory.push({
-        name,
-        startTime: Date.now(),
-        category: operation
-      });
-      
-      return transaction;
+      return Sentry !== undefined;
     } catch (e) {
-      console.error('[SENTRY] Error creating transaction:', e);
-      return this.getFallbackSpan();
+      return false;
     }
   }
 
   /**
-   * Create a fallback span object to prevent crashes
-   */
-  private static getFallbackSpan(): SentrySpan {
-    const returnFallback: SentrySpan = {
-      finish: () => {},
-      setData: () => {},
-      setTag: () => {},
-      setStatus: (status: SpanStatus): SentrySpan => { return returnFallback; },
-      setMeasurement: () => {},
-      startChild: (childName: string, childOp: string): SentrySpan => {
-        return returnNestedFallback;
-      }
-    };
-
-    const returnNestedFallback: SentrySpan = {
-      finish: () => {},
-      setData: () => {},
-      setTag: () => {},
-      setStatus: (status: SpanStatus): SentrySpan => { return returnNestedFallback; },
-      setMeasurement: () => {},
-      startChild: (nestedName: string, nestedOp: string): SentrySpan => {
-        return deepNestedFallback;
-      }
-    };
-
-    const deepNestedFallback: SentrySpan = {
-      finish: () => {},
-      setData: () => {},
-      setTag: () => {},
-      setStatus: (status: SpanStatus): SentrySpan => { return deepNestedFallback; },
-      setMeasurement: () => {},
-      startChild: (): SentrySpan => {
-        console.warn('[SENTRY] Maximum nesting depth exceeded');
-        return deepNestedFallback;
-      }
-    };
-
-    return returnFallback;
-  }
-
-  /**
-   * Log an event (high-level wrapper around breadcrumbs)
-   */
-  static logEvent(
-    category: string, 
-    message: string, 
-    data?: Record<string, any>, 
-    isWarning: boolean = false
-  ): void {
-    // Create log entry
-    const logEntry: LogEntry = {
-      category,
-      message,
-      timestamp: Date.now(),
-      level: isWarning ? 'warning' : 'info',
-      metadata: data
-    };
-
-    // Store in local history
-    this._eventHistory.push(logEntry);
-
-    // Only keep the last 100 events
-    if (this._eventHistory.length > 100) {
-      this._eventHistory.shift();
-    }
-
-    // Log to console for debugging
-    console.log(`[${category}] ${message}`);
-
-    // Add as Sentry breadcrumb
-    if (this.isInitialized()) {
-      try {
-        Sentry.addBreadcrumb({
-          category,
-          message,
-          data,
-          level: isWarning ? 'warning' : 'info'
-        });
-      } catch (e) {
-        console.error('[SENTRY] Error adding breadcrumb:', e);
-      }
-    }
-  }
-
-  /**
-   * Capture an error with optional context
+   * Safely capture an error
    */
   static captureError(error: Error, context?: Record<string, any>): void {
     if (!this.isInitialized()) {
-      console.error('[SENTRY] Error:', error.message);
+      console.error('[SENTRY] Not initialized, error not captured:', error);
       return;
     }
 
     try {
-      if (context) {
-        Sentry.withScope(scope => {
+      Sentry.withScope(scope => {
+        if (context) {
           Object.entries(context).forEach(([key, value]) => {
             scope.setExtra(key, value);
           });
-          Sentry.captureException(error);
-        });
-      } else {
+        }
         Sentry.captureException(error);
-      }
+      });
+
+      // Log locally for debugging
+      this._eventHistory.push({
+        type: 'error',
+        message: error.message,
+        timestamp: Date.now(),
+        category: context?.context || 'uncategorized',
+        level: 'error'
+      });
     } catch (e) {
       console.error('[SENTRY] Error capturing exception:', e);
     }
   }
 
   /**
-   * Configure navigation tracking
+   * Log an event for local debugging
    */
-  static configureNavigation(navigationRef: NavigationContainerRef<any>): () => void {
-    if (!this.isInitialized() || !navigationRef) return () => {};
+  static logEvent(category: string, message: string, data?: Record<string, any>, isError = false): void {
+    try {
+      // Add to local history
+      this._eventHistory.push({
+        type: 'custom',
+        message,
+        timestamp: Date.now(),
+        category,
+        level: isError ? 'error' : 'info',
+        data
+      });
 
-    let lastRoute = '';
-    let currentNavSpan: SentrySpan | null = null;
+      // Add breadcrumb to Sentry
+      Sentry.addBreadcrumb({
+        category,
+        message,
+        data,
+        level: isError ? 'error' : 'info',
+      });
+    } catch (e) {
+      console.error('[SENTRY] Error logging event:', e);
+    }
+  }
 
-    const handleNavigationChange = () => {
-      try {
-        const currentRoute = navigationRef.getCurrentRoute()?.name;
-
-        // If we have a new route, track it
-        if (currentRoute && currentRoute !== lastRoute) {
-          // Finish the previous navigation span if it exists
-          if (currentNavSpan) {
-            currentNavSpan.finish();
+  /**
+   * Create a simple transaction-like object for tracking even if real transactions aren't available
+   */
+  static startTransaction(name: string, operation: string): SentrySpan {
+    try {
+      // Create a transaction ID
+      const id = `${name}-${Date.now()}`;
+      const startTime = Date.now();
+      
+      // Add a breadcrumb for the start
+      Sentry.addBreadcrumb({
+        category: 'performance',
+        message: `Started: ${operation} - ${name}`,
+        level: 'info',
+      });
+      
+      // Create a trace entry for local tracking
+      const traceEntry: TraceEntry = {
+        id,
+        name,
+        category: operation,
+        startTime,
+        endTime: undefined,
+        duration: undefined,
+        status: 'in_progress',
+        data: {}
+      };
+      
+      this._transactionHistory.push(traceEntry);
+      
+      // Return a span-like object
+      return {
+        id,
+        setTag: (key: string, value: string) => {
+          const trace = this._transactionHistory.find(t => t.id === id);
+          if (trace) {
+            trace.data = trace.data || {};
+            trace.data[`tag.${key}`] = value;
           }
-
-          // Start a new navigation span
-          currentNavSpan = this.startTransaction(`navigation.${currentRoute}`, 'navigation');
-
-          // Add breadcrumb for the navigation
-          this.logEvent('navigation', `Navigation state changed, current route: ${currentRoute}`);
-
-          lastRoute = currentRoute;
-        }
-      } catch (e) {
-        console.error('[SENTRY] Error handling navigation change:', e);
-      }
-    };
-
-    // Setup listener when ready
-    const unsubscribe = navigationRef.addListener('state', handleNavigationChange);
-
-    return unsubscribe;
-  }
-
-  /**
-   * Track memory usage
-   */
-  static trackMemoryUsage(jsHeapSize?: number): PerformanceMetrics {
-    const metrics: PerformanceMetrics = { 
-      jsHeapSize: undefined, 
-      memoryUsage: undefined 
-    };
-
-    try {
-      // Get JS heap size if passed or available
-      if (jsHeapSize !== undefined) {
-        metrics.jsHeapSize = jsHeapSize;
-      } else if (global.performance && (global.performance as any).memory) {
-        metrics.jsHeapSize = (global.performance as any).memory.usedJSHeapSize / (1024 * 1024);
-      }
-
-      // Add memory metrics to Sentry session
-      if (this.isInitialized() && metrics.jsHeapSize) {
-        Sentry.setTag('memory.jsHeapSize', `${Math.round(metrics.jsHeapSize)}MB`);
-      }
-    } catch (e) {
-      console.error('[SENTRY] Error tracking memory usage:', e);
-    }
-
-    return metrics;
-  }
-
-  /**
-   * Track scroll performance
-   */
-  static trackScrollPerformance(
-    event: NativeSyntheticEvent<NativeScrollEvent>,
-    componentName: string
-  ): void {
-    try {
-      const { velocity } = event.nativeEvent;
-      
-      if (velocity && (Math.abs(velocity.x) > 5 || Math.abs(velocity.y) > 5)) {
-        this.logEvent('scroll', `Fast scroll detected in ${componentName}`, {
-          velocityX: velocity.x,
-          velocityY: velocity.y
-        });
-      }
-    } catch (e) {
-      console.error('[SENTRY] Error tracking scroll performance:', e);
-    }
-  }
-
-  /**
-   * Set up network monitoring
-   */
-  static setupNetworkMonitoring(): void {
-    if (!this.isInitialized()) return;
-    
-    try {
-      // Create a wrapper around the global fetch
-      const originalFetch = global.fetch;
-      
-      global.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = typeof input === 'string' ? input : input.url;
-        const method = init?.method || 'GET';
-        
-        // Start a transaction
-        const transaction = this.startTransaction(`fetch.${method}`, 'network.request');
-        const startTime = Date.now();
-        
-        transaction.setTag('url', url);
-        transaction.setTag('method', method);
-        
-        try {
-          const response = await originalFetch(input, init);
+        },
+        setData: (key: string, value: any) => {
+          const trace = this._transactionHistory.find(t => t.id === id);
+          if (trace) {
+            trace.data = trace.data || {};
+            trace.data[key] = value;
+          }
+        },
+        setStatus: (status: string) => {
+          const trace = this._transactionHistory.find(t => t.id === id);
+          if (trace) {
+            trace.status = status;
+          }
+        },
+        startChild: (operation: string, description?: string) => {
+          const childId = `${id}-child-${Date.now()}`;
+          const childStartTime = Date.now();
           
-          // Add response info to the transaction
-          transaction.setTag('status', String(response.status));
-          transaction.setData('status_text', response.statusText);
+          // Add child trace
+          const childTrace: TraceEntry = {
+            id: childId,
+            name: description || operation,
+            category: 'child_operation',
+            parentId: id,
+            startTime: childStartTime,
+            endTime: undefined,
+            duration: undefined,
+            status: 'in_progress',
+            data: {}
+          };
           
-          // Check if response time exceeds budget
-          const endTime = Date.now();
-          const duration = endTime - startTime;
+          this._transactionHistory.push(childTrace);
           
-          if (duration > (this._performanceBudgets['network-request'] || 500)) {
-            this.recordBudgetViolation('network', 'fetch', 
-              this._performanceBudgets['network-request'] || 500, duration, {
-              url,
-              method,
-              status: response.status
+          return {
+            setData: (key: string, value: any) => {
+              const trace = this._transactionHistory.find(t => t.id === childId);
+              if (trace) {
+                trace.data = trace.data || {};
+                trace.data[key] = value;
+              }
+            },
+            finish: () => {
+              const trace = this._transactionHistory.find(t => t.id === childId);
+              if (trace) {
+                trace.endTime = Date.now();
+                trace.duration = trace.endTime - trace.startTime;
+                trace.status = 'completed';
+              }
+            }
+          };
+        },
+        finish: () => {
+          const trace = this._transactionHistory.find(t => t.id === id);
+          if (trace) {
+            trace.endTime = Date.now();
+            trace.duration = trace.endTime - trace.startTime;
+            trace.status = 'completed';
+            
+            // Add a breadcrumb for the finish
+            Sentry.addBreadcrumb({
+              category: 'performance',
+              message: `Finished: ${operation} - ${name} (${trace.duration}ms)`,
+              data: { duration: trace.duration, ...trace.data },
+              level: 'info',
             });
+            
+            // Check for budget violations
+            const budget = this._performanceBudgets[operation];
+            if (budget && trace.duration > budget) {
+              // Record violation
+              this._budgetViolations.push({
+                operation,
+                name,
+                budget,
+                actual: trace.duration,
+                timestamp: Date.now()
+              });
+              
+              // Log slow operation
+              if (trace.duration > budget * 2) {
+                Sentry.captureMessage(
+                  `Performance warning: ${name} took ${trace.duration}ms (budget: ${budget}ms)`,
+                  'warning'
+                );
+              }
+            }
           }
-          
-          transaction.finish();
-          return response;
-        } catch (error) {
-          transaction.setStatus('internal_error');
-          if (error instanceof Error) {
-            transaction.setData('error', error.message);
-          }
-          transaction.finish();
-          throw error;
         }
       };
     } catch (e) {
-      console.error('[SENTRY] Error setting up network monitoring:', e);
+      console.error('[SENTRY] Failed to start transaction:', e, {
+        componentStack: new Error().stack
+      });
+      
+      // Return a dummy object that won't crash on method calls
+      return {
+        id: 'error',
+        setTag: () => {},
+        setData: () => {},
+        setStatus: () => {},
+        startChild: () => ({ finish: () => {} }),
+        finish: () => {}
+      };
     }
   }
-
-  /**
-   * Record a performance budget violation
-   */
-  static recordBudgetViolation(
-    category: string,
-    operation: string,
-    budget: number,
-    actual: number,
-    metadata?: Record<string, any>
-  ): void {
-    const violation: PerformanceBudgetViolation = {
-      category,
-      operation,
-      budget,
-      actual,
+  
+  static async trackMemoryUsage(): Promise<Record<string, any>> {
+    // Simple memory tracking
+    const memory = {
       timestamp: Date.now(),
-      metadata
+      jsHeapSize: global.performance?.memory?.usedJSHeapSize || 0,
+      totalJSHeapSize: global.performance?.memory?.totalJSHeapSize || 0,
     };
     
-    this._budgetViolations.push(violation);
-    
-    // Only keep the last 50 violations
-    if (this._budgetViolations.length > 50) {
-      this._budgetViolations.shift();
-    }
-    
-    // Log as warning
-    this.logEvent(
-      category,
-      `⚠️ ${operation} exceeds budget: ${actual}ms / ${budget}ms`,
-      metadata,
-      true
-    );
+    this.logEvent('memory', `Memory usage: ${Math.round(memory.jsHeapSize / 1024 / 1024)}MB`);
+    return memory;
   }
-
+  
   /**
-   * Set performance budget for a category
-   */
-  static setBudget(category: string, budgetMs: number): void {
-    this._performanceBudgets[category] = budgetMs;
-  }
-
-  /**
-   * Get performance budget violations
+   * Get budget violations
    */
   static getBudgetViolations(): PerformanceBudgetViolation[] {
     return [...this._budgetViolations];
@@ -406,7 +261,7 @@ export class SentryService {
   /**
    * Get completed transactions
    */
-  static getCompletedTransactions(): PerformanceTrace[] {
+  static getCompletedTransactions(): TraceEntry[] {
     return this._transactionHistory.filter(trace => trace.endTime !== undefined);
   }
 
@@ -417,33 +272,7 @@ export class SentryService {
     this._eventHistory = [];
     this._transactionHistory = [];
     this._budgetViolations = [];
-    console.log('Clearing Sentry event history');
-  }
-
-  /**
-   * Set user context
-   */
-  static setUser(user: { id: string; username?: string; email?: string }): void {
-    if (!this.isInitialized()) return;
-
-    try {
-      Sentry.setUser(user);
-    } catch (e) {
-      console.error('[SENTRY] Error setting user:', e);
-    }
-  }
-
-  /**
-   * Set a tag
-   */
-  static setTag(key: string, value: string): void {
-    if (!this.isInitialized()) return;
-
-    try {
-      Sentry.setTag(key, value);
-    } catch (e) {
-      console.error('[SENTRY] Error setting tag:', e);
-    }
+    console.log('[SENTRY] Clearing Sentry event history');
   }
 
   /**
@@ -454,95 +283,86 @@ export class SentryService {
   }
 
   /**
-   * Get chat performance metrics
+   * Get chat performance metrics including session history
    */
-  static getChatPerformanceMetrics(): ChatPerformanceMetrics {
-    return this._chatMetrics || {
-      chatId: '',
-      isActive: false,
-      messagesSent: 0,
-      messagesReceived: 0,
-      avgNetworkLatency: 0,
-      jsHeapSize: 0,
-      frameDrops: 0,
-      slowRenders: 0,
-      sessionDuration: 0
-    };
-  }
-
-  /**
-   * React hook for performance monitoring
-   */
-  static useComponentPerformance(componentName: string) {
-    // Implementation will be in a separate hook file
-    // This is just a placeholder for the interface
-    return {
-      trackRender: () => {},
-      trackOperation: (name: string, fn: () => any) => fn(),
-      trackAsync: async (name: string, fn: () => Promise<any>) => await fn()
-    };
-  }
-
-  /**
-   * Mark Sentry as initialized externally (for cases where init is called in native code)
-   */
-  static markAsInitialized(): void {
-    if (!this._initialized) {
-      this._initialized = true;
-      console.log('[SENTRY] Marked as initialized externally');
+  static getChatPerformanceMetrics() {
+    // Import on demand to avoid circular dependencies
+    try {
+      const ChatPerformanceMonitor = require('./chatPerformanceMonitor').default;
+      console.log('[SENTRY] Getting chat performance metrics');
+      
+      // Ensure ChatPerformanceMonitor is properly initialized
+      if (ChatPerformanceMonitor && typeof ChatPerformanceMonitor.getChatPerformanceMetrics === 'function') {
+        return ChatPerformanceMonitor.getChatPerformanceMetrics();
+      } else {
+        console.log('[SENTRY] ChatPerformanceMonitor not available or method missing');
+        return null;
+      }
+    } catch (e) {
+      console.error('[SENTRY] Error getting chat metrics:', e);
+      return null;
     }
   }
 }
 
-// Add React hook for performance monitoring
-export const usePerformance = (componentName: string) => {
-  const isMountedRef = useRef(false);
+// Type definitions for the SentrySpan
+export interface SentrySpan {
+  id: string;
+  setTag: (key: string, value: string) => void;
+  setData: (key: string, value: any) => void;
+  setStatus: (status: string) => void;
+  startChild: (operation: string, description?: string) => {
+    setData: (key: string, value: any) => void;
+    finish: () => void;
+  };
+  finish: () => void;
+}
 
+// Custom hook for performance tracking
+export const usePerformance = (componentName: string) => {
+  const mountTime = useRef(Date.now());
+  const transaction = useRef<SentrySpan | null>(null);
+  
   useEffect(() => {
-    if (!isMountedRef.current) {
-      // Only log on the first mount, not on re-renders
-      SentryService.logEvent('performance', `${componentName} mounted`);
-      isMountedRef.current = true;
-    }
+    // Create transaction on mount
+    transaction.current = SentryService.startTransaction(
+      `component_${componentName}`,
+      'component_lifecycle'
+    );
     
     return () => {
-      SentryService.logEvent('performance', `${componentName} unmounted`);
-      isMountedRef.current = false;
+      // Finish transaction on unmount
+      if (transaction.current) {
+        transaction.current.setData('mount_duration', Date.now() - mountTime.current);
+        transaction.current.finish();
+      }
     };
-  }, []); // Empty dependency array
+  }, [componentName]);
   
   return {
-    trackRender: (renderTime?: number) => {
-      const time = renderTime || 0;
-      SentryService.logEvent('performance', `${componentName} rendered ${time ? 'in ' + time + 'ms' : ''}`);
-    },
     trackMount: () => {
-      // No need to do anything here now since we're handling it in the useEffect
+      SentryService.logEvent('performance', `${componentName} mounted`);
     },
-    trackOperation: (name: string, fn: () => any) => {
-      const start = performance.now();
-      const result = fn();
-      const duration = performance.now() - start;
-      SentryService.logEvent('performance', `${componentName}.${name} completed in ${duration.toFixed(1)}ms`);
-      return result;
+    
+    trackInteraction: (action: string, data?: Record<string, any>) => {
+      SentryService.logEvent('interaction', `${componentName}: ${action}`, data);
     },
-    trackAsync: async (name: string, fn: () => Promise<any>) => {
-      const start = performance.now();
-      try {
-        const result = await fn();
-        const duration = performance.now() - start;
-        SentryService.logEvent('performance', `${componentName}.${name} completed in ${duration.toFixed(1)}ms`);
-        return result;
-      } catch (error) {
-        const duration = performance.now() - start;
-        SentryService.logEvent('performance', `${componentName}.${name} failed after ${duration.toFixed(1)}ms`, undefined, true);
-        throw error;
-      }
+    
+    trackOperation: (name: string) => {
+      const startTime = Date.now();
+      const operationId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      
+      SentryService.logEvent('operation', `${componentName}: Started ${name}`, { operationId });
+      
+      return {
+        end: () => {
+          const duration = Date.now() - startTime;
+          SentryService.logEvent('operation', `${componentName}: Finished ${name}`, { 
+            operationId, 
+            duration 
+          });
+        }
+      };
     }
   };
 };
-
-// Make sure to initialize Sentry right away
-// Replace this with your actual DSN in your initialization code
-// This should be called from App.tsx or a similar root component
-// SentryService.initialize('YOUR_SENTRY_DSN');

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -16,7 +16,7 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { SentryService, usePerformance } from '../utils/sentryService';
+import { SentryService, usePerformance, SentrySpan } from '../utils/sentryService';
 import { Ionicons } from '@expo/vector-icons';
 import { MemoryMonitor } from '../utils/memoryMonitor';
 import { FrameRateMonitor } from '../utils/frameRateMonitor';
@@ -30,8 +30,8 @@ import { CHAT_PERFORMANCE_BUDGETS } from '../utils/chatPerformanceMonitor';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import * as Sentry from '@sentry/react-native';
+import { SentryHelper } from '../utils/sentryHelper';
 
-// Define the navigation prop type for this screen
 type DevPerformanceScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'DevPerformance'>;
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -130,85 +130,534 @@ const Card: React.FC<CardProps> = ({ children, style }) => (
   </View>
 );
 
+// Sentry Test Section Component
+const SentryTestSection = () => {
+  const [testing, setTesting] = useState(false);
+  
+  // Function to run basic Sentry test
+  const runBasicTest = useCallback(async () => {
+    setTesting(true);
+    try {
+      console.log('[SENTRY] Running basic Sentry test');
+      
+      // Add a breadcrumb
+      SentryService.addBreadcrumb({
+        category: 'test',
+        message: 'Testing Sentry from DevPerformanceScreen',
+        level: 'info'
+      });
+      
+      // Log an info event
+      SentryService.logEvent(
+        'test',
+        'Manual test event from DevPerformanceScreen',
+        { source: 'DevPerformanceScreen', timestamp: Date.now() }
+      );
+      
+      // Call flush to send events immediately
+      console.log('[SENTRY] Calling flush to send events immediately');
+      await SentryService.flush();
+      console.log('[SENTRY] Flush completed');
+      
+      Alert.alert(
+        'Test Complete', 
+        'Sentry test events were sent. Check your Sentry dashboard to verify.'
+      );
+    } catch (e) {
+      console.error('[SENTRY] Test error:', e);
+      Alert.alert('Test Failed', `Error: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setTesting(false);
+      console.log('[SENTRY] Test complete, events should appear in dashboard');
+    }
+  }, []);
+  
+  // Function to trigger a test error
+  const triggerTestError = useCallback(async () => {
+    setTesting(true);
+    try {
+      console.log('[SENTRY] Triggering test error');
+      
+      // Create and capture an error
+      const testError = new Error('This is a test error from DevPerformanceScreen');
+      testError.name = 'TestError';
+      
+      SentryService.captureException(testError);
+      
+      // Call flush to send events immediately
+      console.log('[SENTRY] Calling flush to send error');
+      await SentryService.flush();
+      
+      Alert.alert(
+        'Error Triggered', 
+        'A test error was sent to Sentry. Check your dashboard to verify.'
+      );
+    } catch (e) {
+      console.error('[SENTRY] Error triggering test:', e);
+      Alert.alert('Test Failed', `Error: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setTesting(false);
+    }
+  }, []);
+  
+  return (
+    <Card>
+      <Text style={styles.sectionHeaderText}>Sentry Testing</Text>
+      
+      <View style={styles.sentryButtonsContainer}>
+        <TouchableOpacity 
+          style={styles.sentryButton}
+          onPress={runBasicTest}
+          disabled={testing}
+        >
+          {testing ? (
+            <View style={styles.buttonContent}>
+              <Ionicons name="sync" size={18} color="white" style={{marginRight: 8, opacity: 0.8}} />
+              <Text style={styles.sentryButtonText}>Testing...</Text>
+            </View>
+          ) : (
+            <View style={styles.buttonContent}>
+              <Ionicons name="analytics-outline" size={18} color="white" style={{marginRight: 8}} />
+              <Text style={styles.sentryButtonText}>Log Test Event</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.sentryButton, styles.errorButton]}
+          onPress={triggerTestError}
+          disabled={testing}
+        >
+          <View style={styles.buttonContent}>
+            <Ionicons name="bug-outline" size={18} color="white" style={{marginRight: 8}} />
+            <Text style={styles.sentryButtonText}>Trigger Error</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+    </Card>
+  );
+};
+
+// Performance Summary Section
+const PerformanceSummarySection = () => {
+  const [memoryUsage, setMemoryUsage] = useState<number>(0);
+  const [cpuUsage, setCpuUsage] = useState<number | null>(null);
+  const [frameRate, setFrameRate] = useState<number | null>(null);
+  
+  useEffect(() => {
+    // Update memory usage every second
+    const memoryInterval = setInterval(async () => {
+      try {
+        // Check if the function exists before calling it
+        if (typeof MemoryMonitor.getMemoryUsage === 'function') {
+          const memory = await MemoryMonitor.getMemoryUsage();
+          setMemoryUsage(memory);
+        } else if (MemoryMonitor.getCurrentMemoryUsage) {
+          // Try alternative method if available
+          const memory = await MemoryMonitor.getCurrentMemoryUsage();
+          setMemoryUsage(memory);
+        } else {
+          // Fallback to Performance API if available
+          if (typeof performance !== 'undefined' && performance.memory) {
+            setMemoryUsage(performance.memory.usedJSHeapSize);
+          } else {
+            // Just set a placeholder value
+            setMemoryUsage(50 * 1024 * 1024); // 50MB as placeholder
+          }
+        }
+      } catch (e) {
+        console.error('[DEV_PERF] Error getting memory usage:', e);
+        // Set default value on error
+        setMemoryUsage(50 * 1024 * 1024); // 50MB as placeholder
+      }
+    }, 1000);
+    
+    // Start frame rate monitoring with safety check
+    try {
+      if (typeof FrameRateMonitor.startMonitoring === 'function') {
+        FrameRateMonitor.startMonitoring((fps) => {
+          setFrameRate(fps);
+        });
+      } else {
+        // Use a placeholder value
+        setFrameRate(60);
+      }
+    } catch (e) {
+      console.error('[DEV_PERF] Error starting frame rate monitoring:', e);
+      setFrameRate(60);
+    }
+    
+    return () => {
+      clearInterval(memoryInterval);
+      try {
+        if (typeof FrameRateMonitor.stopMonitoring === 'function') {
+          FrameRateMonitor.stopMonitoring();
+        }
+      } catch (e) {
+        console.error('[DEV_PERF] Error stopping frame rate monitoring:', e);
+      }
+    };
+  }, []);
+  
+  return (
+    <Card>
+      <Text style={styles.sectionHeaderText}>Performance Overview</Text>
+      
+      <View style={styles.performanceSummary}>
+        <View style={styles.metricRow}>
+          <Text style={styles.metricLabel}>Memory Usage:</Text>
+          <Text style={styles.metricValue}>
+            {(memoryUsage / (1024 * 1024)).toFixed(2)} MB
+          </Text>
+        </View>
+        
+        {cpuUsage !== null && (
+          <View style={styles.metricRow}>
+            <Text style={styles.metricLabel}>CPU Usage:</Text>
+            <Text style={styles.metricValue}>{cpuUsage.toFixed(1)}%</Text>
+          </View>
+        )}
+        
+        {frameRate !== null && (
+          <View style={styles.metricRow}>
+            <Text style={styles.metricLabel}>Frame Rate:</Text>
+            <Text style={[
+              styles.metricValue,
+              frameRate < 45 ? styles.warningText : frameRate < 30 ? styles.errorText : {}
+            ]}>
+              {frameRate.toFixed(1)} FPS
+            </Text>
+          </View>
+        )}
+      </View>
+    </Card>
+  );
+};
+
 // Add new ChatPerformanceSection component
 const ChatPerformanceSection = () => {
   const [metrics, setMetrics] = useState<ChatPerformanceMetrics | null>(null);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [manualTestId, setManualTestId] = useState<string>('');
+  const [showHistory, setShowHistory] = useState<boolean>(false);
+  
+  // Add automatic session timeout
+  useEffect(() => {
+    if (metrics?.isActive) {
+      // Check if session has been running too long (> 1 hour)
+      if (metrics.sessionDuration > 60 * 60) {
+        console.log('[DEV_PERF] Session running too long, auto-stopping');
+        stopChatSession();
+      }
+    }
+  }, [metrics]);
   
   useEffect(() => {
-    // Poll for chat metrics every second
-    const interval = setInterval(() => {
-      try {
-        // Get chat metrics through SentryService
-        const chatMetrics = SentryService.getChatPerformanceMetrics?.();
-        
-        if (!chatMetrics) {
-          setError('Chat metrics unavailable');
-          return;
-        }
-        
-        if (chatMetrics.isActive) {
-          // Only update state if the values are actually different
-          // This prevents unnecessary re-renders
-          if (!metrics || 
-              metrics.messagesSent !== chatMetrics.messagesSent ||
-              metrics.messagesReceived !== chatMetrics.messagesReceived ||
-              metrics.avgNetworkLatency !== chatMetrics.avgNetworkLatency ||
-              metrics.frameDrops !== chatMetrics.frameDrops ||
-              metrics.jsHeapSize !== chatMetrics.jsHeapSize ||
-              metrics.sessionDuration !== chatMetrics.sessionDuration ||
-              metrics.slowRenders !== chatMetrics.slowRenders) {
-            setMetrics(chatMetrics as ChatPerformanceMetrics);
+    console.log('[DEV_PERF] Setting up chat metrics polling');
+    
+    // Only start polling if there's an active session or metrics exist
+    let interval: NodeJS.Timeout | null = null;
+    
+    const startPolling = () => {
+      // Clear any existing interval first
+      if (interval) clearInterval(interval);
+      
+      // Set up the new polling interval
+      interval = setInterval(() => {
+        try {
+          // Get chat metrics through SentryService
+          const chatMetrics = SentryService.getChatPerformanceMetrics?.();
+          
+          if (!chatMetrics) {
+            setError('Chat metrics unavailable');
+            return;
+          }
+          
+          // Update metrics state
+          setMetrics(chatMetrics as ChatPerformanceMetrics);
+          
+          if (chatMetrics.isActive) {
             setActiveChatId(chatMetrics.chatId);
             setError(null);
+          } else if (interval && !chatMetrics.isActive) {
+            // If session is no longer active, stop polling continuously
+            console.log('[DEV_PERF] Chat session is no longer active, reducing polling frequency');
+            clearInterval(interval);
+            interval = setInterval(checkForMetrics, 5000); // Check less frequently
           }
-        } else if (metrics && !chatMetrics.isActive) {
-          // Chat session ended
-          setMetrics(null);
+        } catch (e) {
+          console.error('[DEV_PERF] Error getting metrics:', e);
+          setError(`Error getting metrics: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }, 1000);
+    };
+    
+    // Helper function to check for metrics without continuous polling
+    const checkForMetrics = () => {
+      try {
+        const chatMetrics = SentryService.getChatPerformanceMetrics?.();
+        
+        if (chatMetrics) {
+          setMetrics(chatMetrics as ChatPerformanceMetrics);
+          
+          if (chatMetrics.isActive) {
+            // If session becomes active, start frequent polling
+            console.log('[DEV_PERF] Active chat session detected, increasing polling frequency');
+            startPolling();
+          }
         }
       } catch (e) {
-        setError(`Error getting metrics: ${e instanceof Error ? e.message : String(e)}`);
+        console.error('[DEV_PERF] Error checking metrics:', e);
       }
-    }, 1000);
+    };
     
-    return () => clearInterval(interval);
-  }, []);  // Notice the empty dependency array - it's crucial
+    // Initial check to determine if we need frequent polling
+    checkForMetrics();
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, []);
   
-  if (!metrics) {
+  // Function to start a test chat session
+  const startChatSession = useCallback(() => {
+    try {
+      const sessionId = manualTestId || `test_${Date.now()}`;
+      console.log('[DEV_PERF] Starting test chat session:', sessionId);
+      
+      // Import from chatPerformanceMonitor directly to avoid circular dependencies
+      const ChatPerformanceMonitor = require('../utils/chatPerformanceMonitor').default;
+      ChatPerformanceMonitor.startChatMonitoring(sessionId);
+      
+      setManualTestId('');
+      
+      // Manually start the metrics polling right away to get immediate feedback
+      setTimeout(() => {
+        try {
+          const chatMetrics = SentryService.getChatPerformanceMetrics?.();
+          if (chatMetrics) {
+            setMetrics(chatMetrics as ChatPerformanceMetrics);
+            setActiveChatId(chatMetrics.chatId);
+          }
+        } catch (e) {
+          console.error('[DEV_PERF] Error getting initial metrics after session start:', e);
+        }
+      }, 100);
+    } catch (e) {
+      console.error('[DEV_PERF] Error starting chat session:', e);
+      setError(`Failed to start session: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [manualTestId]);
+  
+  // Function to stop current chat session
+  const stopChatSession = useCallback(() => {
+    try {
+      console.log('[DEV_PERF] Stopping chat session');
+      
+      // Import directly to avoid circular dependencies
+      const ChatPerformanceMonitor = require('../utils/chatPerformanceMonitor').default;
+      ChatPerformanceMonitor.stopChatMonitoring();
+    } catch (e) {
+      console.error('[DEV_PERF] Error stopping chat session:', e);
+    }
+  }, []); // This is fine since it doesn't use any variables from the component scope
+  
+  // Function to simulate sending a test message
+  const simulateMessage = useCallback(() => {
+    if (!activeChatId) return;
+    
+    try {
+      console.log('[DEV_PERF] Simulating test message');
+      
+      const ChatPerformanceMonitor = require('../utils/chatPerformanceMonitor').default;
+      const messageId = `test_msg_${Date.now()}`;
+      const messageSize = Math.floor(Math.random() * 200) + 10; // Random message size
+      
+      // Track message send start
+      ChatPerformanceMonitor.trackMessageSendStart(messageId, messageSize);
+      
+      // Simulate network delay
+      setTimeout(() => {
+        // Complete the message send
+        ChatPerformanceMonitor.trackMessageSendComplete(messageId, true);
+        
+        // Simulate message receive after a short delay
+        setTimeout(() => {
+          ChatPerformanceMonitor.trackMessageReceived(`reply_${messageId}`, messageSize);
+        }, 200);
+      }, 300);
+    } catch (e) {
+      console.error('[DEV_PERF] Error simulating message:', e);
+    }
+  }, [activeChatId]);
+
+  // Function to render the chat controls when a session is active
+  const renderChatControls = () => {
+    return (
+      <View style={styles.chatControls}>
+        <View style={styles.chatControlRow}>
+          <Text style={styles.chatSessionInfo}>
+            Active Session: {activeChatId ? 
+              (activeChatId.length > 12 ? `${activeChatId.slice(0, 12)}...` : activeChatId) 
+              : 'None'}
+          </Text>
+          <Text style={styles.chatSessionDuration}>
+            {metrics?.sessionDuration ? formatDuration(metrics.sessionDuration) : '0s'}
+          </Text>
+        </View>
+        
+        <View style={styles.chatButtonsRow}>
+          <TouchableOpacity
+            style={[styles.chatControlButton, styles.stopButton]}
+            onPress={stopChatSession}
+            disabled={!metrics?.isActive}
+          >
+            <Ionicons name="stop" size={18} color="white" style={{marginRight: 4}} />
+            <Text style={styles.chatControlButtonText}>Stop Session</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={styles.chatControlButton}
+            onPress={simulateMessage}
+            disabled={!metrics?.isActive}
+          >
+            <Ionicons name="paper-plane-outline" size={18} color="white" style={{marginRight: 4}} />
+            <Text style={styles.chatControlButtonText}>Test Message</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+  
+  // No active session - show start controls
+  if (!metrics?.isActive) {
+    const hasHistory = metrics?.sessionHistory && metrics.sessionHistory.length > 0;
+    
     return (
       <Card>
         <Text style={styles.sectionHeaderText}>Chat Performance</Text>
-        <View style={styles.emptyChatMetrics}>
-          <Text style={styles.infoText}>No active chat session</Text>
-          <Text style={styles.hintText}>
-            Open a chat screen to see real-time metrics
-          </Text>
+        
+        <View style={styles.chatSessionControls}>
+          <TextInput
+            style={styles.chatSessionInput}
+            placeholder="Test session ID (optional)"
+            value={manualTestId}
+            onChangeText={setManualTestId}
+          />
+          <TouchableOpacity
+            style={styles.chatSessionButton}
+            onPress={startChatSession}
+          >
+            <Ionicons name="play" size={18} color="white" style={{marginRight: 8}} />
+            <Text style={styles.chatSessionButtonText}>Start Test Session</Text>
+          </TouchableOpacity>
         </View>
+        
+        {/* Show history toggle only if there's history available */}
+        {hasHistory && (
+          <TouchableOpacity
+            style={styles.historyToggle}
+            onPress={() => setShowHistory(!showHistory)}
+          >
+            <Ionicons 
+              name={showHistory ? "chevron-up" : "chevron-down"} 
+              size={18} 
+              color="#6B7280" 
+              style={{marginRight: 8}} 
+            />
+            <Text style={styles.historyToggleText}>
+              {showHistory ? "Hide Session History" : "Show Session History"}
+            </Text>
+          </TouchableOpacity>
+        )}
+        
+        {/* Session history panel */}
+        {showHistory && hasHistory && (
+          <View style={styles.historyPanel}>
+            <Text style={styles.historyHeaderText}>
+              Recent Sessions ({metrics.sessionHistory.length})
+            </Text>
+            
+            <ScrollView style={styles.historyList}>
+              {metrics.sessionHistory.map((session, index) => (
+                <View key={`${session.id}_${index}`} style={styles.historyItem}>
+                  <View style={styles.historyItemHeader}>
+                    <Text style={styles.historyItemId}>
+                      {session.id.length > 12 ? `${session.id.slice(0, 12)}...` : session.id}
+                    </Text>
+                    <Text style={styles.historyItemTime}>
+                      {new Date(session.startTime).toLocaleTimeString()}
+                    </Text>
+                  </View>
+                  
+                  <View style={styles.historyItemMetrics}>
+                    <View style={styles.historyMetric}>
+                      <Text style={styles.historyMetricValue}>{session.messagesSent}</Text>
+                      <Text style={styles.historyMetricLabel}>Messages</Text>
+                    </View>
+                    
+                    <View style={styles.historyMetric}>
+                      <Text style={styles.historyMetricValue}>{session.avgSendTime}ms</Text>
+                      <Text style={styles.historyMetricLabel}>Avg Send</Text>
+                    </View>
+                    
+                    <View style={styles.historyMetric}>
+                      <Text style={styles.historyMetricValue}>{formatDuration(session.duration)}</Text>
+                      <Text style={styles.historyMetricLabel}>Duration</Text>
+                    </View>
+                    
+                    <View style={styles.historyMetric}>
+                      <Text style={styles.historyMetricValue}>{session.successRate}%</Text>
+                      <Text style={styles.historyMetricLabel}>Success</Text>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+        
+        {error && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
+        
+        {!hasHistory && !error && (
+          <View style={styles.emptyStateContainer}>
+            <Ionicons name="analytics-outline" size={48} color="#D1D5DB" />
+            <Text style={styles.emptyStateText}>No chat sessions yet</Text>
+            <Text style={styles.emptyStateHint}>
+              Start a test session or navigate to a chat screen
+            </Text>
+          </View>
+        )}
       </Card>
     );
   }
   
+  // Active session - show metrics and controls
   // Calculate performance scores
   const networkScore = calculatePerformanceScore(
-    metrics.avgNetworkLatency, 
+    metrics?.avgNetworkLatency || 0, 
     CHAT_PERFORMANCE_BUDGETS.MESSAGE_SEND_RTT
   );
   
   const renderScore = calculatePerformanceScore(
-    metrics.slowRenders,
+    metrics?.slowRenders || 0,
     5, // 5 slow renders is considered poor
     true // Invert (less is better)
   );
   
   const frameScore = calculatePerformanceScore(
-    metrics.frameDrops,
+    metrics?.frameDrops || 0,
     10, // 10 frame drops is considered poor
     true // Invert (less is better)
   );
   
   const memoryScore = calculatePerformanceScore(
-    metrics.jsHeapSize / (1024 * 1024),
+    (metrics?.jsHeapSize || 0) / (1024 * 1024),
     CHAT_PERFORMANCE_BUDGETS.CHAT_MEMORY / (1024 * 1024),
     true // Invert (less is better)
   );
@@ -217,1425 +666,1293 @@ const ChatPerformanceSection = () => {
   
   // Get performance status color
   const getStatusColor = (score: number): string => {
-    if (score >= 80) return '#10B981'; // Green
-    if (score >= 60) return '#F59E0B'; // Yellow/Orange
-    return '#EF4444'; // Red
+    if (score >= 80) return '#4CAF50'; // Green
+    if (score >= 50) return '#FF9800'; // Orange
+    return '#F44336'; // Red
   };
+  
+  // Calculate slow render percentage if not provided
+  const slowRenderPercentage = metrics?.slowRenderPercentage || 
+    (metrics?.slowRenders && metrics.messagesSent > 0 
+      ? (metrics.slowRenders / metrics.messagesSent) * 100 
+      : 0);
   
   return (
     <Card>
-      <View style={styles.chatHeaderRow}>
-        <Text style={styles.sectionHeaderText}>Chat Performance</Text>
-        <View style={[styles.chatBadge, { backgroundColor: getStatusColor(overallScore) }]}>
-          <Text style={styles.chatScore}>{overallScore}</Text>
+      <Text style={styles.sectionHeaderText}>Chat Performance</Text>
+      
+      {/* First show the chat controls when active */}
+      {renderChatControls()}
+      
+      {/* Performance score summary */}
+      <View style={styles.performanceSummary}>
+        <View style={styles.performanceScore}>
+          <Text style={styles.performanceScoreLabel}>Network Latency</Text>
+          <Text style={styles.performanceScoreValue}>
+            {metrics?.avgNetworkLatency ? metrics.avgNetworkLatency.toFixed(1) : '0'}ms
+          </Text>
+          <View style={styles.performanceBarContainer}>
+            <View 
+              style={[
+                styles.performanceBarFill,
+                { 
+                  width: `${metrics?.avgNetworkLatency ? (metrics.avgNetworkLatency / CHAT_PERFORMANCE_BUDGETS.MESSAGE_SEND_RTT) * 100 : 0}%`, 
+                  backgroundColor: getStatusColor(networkScore) 
+                }
+              ]} 
+            />
+          </View>
+        </View>
+        
+        <View style={styles.performanceScore}>
+          <Text style={styles.performanceScoreLabel}>Slow Renders</Text>
+          <Text style={styles.performanceScoreValue}>
+            {metrics?.slowRenders || 0} ({slowRenderPercentage.toFixed(1)}%)
+          </Text>
+          <View style={styles.performanceBarContainer}>
+            <View 
+              style={[
+                styles.performanceBarFill,
+                { 
+                  width: `${slowRenderPercentage}%`, 
+                  backgroundColor: getStatusColor(renderScore) 
+                }
+              ]} 
+            />
+          </View>
+        </View>
+        
+        <View style={styles.performanceScore}>
+          <Text style={styles.performanceScoreLabel}>Frame Drops</Text>
+          <Text style={styles.performanceScoreValue}>
+            {metrics?.frameDrops}
+          </Text>
+          <View style={styles.performanceBarContainer}>
+            <View 
+              style={[
+                styles.performanceBarFill,
+                { width: `${Math.min(100, metrics?.frameDrops || 0) * 10}%`, backgroundColor: getStatusColor(frameScore) }
+              ]} 
+            />
+          </View>
+        </View>
+        
+        <View style={styles.performanceScore}>
+          <Text style={styles.performanceScoreLabel}>Memory Usage</Text>
+          <Text style={styles.performanceScoreValue}>
+            {metrics?.jsHeapSize ? (metrics.jsHeapSize / (1024 * 1024)).toFixed(1) : '0'} MB
+          </Text>
+          <View style={styles.performanceBarContainer}>
+            <View 
+              style={[
+                styles.performanceBarFill,
+                { 
+                  width: `${Math.min(100, (metrics?.jsHeapSize ? (metrics.jsHeapSize / (1024 * 1024)) / (CHAT_PERFORMANCE_BUDGETS.CHAT_MEMORY / (1024 * 1024)) : 0) * 100)}%`, 
+                  backgroundColor: getStatusColor(memoryScore) 
+                }
+              ]} 
+            />
+          </View>
         </View>
       </View>
       
-      <Text style={styles.chatId}>
-        Session: {activeChatId ? activeChatId.slice(0, 8) : 'Unknown'}
-      </Text>
+      {/* Detailed metrics view */}
+      <CollapsibleSection title="View Detailed Metrics">
+        <View style={styles.detailedMetrics}>
+          <Text style={styles.detailedMetricsHeader}>Session Metrics</Text>
+          
+          <View style={styles.metricRow}>
+            <Text style={styles.metricLabel}>Session ID:</Text>
+            <Text style={styles.metricValue}>{metrics?.chatId}</Text>
+          </View>
+          
+          <View style={styles.metricRow}>
+            <Text style={styles.metricLabel}>Start Time:</Text>
+            <Text style={styles.metricValue}>
+              {metrics?.startTime ? new Date(metrics.startTime).toLocaleString() : 'N/A'}
+            </Text>
+          </View>
+          
+          <View style={styles.metricRow}>
+            <Text style={styles.metricLabel}>Duration:</Text>
+            <Text style={styles.metricValue}>
+              {metrics?.sessionDuration ? formatDuration(metrics.sessionDuration) : 'N/A'}
+            </Text>
+          </View>
+          
+          <View style={styles.metricRow}>
+            <Text style={styles.metricLabel}>Messages Sent:</Text>
+            <Text style={styles.metricValue}>{metrics?.messagesSent}</Text>
+          </View>
+          
+          <View style={styles.metricRow}>
+            <Text style={styles.metricLabel}>Messages Received:</Text>
+            <Text style={styles.metricValue}>{metrics?.messagesReceived}</Text>
+          </View>
+          
+          <View style={styles.metricRow}>
+            <Text style={styles.metricLabel}>Avg. Send Time:</Text>
+            <Text style={styles.metricValue}>
+              {metrics?.stats?.averageSendTime ? `${metrics.stats.averageSendTime} ms` : 'N/A'}
+            </Text>
+          </View>
+          
+          <View style={styles.metricRow}>
+            <Text style={styles.metricLabel}>Min Send Time:</Text>
+            <Text style={styles.metricValue}>
+              {metrics?.stats?.minSendTime ? `${metrics.stats.minSendTime} ms` : 'N/A'}
+            </Text>
+          </View>
+          
+          <View style={styles.metricRow}>
+            <Text style={styles.metricLabel}>Max Send Time:</Text>
+            <Text style={styles.metricValue}>
+              {metrics?.stats?.maxSendTime ? `${metrics.stats.maxSendTime} ms` : 'N/A'}
+            </Text>
+          </View>
+          
+          <View style={styles.metricRow}>
+            <Text style={styles.metricLabel}>Success Rate:</Text>
+            <Text style={styles.metricValue}>
+              {metrics?.stats?.successRate !== undefined ? `${metrics.stats.successRate}%` : 'N/A'}
+            </Text>
+          </View>
+        </View>
+      </CollapsibleSection>
       
-      <View style={styles.chatMetricsGrid}>
-        <View style={styles.chatMetricItem}>
-          <Text style={styles.metricLabel}>Messages Sent</Text>
-          <Text style={styles.metricValue}>{metrics.messagesSent}</Text>
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
         </View>
-        <View style={styles.chatMetricItem}>
-          <Text style={styles.metricLabel}>Messages Received</Text>
-          <Text style={styles.metricValue}>{metrics.messagesReceived}</Text>
-        </View>
-        <View style={styles.chatMetricItem}>
-          <Text style={styles.metricLabel}>Avg Network Latency</Text>
-          <Text style={[
-            styles.metricValue, 
-            {color: getStatusColor(networkScore)}
-          ]}>
-            {metrics.avgNetworkLatency.toFixed(1)}ms
-          </Text>
-        </View>
-        <View style={styles.chatMetricItem}>
-          <Text style={styles.metricLabel}>Memory Usage</Text>
-          <Text style={[
-            styles.metricValue,
-            {color: getStatusColor(memoryScore)}
-          ]}>
-            {(metrics.jsHeapSize / (1024 * 1024)).toFixed(1)}MB
-          </Text>
-        </View>
-        <View style={styles.chatMetricItem}>
-          <Text style={styles.metricLabel}>Frame Drops</Text>
-          <Text style={[
-            styles.metricValue,
-            {color: getStatusColor(frameScore)}
-          ]}>
-            {metrics.frameDrops}
-          </Text>
-        </View>
-        <View style={styles.chatMetricItem}>
-          <Text style={styles.metricLabel}>Slow Renders</Text>
-          <Text style={[
-            styles.metricValue,
-            {color: getStatusColor(renderScore)}
-          ]}>
-            {metrics.slowRenders}
-          </Text>
-        </View>
-      </View>
-      
-      <View style={styles.chatSessionTime}>
-        <Ionicons name="time-outline" size={14} color="#6B7280" />
-        <Text style={styles.sessionDuration}>
-          Session duration: {formatDuration(metrics.sessionDuration)}
-        </Text>
-      </View>
+      )}
     </Card>
   );
 };
 
-// Helper function to calculate performance scores (0-100)
-const calculatePerformanceScore = (value, threshold, invert = false) => {
-  let score;
+// Helper function to calculate performance scores on a scale of 0-100
+const calculatePerformanceScore = (
+  value: number, 
+  budget: number, 
+  invert: boolean = false
+): number => {
+  if (value === 0 && invert) return 100; // Perfect score for zero when inverted
+  if (value === 0 && !invert) return 0;  // Zero score for zero when not inverted
+  
+  // Calculate percentage of budget
+  const percentage = (value / budget) * 100;
+  
+  // If inverted (lower is better, like frame drops)
   if (invert) {
-    // For metrics where lower is better (memory, frame drops, etc)
-    score = 100 - (value / threshold * 100);
-  } else {
-    // For metrics where higher is better
-    score = 100 - (value / threshold * 100);
+    // 0% of budget = 100 score, 100% of budget = 50 score, 200%+ of budget = 0 score
+    return Math.max(0, Math.min(100, 100 - percentage / 2));
+  } 
+  // If not inverted (higher is better)
+  else {
+    // Higher than budget = 100 score, 0% of budget = 0 score
+    return Math.min(100, percentage);
   }
-  return Math.max(0, Math.min(100, Math.round(score)));
 };
 
-// Helper function to format duration
-const formatDuration = (seconds) => {
-  if (seconds < 60) return `${seconds.toFixed(0)}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  return `${minutes}m ${remainingSeconds}s`;
+// Helper function to format duration in seconds to readable time
+const formatDuration = (seconds: number): string => {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  if (seconds < 3600) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60);
+    return `${mins}m ${secs}s`;
+  }
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  return `${hours}h ${mins}m`;
 };
-
-export default function DevPerformanceScreen({ navigation }: { navigation: DevPerformanceScreenNavigationProp }) {
-  const perf = usePerformance('DevPerformanceScreen');
-  
-  // State management with proper types
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [traces, setTraces] = useState<TraceEntry[]>([]);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [testingInProgress, setTestingInProgress] = useState(false);
-  const [isProfileActive, setIsProfileActive] = useState(false);
-  const [currentProfileName, setCurrentProfileName] = useState<string | null>(null);
-  const [diagnosticResults, setDiagnosticResults] = useState<Record<string, any> | null>(null);
-  const [activeTab, setActiveTab] = useState('dashboard');
-  
-  // Get performance data
-  const getPerformanceStats = useCallback(() => {
-    // Get the performance data from SentryService
-    const budgetViolations: PerformanceBudgetViolation[] = SentryService.getBudgetViolations?.() || [];
-    
-    // Process category and trace stats
-    const categoryStats: Record<string, number> = {};
-    const traceStats: Record<string, number[]> = {};
-    
-    traces.forEach(trace => {
-      // Group by category
-      const category = trace.category || 'unknown';
-      categoryStats[category] = (categoryStats[category] || 0) + 1;
-      
-      // Group durations by name
-      if (trace.name && trace.duration) {
-        if (!traceStats[trace.name]) {
-          traceStats[trace.name] = [];
-        }
-        traceStats[trace.name].push(trace.duration);
-      }
-    });
-    
-    return { categoryStats, traceStats, budgetViolations };
-  }, [traces]);
-  
-  const { categoryStats, traceStats, budgetViolations } = getPerformanceStats();
-  
-  // Load performance data
-  useEffect(() => {
-    const loadSentryData = async () => {
-      try {
-        // For logs, get breadcrumbs from Sentry
-        const sentryLogs = SentryService.getEventHistory?.() || [];
-        setLogs(sentryLogs);
-        
-        // For traces, get transactions from Sentry
-        const sentryTraces = SentryService.getCompletedTransactions?.() || [];
-        setTraces(sentryTraces);
-      } catch (error) {
-        console.error('Error loading Sentry data:', error);
-      }
-    };
-    
-    loadSentryData();
-    
-    // Track mount ONLY ONCE!
-    if (refreshKey === 0) { // Only track the first time
-      perf.trackMount();
-    }
-    
-    return () => {
-      // Cleanup if needed
-    };
-  }, [refreshKey]); // Remove perf from dependency array
-
-  // Refresh data
-  const handleRefresh = useCallback(() => {
-    setRefreshKey(prev => prev + 1);
-  }, []);
-
-  // Clear data - replace with SentryService methods
-  const handleClear = useCallback(() => {
-    // Clear Sentry event history if you've implemented that
-    SentryService.clearHistory?.();
-    setRefreshKey(prev => prev + 1);
-  }, []);
-  
-  // Testing functions (reusing your existing implementations)
-  const runSimplePerformanceTest = async () => {
-    setTestingInProgress(true);
-    
-    // Clear existing results first
-    SentryService.clearHistory?.();
-    
-    // Test 1: Array operations
-    const arrayTestTransaction = SentryService.startTransaction('test_array_operations', 'benchmark');
-    const largeArray = Array(10000).fill(0).map((_, i) => i);
-    const result = largeArray.filter(n => n % 2 === 0).map(n => n * 2).reduce((a, b) => a + b, 0);
-    arrayTestTransaction.finish();
-    
-    // Test 2: String operations
-    const stringTestTransaction = SentryService.startTransaction('test_string_operations', 'benchmark');
-    let longString = '';
-    for (let i = 0; i < 10000; i++) {
-      longString += 'a';
-    }
-    longString = longString.replace(/a/g, 'b');
-    stringTestTransaction.finish();
-    
-    // Test 3: Async operation
-    const asyncTestTransaction = SentryService.startTransaction('test_async_operation', 'benchmark');
-    await new Promise(resolve => setTimeout(resolve, 500));
-    asyncTestTransaction.finish();
-    
-    // Test 4: Multiple quick operations
-    for (let i = 0; i < 5; i++) {
-      const quickOpTransaction = SentryService.startTransaction(`test_quick_op_${i}`, 'benchmark');
-      // Do something quick
-      const dummy = Math.sqrt(i * 1000);
-      quickOpTransaction.finish();
-      // Small delay between operations
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
-    
-    // Refresh the data
-    handleRefresh();
-    setTestingInProgress(false);
-  };
-  
-  const runNetworkPerformanceTest = async () => {
-    setTestingInProgress(true);
-    
-    // Clear existing results first
-    SentryService.clearHistory?.();
-    
-    // Test 1: Basic network request
-    const fetchBasicTransaction = SentryService.startTransaction('network_basic_fetch', 'network.request');
-    fetchBasicTransaction.setTag('endpoint', 'basic');
-    fetchBasicTransaction.setTag('method', 'GET');
-    
-    try {
-      // Use a public API for testing
-      const response = await fetch('https://jsonplaceholder.typicode.com/todos/1');
-      const data = await response.json();
-      SentryService.logEvent('network', `Fetch basic completed with status ${response.status}`);
-      fetchBasicTransaction.setData('status', response.status);
-      fetchBasicTransaction.setStatus('ok');
-    } catch (error) {
-      // Add type guard to safely access error properties
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      SentryService.logEvent('network', `Fetch basic error: ${errorMessage}`, undefined, true);
-      fetchBasicTransaction.setStatus('internal_error');
-      fetchBasicTransaction.setData('error', errorMessage);
-    }
-    
-    fetchBasicTransaction.finish();
-    
-    // Test 2: Multiple parallel requests
-    const parallelTransaction = SentryService.startTransaction('network_parallel_requests', 'network.request');
-    parallelTransaction.setTag('count', '5');
-    parallelTransaction.setTag('method', 'GET');
-    
-    try {
-      const promises = Array(5).fill(0).map((_, i) => 
-        fetch(`https://jsonplaceholder.typicode.com/todos/${i+1}`)
-          .then(res => res.json())
-      );
-      
-      const results = await Promise.all(promises);
-      SentryService.logEvent('network', `Parallel fetches completed, got ${results.length} results`);
-      parallelTransaction.setData('count', results.length);
-      parallelTransaction.setStatus('ok');
-    } catch (error) {
-      // Type guard to check if error is an Error object
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      SentryService.logEvent('network', `Parallel fetch error: ${errorMessage}`, undefined, true);
-      parallelTransaction.setStatus('internal_error');
-      parallelTransaction.setData('error', errorMessage);
-    }
-    
-    parallelTransaction.finish();
-    
-    // Test 3: Large payload
-    const largePayloadTransaction = SentryService.startTransaction('network_large_payload', 'network.request');
-    largePayloadTransaction.setTag('endpoint', 'photos');
-    largePayloadTransaction.setTag('method', 'GET');
-    
-    try {
-      // Fetch a larger dataset
-      const response = await fetch('https://jsonplaceholder.typicode.com/photos');
-      const photos = await response.json();
-      SentryService.logEvent('network', `Fetched large payload: ${photos.length} items`);
-      largePayloadTransaction.setData('count', photos.length);
-      
-      // Test data processing performance
-      const processTransaction = largePayloadTransaction.startChild('process_large_payload', 'data.transform');
-      processTransaction.setData('count', photos.length);
-      
-      // Simulate processing the data
-      const processed = photos
-        .slice(0, 100)
-        .map(photo => ({
-          id: photo.id,
-          title: photo.title.toUpperCase(),
-          thumbnail: photo.thumbnailUrl,
-          dimensions: { width: 150, height: 150 }
-        }));
-      
-      processTransaction.finish();
-      largePayloadTransaction.setStatus('ok');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      SentryService.logEvent('network', `Large payload fetch error: ${errorMessage}`, undefined, true);
-      largePayloadTransaction.setStatus('internal_error');
-      largePayloadTransaction.setData('error', errorMessage);
-    }
-    
-    largePayloadTransaction.finish();
-    
-    // Refresh the data
-    handleRefresh();
-    setTestingInProgress(false);
-  };
-  
-  const runMemoryTest = async () => {
-    setTestingInProgress(true);
-    
-    // Clear existing results first
-    SentryService.clearHistory?.();
-    
-    // Take initial snapshot
-    const initialMemoryTransaction = SentryService.startTransaction('memory_test_start', 'memory');
-    const initialMemory = await SentryService.trackMemoryUsage();
-    initialMemoryTransaction.finish();
-    
-    // Allocate some memory to see the difference
-    const memoryHog = [];
-    for (let i = 0; i < 1000; i++) {
-      memoryHog.push({
-        id: i,
-        data: new Array(1000).fill('Memory test data').join(''),
-        timestamp: Date.now()
-      });
-    }
-    
-    // Take another snapshot after allocation
-    const peakMemoryTransaction = SentryService.startTransaction('memory_test_peak', 'memory');
-    const peakMemory = await SentryService.trackMemoryUsage();
-    peakMemoryTransaction.finish();
-    
-    // Clear the array to free memory
-    memoryHog.length = 0;
-    
-    // Force garbage collection if possible
-    if (global.gc) {
-      global.gc();
-    }
-    
-    // Take final snapshot
-    const finalMemoryTransaction = SentryService.startTransaction('memory_test_end', 'memory');
-    const finalMemory = await SentryService.trackMemoryUsage();
-    finalMemoryTransaction.finish();
-    
-    // Refresh the data
-    handleRefresh();
-    setTestingInProgress(false);
-  };
-  
-  const runFrameRateTest = () => {
-    setTestingInProgress(true);
-    
-    // Clear existing results first
-    SentryService.clearHistory?.();
-    
-    // Create frame rate transaction
-    const frameRateTransaction = SentryService.startTransaction('ui_frame_rate_test', 'ui.performance');
-    
-    // Create some UI load to simulate heavy rendering
-    const start = Date.now();
-    while (Date.now() - start < 500) {
-      // Block the main thread for 500ms
-      const dummy = Math.random() * 1000;
-    }
-    
-    // Add metadata to transaction
-    frameRateTransaction.setData('blocked_duration_ms', Date.now() - start);
-    
-    // Stop monitoring after 1 second
-    setTimeout(() => {
-      frameRateTransaction.finish();
-      handleRefresh();
-      setTestingInProgress(false);
-    }, 1000);
-  };
-  
-  // Calculate stats
-  const totalTraces = traces.length;
-  const avgTraceDuration = totalTraces > 0 
-    ? Math.round(traces.reduce((sum, t) => sum + (t.duration || 0), 0) / totalTraces) 
-    : 0;
-  const slowestTrace = totalTraces > 0 
-    ? [...traces].sort((a, b) => (b.duration || 0) - (a.duration || 0))[0] 
-    : null;
-  
-  return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="chevron-back" size={24} color="#111827" />
-          </TouchableOpacity>
-          <Text style={styles.title}>Performance Monitor</Text>
-          <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.iconButton} onPress={handleRefresh}>
-              <Ionicons name="refresh" size={20} color="#4B5563" />
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.iconButton, {marginLeft: 8}]} onPress={handleClear}>
-              <Ionicons name="trash-outline" size={20} color="#4B5563" />
-            </TouchableOpacity>
-          </View>
-        </View>
-        
-        {/* Tab Bar */}
-        <View style={styles.tabBar}>
-          <TouchableOpacity 
-            style={[styles.tab, activeTab === 'dashboard' && styles.activeTab]} 
-            onPress={() => setActiveTab('dashboard')}
-          >
-            <Ionicons name="speedometer-outline" size={18} color={activeTab === 'dashboard' ? '#7C3AED' : '#6B7280'} />
-            <Text style={[styles.tabText, activeTab === 'dashboard' && styles.activeTabText]}>Dashboard</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.tab, activeTab === 'traces' && styles.activeTab]} 
-            onPress={() => setActiveTab('traces')}
-          >
-            <Ionicons name="git-branch-outline" size={18} color={activeTab === 'traces' ? '#7C3AED' : '#6B7280'} />
-            <Text style={[styles.tabText, activeTab === 'traces' && styles.activeTabText]}>Traces</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.tab, activeTab === 'logs' && styles.activeTab]} 
-            onPress={() => setActiveTab('logs')}
-          >
-            <Ionicons name="list-outline" size={18} color={activeTab === 'logs' ? '#7C3AED' : '#6B7280'} />
-            <Text style={[styles.tabText, activeTab === 'logs' && styles.activeTabText]}>Logs</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.tab, activeTab === 'testing' && styles.activeTab]} 
-            onPress={() => setActiveTab('testing')}
-          >
-            <Ionicons name="flask-outline" size={18} color={activeTab === 'testing' ? '#7C3AED' : '#6B7280'} />
-            <Text style={[styles.tabText, activeTab === 'testing' && styles.activeTabText]}>Testing</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-      
-      {/* Dashboard tab */}
-      <TabContent active={activeTab === 'dashboard'}>
-        <ScrollView style={styles.content}>
-          {/* Summary card */}
-          <Card style={styles.dashboardCard}>
-            <View style={styles.dashboardHeader}>
-              <Text style={styles.dashboardTitle}>Performance Summary</Text>
-            </View>
-            <View style={styles.dashboardStats}>
-              <View style={styles.stat}>
-                <Text style={styles.statValue}>{totalTraces}</Text>
-                <Text style={styles.statLabel}>Total Traces</Text>
-              </View>
-              <View style={styles.stat}>
-                <Text style={styles.statValue}>{avgTraceDuration}ms</Text>
-                <Text style={styles.statLabel}>Avg Duration</Text>
-              </View>
-              <View style={styles.stat}>
-                <Text style={styles.statValue}>{slowestTrace?.duration || 0}ms</Text>
-                <Text style={styles.statLabel}>Slowest Trace</Text>
-              </View>
-            </View>
-            
-            {/* Add a separate section for the Sentry test button */}
-            <View style={styles.sentryTestContainer}>
-              <Text style={styles.cardDescription}>
-                Send a test error to your Sentry dashboard:
-              </Text>
-              <TouchableOpacity
-                style={styles.sentryTestButton}
-                onPress={async () => {
-                  console.log('[SENTRY] Sending test error to Sentry');
-                  try {
-                    // Create a more distinctive error
-                    const testError = new Error(`Test Error from GroopTroop at ${new Date().toISOString()}`);
-                    
-                    // Explicitly flush events after capturing
-                    Sentry.withScope(scope => {
-                      scope.setLevel(Sentry.Severity.Error);
-                      scope.setTag('manual_test', 'true');
-                      scope.setExtra('device_time', new Date().toString());
-                      
-                      console.log('[SENTRY] Capturing exception with scope');
-                      Sentry.captureException(testError);
-                    });
-                    
-                    // Force events to be sent immediately
-                    console.log('[SENTRY] Calling flush to send events immediately');
-                    await Sentry.flush(2000); // Wait up to 2 seconds for events to send
-                    
-                    console.log('[SENTRY] Flush completed');
-                    Alert.alert('Sent to Sentry', 'Test error was sent. Check dashboard in a few minutes.');
-                  } catch (e) {
-                    console.error('[SENTRY] Error sending test:', e);
-                    Alert.alert('Error', `Failed to send: ${e instanceof Error ? e.message : String(e)}`);
-                  }
-                }}
-              >
-                <Ionicons name="warning-outline" size={16} color="white" style={{marginRight: 8}} />
-                <Text style={styles.sentryTestButtonText}>Send Test Error (Debug)</Text>
-              </TouchableOpacity>
-
-              {/* Add another test button */}
-              <TouchableOpacity
-                style={[styles.sentryTestButton, {backgroundColor: '#3B82F6'}]}
-                onPress={() => {
-                  console.log('[SENTRY] Testing native crash reporting');
-                  
-                  // This will crash your JS thread, but should be caught by Sentry
-                  setTimeout(() => {
-                    const crashTest = null;
-                    // @ts-ignore
-                    crashTest.nonExistentMethod(); // This will cause a runtime exception
-                  }, 500);
-                }}
-              >
-                <Ionicons name="alert-circle-outline" size={16} color="white" style={{marginRight: 8}} />
-                <Text style={styles.sentryTestButtonText}>Test JS Crash</Text>
-              </TouchableOpacity>
-
-              {/* New test button for direct message capture */}
-              <TouchableOpacity
-                style={[styles.sentryTestButton, {backgroundColor: '#34D399', marginTop: 8}]}
-                onPress={() => {
-                  console.log('[SENTRY] Testing direct message capture');
-                  
-                  // Direct message capture - often more reliable than exception capture
-                  Sentry.captureMessage('Test message from GroopTroop app at ' + new Date().toISOString(), {
-                    level: 'error', // Making it an error so it definitely appears in issues
-                    tags: {
-                      direct_test: 'true',
-                      timestamp: Date.now()
-                    }
-                  });
-                  
-                  // Also try a different error approach
-                  Sentry.captureEvent({
-                    message: 'Manual event from GroopTroop',
-                    level: 'error',
-                    tags: { manual_event: 'true' }
-                  });
-                  
-                  Alert.alert('Direct Message Sent', 'Sent a direct message to Sentry');
-                }}
-              >
-                <Ionicons name="mail-outline" size={16} color="white" style={{marginRight: 8}} />
-                <Text style={styles.sentryTestButtonText}>Test Direct Message</Text>
-              </TouchableOpacity>
-
-              {/* New test button for network connectivity */}
-              <TouchableOpacity
-                style={[styles.sentryTestButton, {backgroundColor: '#6366F1', marginTop: 8}]}
-                onPress={async () => {
-                  try {
-                    console.log('[SENTRY] Testing network connectivity');
-                    const response = await fetch('https://sentry.io/api/');
-                    const status = response.status;
-                    Alert.alert('Network Test', `Sentry.io connectivity: ${status === 200 ? 'Good' : 'Status ' + status}`);
-                  } catch (e) {
-                    Alert.alert('Network Error', `Cannot reach Sentry servers: ${e instanceof Error ? e.message : String(e)}`);
-                  }
-                }}
-              >
-                <Ionicons name="globe-outline" size={16} color="white" style={{marginRight: 8}} />
-                <Text style={styles.sentryTestButtonText}>Test Network</Text>
-              </TouchableOpacity>
-            </View>
-          </Card>
-          
-          {/* Chat Performance Section */}
-          <ChatPerformanceSection />
-          
-          {/* Violations */}
-          {budgetViolations.length > 0 && (
-            <Card>
-              <Text style={styles.cardTitle}>Performance Issues</Text>
-              <Text style={styles.cardDescription}>
-                Operations exceeding performance budgets
-              </Text>
-              {budgetViolations.map((v, i) => (
-                <View key={i} style={styles.violationItem}>
-                  <View style={styles.violationHeader}>
-                    <Text style={styles.violationName}>{v.operation}</Text>
-                    <Text style={styles.violationValue}>{v.actual.toFixed(1)}ms</Text>
-                  </View>
-                  <View style={styles.violationBar}>
-                    <View 
-                      style={[
-                        styles.violationBarBudget, 
-                        { width: `${(v.budget / v.actual) * 100}%` }
-                      ]} 
-                    />
-                    <View 
-                      style={[
-                        styles.violationBarExcess, 
-                        { width: `${100 - (v.budget / v.actual) * 100}%` }
-                      ]} 
-                    />
-                  </View>
-                  <View style={styles.violationFooter}>
-                    <Text style={styles.violationCategory}>{v.category}</Text>
-                    <Text style={styles.violationOverage}>
-                      {Math.round((v.actual / v.budget - 1) * 100)}% over budget
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </Card>
-          )}
-          
-          {/* More dashboard content */}
-        </ScrollView>
-      </TabContent>
-      
-      {/* Traces tab */}
-      <TabContent active={activeTab === 'traces'}>
-        <View style={styles.content}>
-          {traces.length === 0 ? (
-            <Text style={styles.emptyText}>No trace data available yet</Text>
-          ) : (
-            <FlatList
-              data={traces}
-              keyExtractor={(item, index) => `trace-${index}`}
-              renderItem={({ item }) => (
-                <View style={styles.traceItem}>
-                  <View style={styles.traceItemHeader}>
-                    <Text style={styles.traceName}>{item.name}</Text>
-                    <Text style={[styles.traceItemDuration, { 
-                      color: (item.duration || 0) > 100 ? '#DC2626' : '#111827' 
-                    }]}>
-                      {item.duration}ms
-                    </Text>
-                  </View>
-                  <View style={styles.traceItemBody}>
-                    <Text style={styles.traceTiming}>
-                      {new Date(item.startTime).toLocaleTimeString()}
-                    </Text>
-                  </View>
-                </View>
-              )}
-            />
-          )}
-        </View>
-      </TabContent>
-      
-      {/* Logs tab */}
-      <TabContent active={activeTab === 'logs'}>
-        <View style={styles.content}>
-          {logs.length === 0 ? (
-            <Text style={styles.emptyText}>No logs available yet</Text>
-          ) : (
-            <FlatList
-              data={logs}
-              keyExtractor={(item, index) => `log-${index}`}
-              renderItem={({ item, index }) => (
-                <View style={[
-                  styles.logItem,
-                  index % 2 === 0 ? styles.logItemEven : styles.logItemOdd,
-                  item.level === 'warning' && styles.logItemWarning
-                ]}>
-                  <Text style={[
-                    styles.logText,
-                    item.level === 'warning' && styles.logTextWarning
-                  ]}>
-                    [{new Date(item.timestamp).toLocaleTimeString()}] {item.category}: {item.message}
-                  </Text>
-                </View>
-              )}
-            />
-          )}
-        </View>
-      </TabContent>
-      
-      {/* Testing tab */}
-      <TabContent active={activeTab === 'testing'}>
-        <ScrollView style={styles.content}>
-          <Card>
-            <Text style={styles.cardTitle}>Performance Tests</Text>
-            <Text style={styles.cardDescription}>
-              Run tests to measure app performance
-            </Text>
-            
-            <View style={styles.testButtons}>
-              <TouchableOpacity
-                style={[styles.testButton, testingInProgress && styles.testButtonDisabled]}
-                onPress={runSimplePerformanceTest}
-                disabled={testingInProgress}
-              >
-                <Ionicons name="code-outline" size={18} color="white" style={styles.buttonIcon} />
-                <Text style={styles.testButtonText}>Basic JS</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.testButton, testingInProgress && styles.testButtonDisabled]}
-                onPress={runNetworkPerformanceTest}
-                disabled={testingInProgress}
-              >
-                <Ionicons name="cloud-outline" size={18} color="white" style={styles.buttonIcon} />
-                <Text style={styles.testButtonText}>Network</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.testButton, testingInProgress && styles.testButtonDisabled]}
-                onPress={runMemoryTest}
-                disabled={testingInProgress}
-              >
-                <Ionicons name="hardware-chip-outline" size={18} color="white" style={styles.buttonIcon} />
-                <Text style={styles.testButtonText}>Memory</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.testButton, testingInProgress && styles.testButtonDisabled]}
-                onPress={runFrameRateTest}
-                disabled={testingInProgress}
-              >
-                <Ionicons name="pulse-outline" size={18} color="white" style={styles.buttonIcon} />
-                <Text style={styles.testButtonText}>UI Thread</Text>
-              </TouchableOpacity>
-            </View>
-            
-            {testingInProgress && (
-              <View style={styles.testingProgress}>
-                <Text style={styles.testingText}>Running tests...</Text>
-                <View style={styles.loadingDots}>
-                  <View style={styles.loadingDot} />
-                  <View style={[styles.loadingDot, { animationDelay: '0.5s' }]} />
-                  <View style={[styles.loadingDot, { animationDelay: '1s' }]} />
-                </View>
-              </View>
-            )}
-          </Card>
-          
-          {/* Advanced Tools */}
-          <Card>
-            <Text style={styles.cardTitle}>Advanced Tools</Text>
-            <View style={styles.advancedTools}>
-              <TouchableOpacity 
-                style={styles.advancedToolButton}
-                onPress={() => {
-                  // Force garbage collection if possible
-                  if (global.gc) {
-                    global.gc();
-                    SentryService.logEvent('memory', 'Manually triggered garbage collection');
-                    handleRefresh();
-                  } else {
-                    SentryService.logEvent('memory', 'Garbage collection unavailable (needs --expose-gc)', undefined, true);
-                  }
-                }}
-              >
-                <View style={styles.advancedToolIcon}>
-                  <Ionicons name="trash-bin-outline" size={20} color="#4B5563" />
-                </View>
-                <View style={styles.advancedToolContent}>
-                  <Text style={styles.advancedToolName}>Force Garbage Collection</Text>
-                  <Text style={styles.advancedToolDescription}>
-                    Attempt to free unused memory
-                  </Text>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={styles.advancedToolButton}
-                onPress={async () => {
-                  try {
-                    await MemoryMonitor.takeSnapshot('manual_snapshot');
-                    SentryService.logEvent('memory', 'Manual memory snapshot taken');
-                    handleRefresh();
-                  } catch (e) {
-                    console.error('Error taking memory snapshot:', e);
-                  }
-                }}
-              >
-                <View style={styles.advancedToolIcon}>
-                  <Ionicons name="camera-outline" size={20} color="#4B5563" />
-                </View>
-                <View style={styles.advancedToolContent}>
-                  <Text style={styles.advancedToolName}>Memory Snapshot</Text>
-                  <Text style={styles.advancedToolDescription}>
-                    Take a snapshot of current memory usage
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          </Card>
-        </ScrollView>
-      </TabContent>
-    </SafeAreaView>
-  );
-}
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-  },
   header: {
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-    paddingBottom: 0,
-    zIndex: 10,
-  },
-  headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
   },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  backButton: {
-    padding: 8,
-  },
-  title: {
+  headerTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#111827',
-    flex: 1,
-    marginLeft: 8,
   },
-  iconButton: {
-    padding: 8,
-    borderRadius: 6,
-    backgroundColor: '#F3F4F6',
-  },
-  tabBar: {
-    flexDirection: 'row',
-    paddingHorizontal: 8,
-    backgroundColor: '#ffffff',
-  },
-  tab: {
-    flexDirection: 'row',
+  backButton: {
+    width: 40,
+    height: 40,
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    marginRight: 8,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  activeTab: {
-    borderBottomColor: '#7C3AED',
-  },
-  tabText: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginLeft: 4,
-  },
-  activeTabText: {
-    color: '#7C3AED',
-    fontWeight: '500',
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 12,
-    paddingTop: 12,
+    justifyContent: 'center',
+    borderRadius: 20,
   },
   tabContent: {
-    flex: 1,
-    marginBottom: 20,
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginBottom: 12,
+    width: '100%',
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  dashboardCard: {
-    padding: 0,
-    overflow: 'hidden',
-  },
-  dashboardHeader: {
-    padding: 16,
-  },
-  dashboardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 16,
-  },
-  dashboardStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    paddingTop: 8,
     paddingBottom: 8,
-  },
-  stat: {
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#7C3AED',
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 4,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 8,
-  },
-  cardDescription: {
-    fontSize: 14,
-    color: '#4B5563',
-    marginBottom: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
   },
   collapsibleSection: {
-    marginBottom: 8,
+    width: '100%',
+    marginBottom: 16,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   sectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 12,
+    justifyContent: 'space-between',
+    padding: 16,
     backgroundColor: '#F9FAFB',
-    borderRadius: 8,
   },
   sectionHeaderText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '500',
-    color: '#374151',
+    color: '#111827',
   },
   sectionContent: {
-    paddingTop: 8,
+    padding: 16,
+    paddingTop: 0,
+  },
+  performanceSummary: {
+    width: '100%',
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  performanceScore: {
+    marginBottom: 16,
+  },
+  performanceScoreLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  performanceScoreValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  performanceBarContainer: {
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+    backgroundColor: '#E5E7EB',
+  },
+  performanceBarFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  detailedMetrics: {
+    marginTop: 16,
+  },
+  detailedMetricsHeader: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  metricRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  metricLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  metricValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  errorContainer: {
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 8,
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#F87171',
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#B91C1C',
+  },
+  chatSessionControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  chatSessionInput: {
+    flex: 1,
+    height: 40,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    paddingHorizontal: 8,
+    marginRight: 8,
+    fontSize: 14,
+    color: '#111827',
+  },
+  chatSessionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 40,
+    borderRadius: 4,
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 16,
+  },
+  chatSessionButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: 'white',
+  },
+  historyToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  historyToggleText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  historyPanel: {
+    marginTop: 8,
+    padding: 16,
+    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  historyHeaderText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  historyList: {
+    maxHeight: 200,
+  },
+  historyItem: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+    backgroundColor: '#FFFFFF',
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  historyItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  historyItemId: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  historyItemTime: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  historyItemMetrics: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  historyMetric: {
+    alignItems: 'center',
+  },
+  historyMetricValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  historyMetricLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    marginBottom: 16,
+    padding: 4,
+  },
+  tabButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  activeTab: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  tabButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  activeTabText: {
+    color: '#111827',
+  },
+  tabContentContainer: {
+    flex: 1,
+  },
+  logsContainer: {
+    flex: 1,
+  },
+  logsHeaderText: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  logEntry: {
+    padding: 12,
+    borderRadius: 4,
+    marginBottom: 8,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  logsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  logsControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  logsFilterInput: {
+    height: 36,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    paddingHorizontal: 8,
+    fontSize: 14,
+    color: '#111827',
+    width: 150,
+    marginRight: 8,
+  },
+  clearLogsButton: {
+    backgroundColor: '#EF4444',
+    height: 36,
+    width: 36,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tracesContainer: {
+    flex: 1,
+  },
+  tracesHeaderText: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  traceEntry: {
+    padding: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  traceName: {
+    fontSize: 14,
+  },
+  traceDuration: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  // New styles
+  sentryButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  sentryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 40,
+    borderRadius: 4,
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 16,
+    flex: 1,
+    marginHorizontal: 4,
+  },
+  errorButton: {
+    backgroundColor: '#EF4444',
+  },
+  sentryButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: 'white',
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  warningText: {
+    color: '#F59E0B',
+  },
+  errorText: {
+    color: '#EF4444',
+  },
+  chatControls: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  chatControlRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  chatSessionInfo: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  chatSessionDuration: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  chatButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  chatControlButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 36,
+    borderRadius: 4,
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 12,
+    flex: 1,
+    marginHorizontal: 4,
+  },
+  stopButton: {
+    backgroundColor: '#EF4444',
+  },
+  chatControlButtonText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: 'white',
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#6B7280',
+    marginTop: 12,
+  },
+  emptyStateHint: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    marginTop: 4,
+    textAlign: 'center',
   },
   performanceBar: {
-    marginVertical: 6,
+    marginBottom: 12,
   },
   performanceBarHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: 4,
   },
   performanceBarLabel: {
-    fontSize: 12,
-    color: '#4B5563',
+    fontSize: 14,
+    color: '#6B7280',
   },
   performanceBarValue: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
     color: '#111827',
   },
-  performanceBarContainer: {
-    height: 5,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  performanceBarFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  categoryItem: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  categoryHeader: {
+  logEntryHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  categoryName: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#111827',
-  },
-  categoryCount: {
+  logTimestamp: {
     fontSize: 12,
     color: '#6B7280',
   },
-  categoryDetail: {
+  logCategory: {
     fontSize: 12,
+    fontWeight: '500',
     color: '#6B7280',
-    marginTop: 4,
-  },
-  statItem: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  statItemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  statItemName: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#111827',
-  },
-  statItemCount: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#7C3AED',
-    backgroundColor: '#EDE9FE',
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 4,
   },
-  statItemBars: {
-    gap: 8,
+  logData: {
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: 12,
+    color: '#4B5563',
+    backgroundColor: '#F9FAFB',
+    padding: 8,
+    marginTop: 4,
+    borderRadius: 4,
   },
-  viewMoreButton: {
+  errorLogEntry: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#F44336',
+  },
+  warningLogEntry: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#FF9800',
+  },
+  testRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-    marginTop: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
-  viewMoreText: {
+  testInfo: {
+    flex: 1,
+  },
+  testTitle: {
     fontSize: 14,
-    color: '#7C3AED',
+    fontWeight: '500',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  testStatus: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  testStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  testStatusRunning: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  testStatusSuccess: {
+    fontSize: 12,
+    color: '#4CAF50',
     fontWeight: '500',
   },
-  testButtons: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
+  testStatusFailed: {
+    fontSize: 12,
+    color: '#F44336',
+    fontWeight: '500',
   },
   testButton: {
-    backgroundColor: '#10B981',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    flex: 1,
-    minWidth: 150,
-  },
-  buttonIcon: {
-    marginRight: 8,
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
   },
   testButtonDisabled: {
-    backgroundColor: '#9CA3AF',
+    backgroundColor: '#A78BFA',
+    opacity: 0.7,
   },
   testButtonText: {
     color: 'white',
-    fontWeight: '600',
-    fontSize: 14,
+    fontSize: 12,
+    fontWeight: '500',
   },
-  testingCard: {
-    marginTop: 12,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderStyle: 'dashed',
-  },
-  testingProgress: {
-    alignItems: 'center',
-    padding: 16,
-  },
-  testingText: {
-    fontSize: 16,
-    color: '#4B5563',
+  testResult: {
+    backgroundColor: '#F9FAFB',
+    padding: 12,
     marginBottom: 12,
-  },
-  loadingDots: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    height: 20,
-  },
-  loadingDot: {
-    width: 8,
-    height: 8,
     borderRadius: 4,
-    backgroundColor: '#7C3AED',
-    marginHorizontal: 3,
-    opacity: 0.6,
-    animationName: 'dotPulse',
-    animationDuration: '1.5s',
-    animationIterationCount: 'infinite',
+    marginTop: -8,
   },
-  traceItemDetailed: {
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  traceItemDetailedHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  traceItemName: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#111827',
-    flex: 1,
-  },
-  traceItemBadge: {
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-  },
-  traceItemDuration: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#6B7280',
-  },
-  traceItemMetadata: {
-    marginTop: 4,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  traceItemCategory: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  traceItemType: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  traceItem: {
-    flexDirection: 'column',
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  traceItemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  traceName: {
-    fontSize: 14,
-    fontWeight: '500',
-    flex: 1,
-  },
-  traceItemBody: {
-    marginTop: 2,
-  },
-  traceTiming: {
+  testResultText: {
     fontSize: 12,
     color: '#4B5563',
-  },
-  emptyText: {
-    padding: 16,
-    textAlign: 'center',
-    color: '#9CA3AF',
-    fontStyle: 'italic',
-  },
-  logItem: {
-    padding: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  logItemEven: {
-    backgroundColor: '#FFFFFF',
-  },
-  logItemOdd: {
-    backgroundColor: '#F9FAFB',
-  },
-  logItemWarning: {
-    backgroundColor: '#FEF2F2',
-  },
-  logText: {
-    fontSize: 12,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    color: '#4B5563',
   },
-  logTextWarning: {
-    color: '#DC2626',
-  },
-  violationItem: {
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  violationHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  violationName: {
-    fontWeight: '500',
-    flex: 1,
-    fontSize: 14,
-    color: '#111827',
-  },
-  violationValue: {
-    fontWeight: '600',
-    color: '#DC2626',
-    fontSize: 13,
-  },
-  violationBar: {
-    height: 6,
-    flexDirection: 'row',
-    marginBottom: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  violationBarBudget: {
-    backgroundColor: '#10B981',
-    height: '100%',
-  },
-  violationBarExcess: {
-    backgroundColor: '#DC2626',
-    height: '100%',
-  },
-  violationFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 4,
-  },
-  violationCategory: {
-    fontSize: 12,
-    color: '#4B5563',
-  },
-  violationOverage: {
-    fontSize: 12,
-    color: '#DC2626',
-    fontWeight: '500',
-  },
-  profileControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
-  },
-  profileInput: {
-    flex: 1,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    fontSize: 14,
-  },
-  profileButton: {
-    backgroundColor: '#10B981',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stopButton: {
-    backgroundColor: '#DC2626',
-  },
-  disabledButton: {
-    backgroundColor: '#9CA3AF',
-  },
-  profileButtonText: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  activeProfileBanner: {
-    backgroundColor: '#FEF2F2',
-    borderRadius: 8,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-  },
-  activeProfileText: {
-    color: '#DC2626',
-    fontWeight: '500',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#E5E7EB',
-    marginVertical: 16,
-  },
-  advancedTools: {
-    gap: 12,
-  },
-  advancedToolButton: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 8,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  advancedToolIcon: {
-    marginRight: 12,
-    padding: 8,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 8,
-  },
-  advancedToolContent: {
-    flex: 1,
-  },
-  advancedToolName: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#111827',
-    marginBottom: 2,
-  },
-  advancedToolDescription: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  // Add new styles for chat section
-  chatHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  chatBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#10B981',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  chatScore: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  chatId: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 16,
-  },
-  chatMetricsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 16,
-  },
-  chatMetricItem: {
-    width: '50%',
-    paddingVertical: 8,
-    paddingRight: 8,
-  },
-  metricLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 4,
-  },
-  metricValue: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  chatSessionTime: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderColor: '#F3F4F6',
-  },
-  sessionDuration: {
-    marginLeft: 4,
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  emptyChatMetrics: {
-    alignItems: 'center',
-    paddingVertical: 20,
-  },
-  infoText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#6B7280',
-    marginBottom: 4,
-  },
-  hintText: {
-    fontSize: 12,
-    color: '#9CA3AF',
-  },
-  sentryTestContainer: {
-    marginTop: 16,
-    paddingTop: 16,
+  testsContainer: {
+    padding: 16,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
-    alignItems: 'center',
   },
-  sentryTestButton: {
-    backgroundColor: '#EF4444',
+  runAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 6,
-    marginTop: 8,
+    backgroundColor: '#7C3AED',
+    height: 44,
+    borderRadius: 4,
+    marginBottom: 16,
   },
-  sentryTestButtonText: {
+  runAllButtonText: {
     color: 'white',
-    fontWeight: '600',
     fontSize: 14,
+    fontWeight: '500',
   },
 });
+
+// Add this component before the TestsSection component
+
+const LogsSection = () => {
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [filter, setFilter] = useState<string>('');
+  
+  // Fetch logs on component mount and periodically
+  useEffect(() => {
+    const fetchLogs = () => {
+      try {
+        // Safer access to the getEventHistory method
+        if (SentryService && typeof SentryService.getEventHistory === 'function') {
+          const eventHistory = SentryService.getEventHistory() || [];
+          setLogs(eventHistory.sort((a, b) => b.timestamp - a.timestamp));
+        } else {
+          console.warn('[DEV_PERF] SentryService.getEventHistory is not available');
+          // Set empty logs if the method is not available
+          setLogs([]);
+        }
+      } catch (e) {
+        console.error('[DEV_PERF] Error fetching logs:', e);
+        // Set empty logs array on error
+        setLogs([]);
+      }
+    };
+    
+    // Initial fetch
+    fetchLogs();
+    
+    // Set up interval to refresh logs
+    const interval = setInterval(fetchLogs, 3000);
+    
+    return () => clearInterval(interval);
+  }, []);
+  
+  // Filter logs based on search term - with safety checks
+  const filteredLogs = useMemo(() => {
+    if (!logs || !Array.isArray(logs)) return [];
+    if (!filter) return logs;
+    
+    const lowerFilter = filter.toLowerCase();
+    return logs.filter(log => 
+      (log.message && log.message.toLowerCase().includes(lowerFilter)) || 
+      (log.category && log.category.toLowerCase().includes(lowerFilter))
+    );
+  }, [logs, filter]);
+  
+  // Clear all logs
+  const clearLogs = useCallback(() => {
+    try {
+      if (SentryService && typeof SentryService.clearHistory === 'function') {
+        SentryService.clearHistory();
+      }
+      setLogs([]);
+    } catch (e) {
+      console.error('[DEV_PERF] Error clearing logs:', e);
+    }
+  }, []);
+  
+  // Safe access to logs length
+  const logsCount = logs && Array.isArray(logs) ? logs.length : 0;
+  
+  return (
+    <View style={styles.logsContainer}>
+      <View style={styles.logsHeader}>
+        <Text style={styles.logsHeaderText}>Logs ({logsCount})</Text>
+        
+        <View style={styles.logsControls}>
+          <TextInput 
+            style={styles.logsFilterInput}
+            placeholder="Filter logs..."
+            value={filter}
+            onChangeText={setFilter}
+          />
+          
+          <TouchableOpacity 
+            style={styles.clearLogsButton}
+            onPress={clearLogs}
+          >
+            <Ionicons name="trash-outline" size={18} color="white" />
+          </TouchableOpacity>
+        </View>
+      </View>
+      
+      {/* Log entries list with better error handling */}
+      {(!logs || !logsCount) ? (
+        <View style={styles.emptyStateContainer}>
+          <Ionicons name="document-text-outline" size={48} color="#D1D5DB" />
+          <Text style={styles.emptyStateText}>No logs available</Text>
+          <Text style={styles.emptyStateHint}>
+            Use the "Log Test Event" button to generate logs
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredLogs}
+          renderItem={({ item }) => (
+            <View style={[
+              styles.logEntry,
+              item.isError && styles.errorLogEntry,
+              item.category === 'warning' && styles.warningLogEntry
+            ]}>
+              <View style={styles.logEntryHeader}>
+                <Text style={styles.logTimestamp}>
+                  {new Date(item.timestamp).toLocaleTimeString()}
+                </Text>
+                <Text style={styles.logCategory}>{item.category || 'info'}</Text>
+              </View>
+              <Text>{item.message || 'No message'}</Text>
+              {item.data && (
+                <Text style={styles.logData}>
+                  {typeof item.data === 'object' ? JSON.stringify(item.data, null, 2) : String(item.data)}
+                </Text>
+              )}
+            </View>
+          )}
+          keyExtractor={(item, index) => `${item.timestamp || Date.now()}-${index}-${item.message?.substring(0, 10) || 'unknown'}`}
+          contentContainerStyle={{ paddingBottom: 80 }}
+        />
+      )}
+    </View>
+  );
+};
+
+// Now add the TestsSection component
+const TestsSection = () => {
+  const [testStatus, setTestStatus] = useState<Record<string, { status: 'idle' | 'running' | 'success' | 'failed', result?: any }>>({
+    memory: { status: 'idle' },
+    cpu: { status: 'idle' },
+    frames: { status: 'idle' },
+    navigation: { status: 'idle' },
+    rendering: { status: 'idle' },
+  });
+  
+  // Run memory leak test
+  const runMemoryTest = useCallback(async () => {
+    try {
+      setTestStatus(prev => ({ ...prev, memory: { status: 'running' } }));
+      
+      // Check if the function exists before calling it
+      if (typeof MemoryMonitor.takeSnapshot !== 'function') {
+        throw new Error('MemoryMonitor.takeSnapshot is not available');
+      }
+      
+      // Take initial memory snapshot
+      const startSnapshot = await MemoryMonitor.takeSnapshot('memory_test_start');
+      
+      // Create and destroy a number of objects to test GC
+      const largeObjects = [];
+      for (let i = 0; i < 100; i++) {
+        largeObjects.push(new Array(10000).fill(Math.random().toString()));
+      }
+      
+      // Force GC if available (only works in dev with Hermes)
+      if (global.gc) {
+        global.gc();
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } else {
+        // Otherwise just wait a bit longer for GC to potentially run
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+      
+      // Take final memory snapshot
+      const endSnapshot = await MemoryMonitor.takeSnapshot('memory_test_end');
+      
+      // Calculate memory difference safely
+      const memDiff = MemoryMonitor.compareSnapshots ?
+        MemoryMonitor.compareSnapshots('memory_test_start', 'memory_test_end') :
+        { jsHeapSizeDiff: endSnapshot.jsHeapSize - startSnapshot.jsHeapSize };
+      
+      // Determine if test passed
+      const testPassed = memDiff && memDiff.jsHeapSizeDiff < 1024 * 1024 * 5; // Less than 5MB diff is considered good
+      
+      setTestStatus(prev => ({ 
+        ...prev, 
+        memory: { 
+          status: testPassed ? 'success' : 'failed',
+          result: {
+            startMem: startSnapshot ? Math.round(startSnapshot.jsHeapSize / 1024 / 1024) : 'N/A',
+            endMem: endSnapshot ? Math.round(endSnapshot.jsHeapSize / 1024 / 1024) : 'N/A',
+            diff: memDiff ? Math.round(memDiff.jsHeapSizeDiff / 1024 / 1024) : 'N/A'
+          }
+        } 
+      }));
+    } catch (e) {
+      console.error('[DEV_PERF] Memory test error:', e);
+      setTestStatus(prev => ({ 
+        ...prev, 
+        memory: { 
+          status: 'failed',
+          result: { error: e instanceof Error ? e.message : String(e) }
+        } 
+      }));
+    }
+  }, []);
+  
+  // Run CPU stress test
+  const runCpuTest = useCallback(async () => {
+    try {
+      setTestStatus(prev => ({ ...prev, cpu: { status: 'running' } }));
+      
+      const start = Date.now();
+      
+      // Perform some CPU-intensive work
+      let result = 0;
+      for (let i = 0; i < 10000000; i++) {
+        result += Math.sqrt(i * Math.sin(i) * Math.cos(i));
+      }
+      
+      const duration = Date.now() - start;
+      
+      // Test passes if the computation took less than 2 seconds
+      const testPassed = duration < 2000;
+      
+      setTestStatus(prev => ({ 
+        ...prev, 
+        cpu: { 
+          status: testPassed ? 'success' : 'failed',
+          result: {
+            duration: `${duration}ms`,
+            benchmark: result.toFixed(2)
+          }
+        } 
+      }));
+    } catch (e) {
+      console.error('[DEV_PERF] CPU test error:', e);
+      setTestStatus(prev => ({ 
+        ...prev, 
+        cpu: { 
+          status: 'failed',
+          result: { error: e instanceof Error ? e.message : String(e) }
+        } 
+      }));
+    }
+  }, []);
+  
+  // Run frame rate test
+  const runFrameRateTest = useCallback(async () => {
+    try {
+      setTestStatus(prev => ({ ...prev, frames: { status: 'running' } }));
+      
+      // Start monitoring frame rate
+      let framesData: number[] = [];
+      const frameRateMonitor = FrameRateMonitor.startCustomMonitoring((fps) => {
+        framesData.push(fps);
+      });
+      
+      // Animate something to stress test frame rate
+      // (We'll just wait and collect frame rate data)
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Stop monitoring
+      FrameRateMonitor.stopCustomMonitoring(frameRateMonitor);
+      
+      // Calculate average FPS
+      const avgFps = framesData.length > 0 
+        ? framesData.reduce((sum, fps) => sum + fps, 0) / framesData.length 
+        : 0;
+      
+      // Test passes if average FPS is above 45
+      const testPassed = avgFps > 45;
+      
+      setTestStatus(prev => ({ 
+        ...prev, 
+        frames: { 
+          status: testPassed ? 'success' : 'failed',
+          result: {
+            avgFps: avgFps.toFixed(1),
+            minFps: Math.min(...framesData).toFixed(1),
+            maxFps: Math.max(...framesData).toFixed(1),
+            samples: framesData.length
+          }
+        } 
+      }));
+    } catch (e) {
+      console.error('[DEV_PERF] Frame rate test error:', e);
+      setTestStatus(prev => ({ 
+        ...prev, 
+        frames: { 
+          status: 'failed',
+          result: { error: e instanceof Error ? e.message : String(e) }
+        } 
+      }));
+    }
+  }, []);
+  
+  // Run all tests
+  const runAllTests = useCallback(() => {
+    runMemoryTest();
+    runCpuTest();
+    runFrameRateTest();
+  }, [runMemoryTest, runCpuTest, runFrameRateTest]);
+  
+  // Render a test result row
+  const renderTestRow = (name: string, title: string, onPress: () => void) => {
+    const test = testStatus[name];
+    
+    return (
+      <View style={styles.testRow}>
+        <View style={styles.testInfo}>
+          <Text style={styles.testTitle}>{title}</Text>
+          
+          {test.status === 'idle' && (
+            <Text style={styles.testStatus}>Not run</Text>
+          )}
+          
+          {test.status === 'running' && (
+            <View style={styles.testStatusRow}>
+              <Ionicons name="sync" size={14} color="#6B7280" style={{marginRight: 4}} />
+              <Text style={styles.testStatusRunning}>Running...</Text>
+            </View>
+          )}
+          
+          {test.status === 'success' && (
+            <View style={styles.testStatusRow}>
+              <Ionicons name="checkmark-circle" size={14} color="#4CAF50" style={{marginRight: 4}} />
+              <Text style={styles.testStatusSuccess}>Passed</Text>
+            </View>
+          )}
+          
+          {test.status === 'failed' && (
+            <View style={styles.testStatusRow}>
+              <Ionicons name="close-circle" size={14} color="#F44336" style={{marginRight: 4}} />
+              <Text style={styles.testStatusFailed}>Failed</Text>
+            </View>
+          )}
+        </View>
+        
+        <TouchableOpacity
+          style={[
+            styles.testButton,
+            test.status === 'running' && styles.testButtonDisabled
+          ]}
+          onPress={onPress}
+          disabled={test.status === 'running'}
+        >
+          <Text style={styles.testButtonText}>Run</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+  
+  return (
+    <ScrollView>
+      <Card>
+        <Text style={styles.sectionHeaderText}>Performance Tests</Text>
+        
+        <View style={styles.testsContainer}>
+          <TouchableOpacity
+            style={styles.runAllButton}
+            onPress={runAllTests}
+            disabled={Object.values(testStatus).some(t => t.status === 'running')}
+          >
+            <Ionicons name="play" size={18} color="white" style={{marginRight: 8}} />
+            <Text style={styles.runAllButtonText}>Run All Tests</Text>
+          </TouchableOpacity>
+          
+          {renderTestRow('memory', 'Memory Leak Test', runMemoryTest)}
+          {testStatus.memory.result && (
+            <View style={styles.testResult}>
+              <Text style={styles.testResultText}>
+                {testStatus.memory.result.error ? 
+                  `Error: ${testStatus.memory.result.error}` : 
+                  `Start: ${testStatus.memory.result.startMem}MB → End: ${testStatus.memory.result.endMem}MB (Diff: ${testStatus.memory.result.diff}MB)`
+                }
+              </Text>
+            </View>
+          )}
+          
+          {renderTestRow('cpu', 'CPU Performance Test', runCpuTest)}
+          {testStatus.cpu.result && (
+            <View style={styles.testResult}>
+              <Text style={styles.testResultText}>
+                {testStatus.cpu.result.error ? 
+                  `Error: ${testStatus.cpu.result.error}` : 
+                  `Duration: ${testStatus.cpu.result.duration}`
+                }
+              </Text>
+            </View>
+          )}
+          
+          {renderTestRow('frames', 'Frame Rate Test', runFrameRateTest)}
+          {testStatus.frames.result && (
+            <View style={styles.testResult}>
+              <Text style={styles.testResultText}>
+                {testStatus.frames.result.error ? 
+                  `Error: ${testStatus.frames.result.error}` : 
+                  `Avg FPS: ${testStatus.frames.result.avgFps} (Min: ${testStatus.frames.result.minFps}, Max: ${testStatus.frames.result.maxFps})`
+                }
+              </Text>
+            </View>
+          )}
+        </View>
+      </Card>
+    </ScrollView>
+  );
+};
+
+export default function DevPerformanceScreen({ navigation }: { navigation: DevPerformanceScreenNavigationProp }) {
+  const [activeTab, setActiveTab] = useState<'summary' | 'logs' | 'traces' | 'tests'>('summary');
+  
+  // For performance monitoring - with error handling
+  try {
+    usePerformance('DevPerformanceScreen');
+  } catch (e) {
+    console.error('[DEV_PERF] Error in usePerformance hook:', e);
+  }
+  
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F3F4F6' }}>
+      {/* Add back button header */}
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={24} color="#111827" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Performance Monitor</Text>
+        <View style={{ width: 40 }} />
+      </View>
+      
+      <View style={{ flex: 1, padding: 16 }}>
+        {/* Tab buttons */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'summary' && styles.activeTab]}
+            onPress={() => setActiveTab('summary')}
+          >
+            <Text style={[styles.tabButtonText, activeTab === 'summary' && styles.activeTabText]}>Summary</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'logs' && styles.activeTab]}
+            onPress={() => setActiveTab('logs')}
+          >
+            <Text style={[styles.tabButtonText, activeTab === 'logs' && styles.activeTabText]}>Logs</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'traces' && styles.activeTab]}
+            onPress={() => setActiveTab('traces')}
+          >
+            <Text style={[styles.tabButtonText, activeTab === 'traces' && styles.activeTabText]}>Traces</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'tests' && styles.activeTab]}
+            onPress={() => setActiveTab('tests')}
+          >
+            <Text style={[styles.tabButtonText, activeTab === 'tests' && styles.activeTabText]}>Tests</Text>
+          </TouchableOpacity>
+        </View>
+        
+        {/* Tab content with error boundaries */}
+        <View style={styles.tabContentContainer}>
+          {activeTab === 'summary' && (
+            <ScrollView>
+              <SentryTestSection />
+              <PerformanceSummarySection />
+              <ChatPerformanceSection />
+            </ScrollView>
+          )}
+          
+          {activeTab === 'logs' && <LogsSection />}
+          
+          {activeTab === 'traces' && (
+            <View style={styles.tracesContainer}>
+              <Text style={styles.tracesHeaderText}>Traces</Text>
+              
+              {/* Trace entries list with safety checks */}
+              <FlatList
+                data={typeof SentryService.getCompletedTransactions === 'function' 
+                  ? SentryService.getCompletedTransactions() || [] 
+                  : []}
+                renderItem={({ item }: { item: TraceEntry }) => (
+                  <View style={styles.traceEntry}>
+                    <Text style={styles.traceName}>{item.name || 'Unknown'}</Text>
+                    <Text style={styles.traceDuration}>
+                      {item.duration || 0}ms
+                    </Text>
+                  </View>
+                )}
+                keyExtractor={(item: TraceEntry, index) => `${item.timestamp || Date.now()}-${item.name || 'trace'}-${index}`}
+                contentContainerStyle={{ paddingBottom: 80 }}
+                ListEmptyComponent={() => (
+                  <View style={styles.emptyStateContainer}>
+                    <Ionicons name="analytics-outline" size={48} color="#D1D5DB" />
+                    <Text style={styles.emptyStateText}>No traces available</Text>
+                    <Text style={styles.emptyStateHint}>
+                      Traces will appear here as your app generates performance data
+                    </Text>
+                  </View>
+                )}
+              />
+            </View>
+          )}
+          
+          {activeTab === 'tests' && <TestsSection />}
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}

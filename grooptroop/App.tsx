@@ -12,66 +12,14 @@ import { View, Text, ActivityIndicator } from 'react-native';
 import tw from './src/utils/tw';
 import { GroopProvider } from './src/contexts/GroopProvider';
 import { NotificationProvider } from './src/contexts/NotificationProvider';
-import { SentryService, usePerformance } from './src/utils/sentryService';
+import { useSentryPerformance } from './src/hooks/useSentryPerformance';
 import * as Sentry from '@sentry/react-native';
 
 // Import the root navigator
 import RootNavigator from './src/navigation/RootNavigator';
 
-// Initialize Sentry at the very beginning of your app
-console.log('[SENTRY] Initializing Sentry in App.tsx');
-Sentry.init({
-  dsn: 'https://4c10d218343709c4a2b2ebac9da0f21e@o4509352771452928.ingest.us.sentry.io/4509352775122944', 
-  debug: true, // This enables debug mode
-  enableAutoSessionTracking: true,
-  tracesSampleRate: 1.0, // Set to 1.0 for testing
-  enableAutoPerformanceTracing: true,
-  attachStacktrace: true,
-  environment: __DEV__ ? 'development' : 'production',
-  beforeSend: (event) => {
-    console.log('[SENTRY] Sending event to Sentry:', JSON.stringify(event));
-    return event;
-  }
-});
-
-// Add network debugging for Sentry
-if (__DEV__) {
-  // Monitor network requests to see if Sentry events are being sent
-  const originalFetch = global.fetch;
-  global.fetch = async (...args) => {
-    const [url, options] = args;
-    if (typeof url === 'string' && url.includes('sentry.io')) {
-      console.log('[SENTRY NETWORK] Sending request to:', url);
-      console.log('[SENTRY NETWORK] Request body:', options?.body ? JSON.stringify(options.body).substring(0, 500) + "..." : "No body");
-      
-      try {
-        const response = await originalFetch(...args);
-        console.log(`[SENTRY NETWORK] Response: ${response.status} ${response.statusText}`);
-        return response;
-      } catch (e) {
-        console.error('[SENTRY NETWORK] Error in request:', e);
-        throw e;
-      }
-    } else {
-      return originalFetch(...args);
-    }
-  };
-}
-
-// Tell SentryService that we've already initialized Sentry
-SentryService.markAsInitialized();
-console.log('[SENTRY] Initialization complete, startTransaction available?', typeof Sentry.startTransaction === 'function');
-
-// Test that Sentry is working on app start
-try {
-  throw new Error('App startup test error');
-} catch (e) {
-  console.log('[SENTRY] Capturing test error at app startup');
-  Sentry.captureException(e);
-}
-
-// Simple test function to verify Sentry is working
-const testSentry = () => {
+// Test function with proper async/await and flush
+const testSentry = async () => {
   console.log('[SENTRY] Running basic Sentry test');
   
   // Basic message
@@ -84,52 +32,50 @@ const testSentry = () => {
     Sentry.captureException(e);
   }
   
+  // Force flush to send immediately
+  try {
+    console.log('[SENTRY] Calling flush to send events immediately');
+    await Sentry.flush(5000);
+    console.log('[SENTRY] Flush completed');
+  } catch (e) {
+    console.error('[SENTRY] Error during flush:', e);
+  }
+  
   console.log('[SENTRY] Test complete, events should appear in dashboard');
 };
 
-// Run the test when app starts
-testSentry();
-
 // Main app content with navigation
 const AppContent = () => {
-  // Update this line to include profile
   const { isAuthenticated, isLoading, user, profile } = useAuth();
-  const perf = usePerformance('AppContent');
+  // Use the hook with a try/catch for safety
+  const perf = useSentryPerformance('AppContent');
   const navigationRef = useNavigationContainerRef();
   
   useEffect(() => {
-    // Set up navigation tracking
-    const unsubscribeNav = SentryService.configureNavigation(navigationRef);
-    // Set up network monitoring
-    SentryService.setupNetworkMonitoring();
-    
     // Set user context in Sentry if authenticated
     if (!isLoading && isAuthenticated && user) {
-      SentryService.setUser({
-        id: user.uid,
-        username: user.displayName || undefined,
-        email: user.email || undefined
-      });
-      
-      // Now profile is properly defined
-      if (profile) {
-        SentryService.setTag('user.hasCompletedOnboarding', String(profile.hasCompletedOnboarding || false));
-        SentryService.setTag('user.isAdmin', String(profile.isAdmin || false));
+      try {
+        Sentry.setUser({
+          id: user.uid,
+          username: user.displayName || undefined,
+          email: user.email || undefined
+        });
+        
+        if (profile) {
+          Sentry.setTag('user.hasCompletedOnboarding', String(profile.hasCompletedOnboarding || false));
+          Sentry.setTag('user.isAdmin', String(profile.isAdmin || false));
+        }
+      } catch (e) {
+        console.error('[SENTRY] Error setting user data:', e);
       }
     }
     
-    // Track memory usage periodically
-    const memoryInterval = setInterval(() => {
-      // Use type assertion to avoid TypeScript error
-      const jsHeapSize = (global.performance as any)?.memory?.usedJSHeapSize;
-      SentryService.trackMemoryUsage(jsHeapSize);
-    }, 60000); // Check every minute
+    // Run test after a delay to ensure initialization is complete
+    setTimeout(() => {
+      testSentry().catch(e => console.error('[SENTRY] Test error:', e));
+    }, 2000);
     
-    return () => {
-      unsubscribeNav();
-      clearInterval(memoryInterval);
-    };
-  }, [isLoading, isAuthenticated, user, profile, navigationRef]);
+  }, [isLoading, isAuthenticated, user, profile]);
   
   console.log('[APP] AppContent rendering. Auth status:', isAuthenticated ? 'logged in' : 'not logged in');
   
@@ -147,7 +93,12 @@ const AppContent = () => {
     <NavigationContainer
       ref={navigationRef}
       onReady={() => {
-        SentryService.logEvent('navigation', 'Navigation container ready');
+        perf.trackInteraction('navigation_ready');
+        Sentry.addBreadcrumb({
+          category: 'navigation',
+          message: 'Navigation container ready',
+          level: 'info'
+        });
       }}
     >
       <RootNavigator />
@@ -157,9 +108,7 @@ const AppContent = () => {
 };
 
 // Main App component
-export default Sentry.wrap(function App() {
-  const perf = usePerformance('App');
-  
+function App() {
   return (
     <GestureHandlerRootView style={tw`flex-1`}>
       <SafeAreaProvider>
@@ -173,4 +122,6 @@ export default Sentry.wrap(function App() {
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
-});
+}
+
+export default App;

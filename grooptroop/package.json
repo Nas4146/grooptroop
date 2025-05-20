@@ -65,6 +65,7 @@
     "@babel/plugin-transform-runtime": "^7.27.1",
     "@react-native-community/cli": "^18.0.0",
     "@react-native/babel-preset": "0.76.4",
+    "@sentry/cli": "^2.45.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react-native": "^13.2.0",
     "@types/firebase": "^3.2.3",

@@ -1,48 +1,34 @@
-import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
-import { 
-  View, 
-  TextInput, 
-  TouchableOpacity, 
-  ActivityIndicator,
-  Text,
-  Keyboard,
-  Animated,
-  Easing,
-  Platform
-} from 'react-native';
+import React, { useState, useRef, forwardRef, useImperativeHandle } from 'react';
+import { View, TextInput, TouchableOpacity, Platform, Keyboard, Text, StyleSheet, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
-//import * as ImagePicker from 'expo-image-picker';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import tw from '../../utils/tw';
-import { ReplyingToMessage } from '../../models/chat'; 
-import { useGroop } from '../../contexts/GroopProvider';
-import { EncryptionService } from '../../services/EncryptionService';
+import { ReplyingToMessage } from '../../models/chat';
+import * as Haptics from 'expo-haptics';
 
 interface MessageInputProps {
-  onSend: (text: string, imageUrl?: string) => Promise<void> | void;
-  replyingTo: ReplyingToMessage | null;
-  onCancelReply: () => void;
-  onInputFocus?: () => void; // New prop for handling input focus
+  onSend: (text: string, imageUrl?: string) => void;
+  replyingTo?: ReplyingToMessage | null;
+  onCancelReply?: () => void;
+  onInputFocus?: () => void;
 }
 
-// Export directly as a named function component rather than assigning to a const
-function MessageInput({ 
-  onSend, 
-  replyingTo, 
-  onCancelReply,
-  onInputFocus // Destructure the new prop
-}: MessageInputProps, ref: React.Ref<TextInput>) {
-  const [text, setText] = useState('');
-  const [sending, setSending] = useState(false);
-  const [hasEncryptionKey, setHasEncryptionKey] = useState(false);
-  const [encryptionLoading, setEncryptionLoading] = useState(true);
-  const [image, setImage] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const { currentGroop } = useGroop();
-  const inputRef = useRef<TextInput>(null);
+type MessageInputHandle = {
+  focus: () => void;
+  blur: () => void;
+};
 
-  // Forward the ref to internal TextInput
+const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(({
+  onSend,
+  replyingTo,
+  onCancelReply,
+  onInputFocus
+}, ref) => {
+  const [text, setText] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const [showAttachOptions, setShowAttachOptions] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+  const buttonScale = useRef(new Animated.Value(1)).current;
+
   useImperativeHandle(ref, () => ({
     focus: () => {
       inputRef.current?.focus();
@@ -52,205 +38,238 @@ function MessageInput({
     }
   }));
 
-  useEffect(() => {
-    const checkEncryptionKey = async () => {
-      if (currentGroop?.id) {
-        setEncryptionLoading(true);
-        try {
-          const hasKey = await EncryptionService.hasGroopKey(currentGroop.id);
-          setHasEncryptionKey(hasKey);
-        } catch (error) {
-          console.error('[CHAT] Error checking encryption key:', error);
-        } finally {
-          setEncryptionLoading(false);
-        }
+  const handleSend = () => {
+    if (text.trim()) {
+      // Add haptic feedback for send
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      
+      // Animate button press
+      Animated.sequence([
+        Animated.timing(buttonScale, {
+          toValue: 0.9,
+          duration: 50,
+          useNativeDriver: true
+        }),
+        Animated.timing(buttonScale, {
+          toValue: 1,
+          duration: 100,
+          useNativeDriver: true
+        })
+      ]).start();
+      
+      onSend(text.trim());
+      setText(''); // Clear the input after sending
+      
+      // Optional: manually clear the native text input value as a fallback
+      if (inputRef.current) {
+        inputRef.current.clear();
       }
-    };
-    
-    checkEncryptionKey();
-  }, [currentGroop]);
-  
-  // Animation values
-  const buttonScale = useRef(new Animated.Value(1)).current;
-  
-  const handleSend = async () => {
-    if ((!text.trim() && !image) || uploading || encryptionLoading) return;
-    
-    // Trigger haptic feedback
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    // Animate the send button
-    animateSendButton();
-    
-    setSending(true);
-    
-    try {
-      let imageUrl;
-    
-      if (image) {
-        try {
-          setUploading(true);
-          
-          // Upload image to Firebase Storage
-          const storage = getStorage();
-          const filename = image.split('/').pop() || Date.now().toString();
-          const storageRef = ref(storage, `chat-images/${filename}`);
-          
-          // Convert image URI to blob
-          const response = await fetch(image);
-          const blob = await response.blob();
-          
-          // Upload blob to storage
-          const snapshot = await uploadBytes(storageRef, blob);
-          
-          // Get download URL
-          imageUrl = await getDownloadURL(snapshot.ref);
-          console.log('[CHAT] Image uploaded, url:', imageUrl);
-          
-        } catch (error) {
-          console.error('[CHAT] Error uploading image:', error);
-        } finally {
-          setUploading(false);
-        }
-      }
-      
-      // Send message
-      await onSend(text, imageUrl);
-      
-      // Success feedback
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
-      // Clear input
-      setText('');
-      setImage(null);
-    } catch (error) {
-      console.error('[CHAT] Error sending message:', error);
-      // Error feedback
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    } finally {
-      setSending(false);
+    } else {
+      // Toggle recording or show options when empty
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setShowAttachOptions(!showAttachOptions);
     }
   };
   
-  const pickImage = async () => {
-    console.log('[CHAT] Image picker not available in this build');
-    // Alert the user that this feature isn't available
-    alert('Image uploading is not available in this build.');
+  const handleAttach = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Toggle attachment options
+    setShowAttachOptions(!showAttachOptions);
   };
-  
-  // Animation for send button
-  const animateSendButton = () => {
-    Animated.sequence([
-      Animated.timing(buttonScale, {
-        toValue: 0.85,
-        duration: 50,
-        useNativeDriver: true
-      }),
-      Animated.timing(buttonScale, {
-        toValue: 1,
-        duration: 100,
-        easing: Easing.elastic(1),
-        useNativeDriver: true
-      })
-    ]).start();
-  };
-  
+
   return (
-    <View style={tw`bg-white px-4 py-2 border-t border-gray-200`}>
-      {/* Reply UI if replyingTo exists */}
+    <View style={styles.container}>
+      {/* Reply interface - floating style */}
       {replyingTo && (
-        <View style={tw`flex-row items-center bg-gray-100 rounded-lg p-2 mb-2`}>
-          <View style={tw`flex-1`}>
-            <Text style={tw`text-xs text-gray-500`}>
-              Replying to {replyingTo.senderName}
+        <View style={[tw`flex-row items-center rounded-xl mx-1 mb-1`, styles.replyContainer]}>
+          <View style={tw`flex-1 py-2 px-3`}>
+            <Text style={tw`text-gray-500 text-xs`}>
+              Replying to <Text style={tw`font-medium text-violet-700`}>{replyingTo.senderName}</Text>
             </Text>
-            <Text numberOfLines={1} style={tw`text-sm text-gray-800`}>
+            <Text style={tw`text-gray-700`} numberOfLines={1}>
               {replyingTo.text}
             </Text>
           </View>
-          <TouchableOpacity onPress={onCancelReply}>
-            <Ionicons name="close" size={18} color="#64748B" />
+          <TouchableOpacity onPress={onCancelReply} style={tw`mr-2`}>
+            <Ionicons name="close-circle" size={20} color="#9CA3AF" />
           </TouchableOpacity>
         </View>
       )}
       
-      {/* Image preview */}
-      {image && (
-        <View style={tw`bg-gray-100 mx-2 p-2 ${replyingTo ? '' : 'rounded-t-lg'}`}>
-          <View style={tw`flex-row items-center justify-between mb-1`}>
-            <Text style={tw`text-gray-500 text-xs`}>Selected image</Text>
-            <TouchableOpacity onPress={() => setImage(null)}>
-              <Ionicons name="close-circle" size={20} color="#6B7280" />
-            </TouchableOpacity>
-          </View>
-          <View style={tw`h-24 bg-gray-200 rounded-md overflow-hidden`}>
-            <Text style={tw`absolute top-1 left-1 text-xs bg-black bg-opacity-50 text-white px-1 rounded`}>
-              Preview
-            </Text>
-          </View>
+      {/* Attachment options - expanded when button is pressed */}
+      {showAttachOptions && (
+        <View style={[tw`flex-row justify-around mx-1 mb-1 rounded-xl`, styles.attachOptionsContainer]}>
+          <TouchableOpacity style={tw`items-center py-2`} onPress={() => console.log('[CHAT] Photo library')}>
+            <View style={[tw`w-11 h-11 rounded-full items-center justify-center mb-1`, styles.attachIcon]}>
+              <Ionicons name="images-outline" size={22} color="#7C3AED" />
+            </View>
+            <Text style={tw`text-xs text-violet-900`}>Gallery</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={tw`items-center py-2`} onPress={() => console.log('[CHAT] Camera')}>
+            <View style={[tw`w-11 h-11 rounded-full items-center justify-center mb-1`, styles.attachIcon]}>
+              <Ionicons name="camera-outline" size={22} color="#7C3AED" />
+            </View>
+            <Text style={tw`text-xs text-violet-900`}>Camera</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={tw`items-center py-2`} onPress={() => console.log('[CHAT] GIF')}>
+            <View style={[tw`w-11 h-11 rounded-full items-center justify-center mb-1`, styles.attachIcon]}>
+              <Text style={tw`text-violet-700 font-bold`}>GIF</Text>
+            </View>
+            <Text style={tw`text-xs text-violet-900`}>GIF</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={tw`items-center py-2`} onPress={() => console.log('[CHAT] Location')}>
+            <View style={[tw`w-11 h-11 rounded-full items-center justify-center mb-1`, styles.attachIcon]}>
+              <Ionicons name="location-outline" size={22} color="#7C3AED" />
+            </View>
+            <Text style={tw`text-xs text-violet-900`}>Location</Text>
+          </TouchableOpacity>
         </View>
       )}
-  
-      <View style={tw`flex-row items-end`}>
-        {/* Add attachment button */}
-        <TouchableOpacity style={tw`mr-2 mb-1.5`} onPress={pickImage}>
-          <Ionicons name="add-circle-outline" size={24} color="#64748B" />
+      
+      {/* Streamlined input bar */}
+      <View style={styles.inputBar}>
+        {/* Attachment button */}
+        <TouchableOpacity 
+          style={styles.attachBtn}
+          onPress={handleAttach}
+        >
+          <Ionicons name="add-circle" size={22} color="#7C3AED" />
         </TouchableOpacity>
         
-        <View style={tw`flex-1 flex-row items-center border border-gray-300 rounded-full pl-3 pr-1 py-1`}>
-          {/* Encryption status indicator */}
-          {encryptionLoading ? (
-            <ActivityIndicator size="small" color="#7C3AED" style={tw`mr-2`} />
-          ) : (
+        {/* Direct text input with minimal containers */}
+        <TextInput
+          ref={inputRef}
+          style={styles.input}
+          placeholder="Type a message..."
+          placeholderTextColor="#9CA3AF"
+          value={text}
+          onChangeText={setText}
+          multiline
+          returnKeyType={Platform.OS === 'ios' ? 'done' : 'default'} // Add native dismiss button on iOS
+          keyboardAppearance="light" // Make keyboard match the light theme
+          enablesReturnKeyAutomatically={true} // Only enable return key when text is entered
+          blurOnSubmit={false} // Keep keyboard open after pressing return/done
+          onSubmitEditing={() => {
+            if (text.trim()) {
+              handleSend();
+            } else {
+              Keyboard.dismiss(); // Dismiss keyboard if empty on submit
+            }
+          }}
+          onFocus={onInputFocus}
+        />
+        
+        {/* Send or mic button with animation */}
+        <Animated.View style={{
+          transform: [{ scale: buttonScale }]
+        }}>
+          <TouchableOpacity 
+            style={styles.sendButton}
+            onPress={handleSend}
+          >
             <Ionicons 
-              name={hasEncryptionKey ? "lock-closed" : "lock-open"} 
+              name={text.trim() ? "paper-plane" : "mic"} 
               size={18} 
-              color={hasEncryptionKey ? "#78c0e1" : "#9CA3AF"} 
-              style={tw`mr-2`} 
+              color="white" 
             />
-          )}
-          
-          <TextInput
-            ref={inputRef}
-            style={tw`flex-1 max-h-32`}
-            placeholder="Type a message..."
-            multiline
-            value={text}
-            onChangeText={setText}
-            placeholderTextColor="#9CA3AF"
-            onFocus={() => {
-              // Call the onInputFocus prop if it exists
-              if (onInputFocus) {
-                onInputFocus();
-              }
-            }}
-          />
-          
-          {/* Send button with animation */}
-          <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
-            <TouchableOpacity
-              style={tw`bg-primary h-8 w-8 rounded-full items-center justify-center ${!text.trim() ? 'opacity-50' : ''}`}
-              onPress={handleSend}
-              disabled={!text.trim() || sending || encryptionLoading}
-            >
-              {sending ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Ionicons name="send" size={16} color="#fff" />
-              )}
-            </TouchableOpacity>
-          </Animated.View>
-        </View>
+          </TouchableOpacity>
+        </Animated.View>
       </View>
     </View>
   );
-}
+});
 
-// Create the proper forwardRef version of the component
-const ForwardedMessageInput = forwardRef(MessageInput);
+const styles = StyleSheet.create({
+  container: {
+    paddingHorizontal: 8,
+    paddingTop: 4,
+    paddingBottom: Platform.OS === 'ios' ? 2 : 1, // Less bottom padding
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    backdropFilter: 'blur(10px)',
+  },
+  inputBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 24,
+    shadowColor: '#8b5cf6',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(233,213,255,0.5)',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    marginVertical: 1, // Minimal vertical margin
+  },
+  input: {
+    flex: 1,
+    fontSize: 15,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    maxHeight: 100,
+    minHeight: 36,
+    backgroundColor: 'rgba(243,244,246,0.4)',
+    borderRadius: 20,
+    marginHorizontal: 4,
+  },
+  sendButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#7C3AED',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  attachBtn: {
+    width: 38, 
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(243,232,255,0.6)',
+  },
+  replyContainer: {
+    backgroundColor: 'rgba(237,233,254,0.8)',
+    shadowColor: '#8b5cf6',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(233,213,255,0.5)',
+    marginBottom: 6,
+  },
+  attachOptionsContainer: {
+    backgroundColor: 'rgba(243,232,255,0.8)',
+    shadowColor: '#8b5cf6',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(233,213,255,0.5)',
+    marginBottom: 6,
+  },
+  attachIcon: {
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    shadowColor: '#8b5cf6',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
+    borderWidth: 1,
+    borderColor: 'rgba(233,213,255,0.7)',
+  }
+});
 
-// Add display name
-ForwardedMessageInput.displayName = 'MessageInput';
-
-// Export the forwarded component as default
-export default ForwardedMessageInput;
+export default MessageInput;

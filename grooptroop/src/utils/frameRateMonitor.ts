@@ -101,18 +101,24 @@ export class FrameRateMonitor {
             'performance.frames'
           );
           
-          transaction.setData('metrics', metrics);
-          transaction.setTag('animation_name', this.monitorName);
-          transaction.setTag('has_frame_drops', 'true');
-          
-          // Set measurements for Sentry Performance
-          transaction.setMeasurement('fps', fps, 'none');
-          transaction.setMeasurement('dropped_frames', droppedFrames, 'none');
-          transaction.setMeasurement('dropped_frame_percentage', droppedFramePercentage, 'none');
-          transaction.setMeasurement('avg_frame_time', avgFrameTime, 'millisecond');
-          transaction.setMeasurement('max_frame_time', maxFrameTime, 'millisecond');
-          
-          transaction.finish();
+          // Add error handling around each method call
+          try {
+            transaction.setData('metrics', metrics);
+            transaction.setTag('animation_name', this.monitorName);
+            transaction.setTag('has_frame_drops', 'true');
+            
+            // Set measurements for Sentry Performance
+            transaction.setMeasurement('fps', fps, 'none');
+            transaction.setMeasurement('dropped_frames', droppedFrames, 'none');
+            transaction.setMeasurement('dropped_frame_percentage', droppedFramePercentage, 'none');
+            transaction.setMeasurement('avg_frame_time', avgFrameTime, 'millisecond');
+            transaction.setMeasurement('max_frame_time', maxFrameTime, 'millisecond');
+          } catch (methodError) {
+            console.warn('[SENTRY] Error setting transaction data:', methodError);
+          } finally {
+            // Always finish the transaction
+            transaction.finish();
+          }
         } catch (e) {
           console.warn('[SENTRY] Error creating frame drop transaction:', e);
         }

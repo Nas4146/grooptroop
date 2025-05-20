@@ -52,11 +52,11 @@ export interface NetworkRequest {
 
 // For frame rate monitoring
 export interface FrameRateMetrics {
-  fps: number;
-  duration: number;
-  framesCount: number;
+  frameCount: number;
+  totalFrameTime: number;
   avgFrameTime: number;
   maxFrameTime: number;
+  minFrameTime: number;
   droppedFrames: number;
   droppedFramePercentage: number;
 }
@@ -75,17 +75,15 @@ export interface MessagePerformanceData {
 }
 
 export interface ChatPerformanceMetrics {
-  chatId: string;
   isActive: boolean;
+  chatId: string;
   messagesSent: number;
   messagesReceived: number;
   avgNetworkLatency: number;
-  p95NetworkLatency?: number;
+  frameDrops: number; 
   jsHeapSize: number;
-  frameDrops: number;
   slowRenders: number;
   sessionDuration: number;
-  renderTimes?: number[];
 }
 
 // For component performance tracking
@@ -100,31 +98,35 @@ export interface TrackedComponent {
 
 // For budget violations
 export interface PerformanceBudgetViolation {
-  category: string;
   operation: string;
+  name: string;
   budget: number;
   actual: number;
   timestamp: number;
-  metadata?: Record<string, any>;
 }
 
 // For Sentry span
 export interface SentrySpan {
-  finish: () => void;
-  setData: (key: string, value: any) => void;
+  id: string;
   setTag: (key: string, value: string) => void;
-  setStatus: (status: string) => SentrySpan;
-  startChild: (operation: string, description: string) => SentrySpan;
-  setMeasurement: (name: string, value: number, unit: string) => void;
+  setData: (key: string, value: any) => void;
+  setStatus: (status: string) => void;
+  setMeasurement?: (name: string, value: number, unit: string) => void;
+  startChild: (operation: string, description?: string) => {
+    setData: (key: string, value: any) => void;
+    finish: () => void;
+  };
+  finish: () => void;
 }
 
 // For logging
 export interface LogEntry {
+  type: 'error' | 'custom';
   message: string;
   timestamp: number;
   category: string;
-  level: 'info' | 'warning' | 'error';
-  metadata?: Record<string, any>;
+  level: 'error' | 'warning' | 'info';
+  data?: Record<string, any>;
 }
 
 // Performance budgets
