@@ -119,16 +119,6 @@ export interface SentrySpan {
   finish: () => void;
 }
 
-// For logging
-export interface LogEntry {
-  type: 'error' | 'custom';
-  message: string;
-  timestamp: number;
-  category: string;
-  level: 'error' | 'warning' | 'info';
-  data?: Record<string, any>;
-}
-
 // Performance budgets
 export interface PerformanceBudgets {
   JS_THREAD_RENDER: number;
@@ -153,4 +143,15 @@ export interface TraceEntry {
   status: string;
   data?: Record<string, any>;
   measurements?: Record<string, { value: number, unit: string }>;
+}
+
+// Update the LogEntry interface to include "breadcrumb" as a valid type
+
+export interface LogEntry {
+  type: 'error' | 'custom' | 'breadcrumb'; // Add 'breadcrumb' as a valid type
+  message: string;
+  timestamp: number;
+  category: string;
+  level: 'error' | 'warning' | 'info' | string; // Make level more flexible
+  data?: Record<string, any>;
 }

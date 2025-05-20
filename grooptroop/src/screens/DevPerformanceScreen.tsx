@@ -141,7 +141,7 @@ const SentryTestSection = () => {
     try {
       console.log('[SENTRY] Running basic Sentry test');
       
-      // Add a breadcrumb
+      // Add a breadcrumb using the correct method
       SentryService.addBreadcrumb({
         category: 'test',
         message: 'Testing Sentry from DevPerformanceScreen',
@@ -1714,18 +1714,32 @@ const TestsSection = React.forwardRef((props, ref) => {
     try {
       setTestStatus(prev => ({ ...prev, frames: { status: 'running' } }));
       
-      // Start monitoring frame rate
+      // Start monitoring frame rate - use the standard startMonitoring method
       let framesData: number[] = [];
-      const frameRateMonitor = FrameRateMonitor.startCustomMonitoring((fps) => {
-        framesData.push(fps);
-      });
       
-      // Animate something to stress test frame rate
-      // (We'll just wait and collect frame rate data)
+      // Create a callback for collecting frame rates
+      const frameRateCallback = (fps: number) => {
+        framesData.push(fps);
+      };
+      
+      // Use the standard startMonitoring method
+      FrameRateMonitor.startMonitoring('frame_rate_test');
+      
+      // Set up our own monitoring to collect fps data
+      const interval = setInterval(() => {
+        // Get current metrics
+        const metrics = FrameRateMonitor.getMetrics();
+        if (metrics && typeof metrics.fps === 'number') {
+          framesData.push(metrics.fps);
+        }
+      }, 100); // Check 10 times per second
+      
+      // Run test for 3 seconds
       await new Promise(resolve => setTimeout(resolve, 3000));
       
-      // Stop monitoring
-      FrameRateMonitor.stopCustomMonitoring(frameRateMonitor);
+      // Clean up
+      clearInterval(interval);
+      FrameRateMonitor.stopMonitoring();
       
       // Calculate average FPS
       const avgFps = framesData.length > 0 
@@ -1741,8 +1755,8 @@ const TestsSection = React.forwardRef((props, ref) => {
           status: testPassed ? 'success' : 'failed',
           result: {
             avgFps: avgFps.toFixed(1),
-            minFps: Math.min(...framesData).toFixed(1),
-            maxFps: Math.max(...framesData).toFixed(1),
+            minFps: framesData.length > 0 ? Math.min(...framesData).toFixed(1) : '0.0',
+            maxFps: framesData.length > 0 ? Math.max(...framesData).toFixed(1) : '0.0',
             samples: framesData.length
           }
         } 

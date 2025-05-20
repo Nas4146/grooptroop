@@ -265,10 +265,11 @@ export class SentryService {
   
   static async trackMemoryUsage(): Promise<Record<string, any>> {
     // Simple memory tracking
+    const extendedPerformance = global.performance as ExtendedPerformance;
     const memory = {
       timestamp: Date.now(),
-      jsHeapSize: global.performance?.memory?.usedJSHeapSize || 0,
-      totalJSHeapSize: global.performance?.memory?.totalJSHeapSize || 0,
+      jsHeapSize: extendedPerformance?.memory?.usedJSHeapSize || 0,
+      totalJSHeapSize: extendedPerformance?.memory?.totalJSHeapSize || 0,
     };
     
     this.logEvent('memory', `Memory usage: ${Math.round(memory.jsHeapSize / 1024 / 1024)}MB`);
@@ -332,6 +333,104 @@ export class SentryService {
     } catch (e) {
       console.error('[SENTRY] Error getting chat metrics:', e);
       return null;
+    }
+  }
+
+  /**
+   * Add a breadcrumb to track user/app actions
+   */
+  static addBreadcrumb(breadcrumb: {
+    category: string;
+    message: string;
+    level: string;
+    data?: Record<string, any>;
+  }): void {
+    try {
+      // Add to local event history
+      this._eventHistory.push({
+        type: 'breadcrumb',
+        message: breadcrumb.message,
+        timestamp: Date.now(),
+        category: breadcrumb.category,
+        level: breadcrumb.level || 'info',
+        data: breadcrumb.data
+      });
+
+      // Pass to real Sentry if available
+      if (this.isInitialized()) {
+        try {
+          Sentry.addBreadcrumb({
+            category: breadcrumb.category,
+            message: breadcrumb.message,
+            level: breadcrumb.level as any,
+            data: breadcrumb.data
+          });
+        } catch (e) {
+          console.error('[SENTRY] Error adding breadcrumb to Sentry:', e);
+        }
+      }
+    } catch (e) {
+      console.error('[SENTRY] Error adding breadcrumb:', e);
+    }
+  }
+
+  /**
+   * Capture an exception and send to Sentry
+   */
+  static captureException(error: Error, context?: Record<string, any>): void {
+    try {
+      // Add to local event history
+      this._eventHistory.push({
+        type: 'error',
+        message: error.message,
+        timestamp: Date.now(),
+        category: 'exception',
+        level: 'error',
+        data: {
+          stack: error.stack,
+          ...context
+        }
+      });
+
+      // Pass to real Sentry if available
+      if (this.isInitialized()) {
+        try {
+          Sentry.withScope(scope => {
+            if (context) {
+              Object.entries(context).forEach(([key, value]) => {
+                scope.setExtra(key, value);
+              });
+            }
+            Sentry.captureException(error);
+          });
+        } catch (e) {
+          console.error('[SENTRY] Error capturing exception in Sentry:', e);
+        }
+      }
+    } catch (e) {
+      console.error('[SENTRY] Error capturing exception:', e);
+    }
+  }
+
+  /**
+   * Flush events to Sentry
+   */
+  static async flush(timeout?: number): Promise<boolean> {
+    try {
+      if (this.isInitialized()) {
+        try {
+          await Sentry.flush(timeout || 5000);
+          return true;
+        } catch (e) {
+          console.error('[SENTRY] Error flushing events to Sentry:', e);
+          return false;
+        }
+      }
+      
+      return false;
+    } catch (e) {
+      console.error('[SENTRY] Error in flush method:', e);
+      return false;
     }
   }
 }
@@ -398,3 +497,12 @@ export const usePerformance = (componentName: string) => {
     }
   };
 };
+
+// Extend the Performance interface to include memory properties
+interface ExtendedPerformance extends Performance {
+  memory?: {
+    usedJSHeapSize: number;
+    totalJSHeapSize: number;
+    jsHeapSizeLimit: number;
+  };
+}
