@@ -154,12 +154,19 @@ export class SentryService {
               trace.data[`measurement.${name}`] = `${value} ${unit}`;
             }
             
-            // Check if Sentry is initialized and available before using getCurrentHub
-            if (Sentry && typeof Sentry.getCurrentHub === 'function') {
+            // Use type assertion to access getCurrentHub
+            if (Sentry) {
               try {
-                const transaction = Sentry.getCurrentHub().getScope().getTransaction();
-                if (transaction && typeof transaction.setMeasurement === 'function') {
-                  transaction.setMeasurement(name, value, unit);
+                // Use type assertion to tell TypeScript that getCurrentHub exists
+                const sentryAny = Sentry as any;
+                if (typeof sentryAny.getCurrentHub === 'function') {
+                  const hub = sentryAny.getCurrentHub();
+                  const scope = hub.getScope();
+                  const transaction = scope.getTransaction();
+                  
+                  if (transaction && typeof transaction.setMeasurement === 'function') {
+                    transaction.setMeasurement(name, value, unit);
+                  }
                 }
               } catch (e) {
                 // Silently handle errors with the actual Sentry SDK
