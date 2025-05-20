@@ -48,6 +48,7 @@ type MessageInputHandle = {
 };
 
 export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
+  // All state definitions and refs first...
   const { profile } = useAuth();
   const { currentGroop } = useGroop();
   const navigation = useNavigation<ChatScreenNavigationProp>();
@@ -59,11 +60,14 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
   
   // Fix the ref type to use our custom MessageInputHandle
   const inputRef = useRef<MessageInputHandle>(null);
+  const flashListRef = useRef<FlashList<ChatItemType>>(null);
+  const sentryTransaction = useRef<SentrySpan | null>(null);
+  const scrollOffsetRef = useRef(0);
+  const hasRecentReaction = useRef(false);
   
   const [showEncryptionInfo, setShowEncryptionInfo] = useState(false);
   const [encryptionLoading, setEncryptionLoading] = useState(false);
   const { refreshUnreadCount } = useNotification();
-  const flashListRef = useRef<FlashList<ChatItemType>>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
   // Add these state variables at the top of your component
@@ -71,11 +75,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
   const [hasScrolledToUnread, setHasScrolledToUnread] = useState(false);
 
   // 1. Add a ref to store the current scroll offset and a flag for recent reactions
-  const scrollOffsetRef = useRef(0);
-  const hasRecentReaction = useRef(false);
-
-  // Handle scroll events
-  const handleScroll = (event: any) => {
+  const handleScroll = useCallback((event: any) => {
     const offsetY = event.nativeEvent.contentOffset.y;
     const contentHeight = event.nativeEvent.contentSize.height;
     const layoutHeight = event.nativeEvent.layoutMeasurement.height;
@@ -85,7 +85,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
     
     // Show button when user has scrolled up a bit
     setShowScrollButton(offsetY < contentHeight - layoutHeight - 100);
-  };
+  }, []);
     
   // Process messages to include date separators
   const processMessagesWithDateSeparators = useCallback(() => {
@@ -248,54 +248,39 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
     if (messages.length > 0 && !hasScrolledToUnread && !loading) {
       console.log('[CHAT] Attempting to scroll to first unread message');
       
-      // Helper function for date conversion
-      const getDateValue = (msg: ChatMessage): number => {
-        const createdAt = msg.createdAt;
-        if (!createdAt) return 0;
-        // Handle Firestore Timestamp object
-        if (createdAt?.toDate) return createdAt.toDate().getTime();
-        // Handle Date object
-        if (createdAt instanceof Date) return createdAt.getTime();
-        // Handle number (timestamp in ms)
-        if (typeof createdAt === 'number') return createdAt;
-        // Handle string (ISO date)
-        if (typeof createdAt === 'string') return new Date(createdAt).getTime();
-        
-        // Fallback - unlikely to happen, but prevents errors
-        return Date.now();
-      };
-      
-      // Sort messages by timestamp (oldest first)
-      const sortedMessages = [...messages].sort((a, b) => getDateValue(a) - getDateValue(b));
+      // Process messages first to ensure reliable indexes
+      const processedItems = processMessagesWithDateSeparators();
       
       // Find the first unread message
-      const firstUnreadMsg = sortedMessages.find(msg => 
+      const firstUnreadMsg = messages.find(msg => 
         !msg.read.includes(profile?.uid || '') && msg.senderId !== profile?.uid
       );
       
-      // Set a short timeout to ensure the list is rendered before scrolling
+      // Use a shorter timeout - FlashList initializes faster
       setTimeout(() => {
         if (firstUnreadMsg) {
-          // We have unread messages - find its index in the processed list
-          const processedItems = processMessagesWithDateSeparators();
+          // Find unread message in processed items
           const unreadIndex = processedItems.findIndex(item => 
             'id' in item && item.id === firstUnreadMsg.id
           );
           
           if (unreadIndex !== -1) {
             console.log(`[CHAT] Scrolling to first unread message at index ${unreadIndex}`);
+            
+            // Use scrollToIndex with viewOffset and viewPosition for better positioning
             flashListRef.current?.scrollToIndex({ 
               index: unreadIndex, 
-              animated: true
+              animated: true,
+              viewOffset: 20, // Extra space at the top
+              viewPosition: 0.3 // Position the item 30% from the top
             });
           }
         } else {
-          // No unread messages, scroll to bottom (latest message)
+          // No unread messages, scroll to bottom
           console.log('[CHAT] No unread messages, scrolling to latest message');
           flashListRef.current?.scrollToEnd({ animated: false });
         }
         
-        // Mark that we've completed the scrolling
         setHasScrolledToUnread(true);
         
         // Mark messages as read after scrolling
@@ -306,145 +291,120 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
           
           if (unreadIds.length > 0) {
             console.log(`[CHAT] Marking ${unreadIds.length} messages as read`);
-            ChatService.markAsRead(currentGroop?.id || '', unreadIds, profile.uid)
-              .then(success => {
-                if (success) {
-                  console.log('[CHAT] Messages marked as read, refreshing unread count');
-                  refreshUnreadCount(); // Update the global unread count
-                }
-              });
+            ChatService.markAsRead(currentGroop?.id || '', unreadIds, profile.uid);
           }
         }
-      }, 300);
+      }, 150); // Reduced timeout
     }
-  }, [messages, hasScrolledToUnread, loading, profile?.uid]);
+  }, [messages, hasScrolledToUnread, loading, profile?.uid, processMessagesWithDateSeparators]);
 
-  // Send message
-const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
-  if (!profile || !currentGroop) {
-    console.log('[CHAT] Cannot send message: No profile or groop selected');
-    return;
-  }
-  
-  // Define messageId for tracking
-  const messageId = `msg_${Date.now()}`;
-  
-  try {
-    // Always use direct try/catch blocks for better error handling
-    try {
-      console.log('[CHAT] Starting performance tracking for message', messageId);
-      ChatPerformanceMonitor.trackMessageSendStart(messageId, text.length);
-    } catch (e) {
-      console.log('[CHAT] Error starting performance tracking:', e);
+  // 5. Send message functionality
+  const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
+    if (!profile || !currentGroop) {
+      console.log('[CHAT] Cannot send message: No profile or groop selected');
+      return;
     }
     
-    console.log(`[CHAT] Sending message to groop: ${currentGroop.id}`);
-    console.log('[CHAT] Current user profile:', JSON.stringify({
-      displayName: profile.displayName,
-      hasAvatar: !!profile.avatar,
-      avatarType: profile.avatar?.type
-    }));
+    // Define messageId for tracking
+    const messageId = `msg_${Date.now()}`;
     
-    // Send the actual message
-    await ChatService.sendMessage(currentGroop.id, {
-      text,
-      senderId: profile.uid,
-      senderName: profile.displayName || 'Anonymous',
-      senderAvatar: profile.avatar,
-      replyTo: replyingTo?.id,
-      imageUrl
-    });
-    
-    // Clear reply state
-    if (replyingTo) setReplyingTo(null);
-    
-    // Scroll to the bottom after sending
-    setTimeout(() => {
-      flashListRef.current?.scrollToEnd();
-    }, 200);
-    
-    // Track successful send - in its own try/catch
     try {
-      console.log('[CHAT] Completing performance tracking for message', messageId);
-      ChatPerformanceMonitor.trackMessageSendComplete(messageId, true);
-    } catch (e) {
-      console.log('[CHAT] Error completing performance tracking:', e);
+      // Always use direct try/catch blocks for better error handling
+      try {
+        console.log('[CHAT] Starting performance tracking for message', messageId);
+        ChatPerformanceMonitor.trackMessageSendStart(messageId, text.length);
+      } catch (e) {
+        console.log('[CHAT] Error starting performance tracking:', e);
+      }
+      
+      console.log(`[CHAT] Sending message to groop: ${currentGroop.id}`);
+      console.log('[CHAT] Current user profile:', JSON.stringify({
+        displayName: profile.displayName,
+        hasAvatar: !!profile.avatar,
+        avatarType: profile.avatar?.type
+      }));
+      
+      // Send the actual message
+      await ChatService.sendMessage(currentGroop.id, {
+        text,
+        senderId: profile.uid,
+        senderName: profile.displayName || 'Anonymous',
+        senderAvatar: profile.avatar,
+        replyTo: replyingTo?.id,
+        imageUrl
+      });
+      
+      // Clear reply state
+      if (replyingTo) setReplyingTo(null);
+      
+      // Scroll to the bottom after sending
+      setTimeout(() => {
+        flashListRef.current?.scrollToEnd();
+      }, 200);
+      
+      // Track successful send - in its own try/catch
+      try {
+        console.log('[CHAT] Completing performance tracking for message', messageId);
+        ChatPerformanceMonitor.trackMessageSendComplete(messageId, true);
+      } catch (e) {
+        console.log('[CHAT] Error completing performance tracking:', e);
+      }
+      
+    } catch (error) {
+      console.error('[CHAT] Error sending message:', error);
+      
+      // Track failed send - in its own try/catch
+      try {
+        console.log('[CHAT] Tracking failed message send', messageId);
+        ChatPerformanceMonitor.trackMessageSendComplete(messageId, false);
+      } catch (e) {
+        console.log('[CHAT] Error tracking message failure:', e);
+      }
+      
+      // Log error
+      SentryService.captureError(error as Error, {
+        context: 'ChatScreen.sendMessage',
+        groopId: currentGroop.id
+      });
     }
-    
-  } catch (error) {
-    console.error('[CHAT] Error sending message:', error);
-    
-    // Track failed send - in its own try/catch
-    try {
-      console.log('[CHAT] Tracking failed message send', messageId);
-      ChatPerformanceMonitor.trackMessageSendComplete(messageId, false);
-    } catch (e) {
-      console.log('[CHAT] Error tracking message failure:', e);
-    }
-    
-    // Log error
-    SentryService.captureError(error as Error, {
-      context: 'ChatScreen.sendMessage',
-      groopId: currentGroop.id
-    });
-  }
-}, [profile, currentGroop, replyingTo]);
+  }, [profile, currentGroop, replyingTo]);
   
-  // Handle reactions
-  const handleReaction = useCallback(async (messageId: string, emoji: string) => {
+  // 2. Handle reactions with minimal dependencies
+  const handleReaction = useCallback((messageId: string, emoji: string) => {
     if (!profile || !currentGroop) return;
     
     // Get current scroll position before adding reaction
     const currentScrollOffset = scrollOffsetRef.current;
     
-    // Save layout info to prevent jumping
-    let layoutHeight = 0;
-    let contentHeight = 0;
-    
-    try {
-      // Get current layout measurements to maintain position
-      const info = await new Promise<{x: number, y: number, width: number, height: number}>(resolve => {
-        // Use type assertion to access the native methods available on the ref
-        const flashListNode = flashListRef.current as unknown as {
-          measureInWindow: (callback: (x: number, y: number, width: number, height: number) => void) => void
-        };
-        
-        flashListNode?.measureInWindow((x, y, width, height) => {
-          resolve({ x, y, width, height });
-        });
-      });
-      
-      if (info) {
-        layoutHeight = info.height;
-      }
-    } catch (error) {
-      console.log('[CHAT] Could not measure FlashList window', error);
-    }
-    
     // Set flag to prevent auto-scroll
     hasRecentReaction.current = true;
     
-    // Add the reaction without waiting for it to complete
-    ChatService.addReaction(currentGroop.id, messageId, emoji, profile.uid)
-      .catch(err => console.error('[CHAT] Error adding reaction:', err));
+    // Add the reaction
+    ChatService.addReaction(
+      currentGroop.id, 
+      messageId, 
+      emoji, 
+      profile.uid
+    ).catch(err => console.error('[CHAT] Error adding reaction:', err));
     
-    // Instead of using setTimeout, use requestAnimationFrame for smoother transitions
-    requestAnimationFrame(() => {
-      if (flashListRef.current && hasRecentReaction.current) {
-        flashListRef.current.scrollToOffset({
-          offset: currentScrollOffset,
-          animated: false
-        });
-        
-        // Reset flag after a short delay
-        setTimeout(() => {
-          hasRecentReaction.current = false;
-        }, 500);
-      }
-    });
-  }, [profile, currentGroop]);
-  
-  // Handle reply
+    // Maintain scroll position
+    if (flashListRef.current) {
+      setTimeout(() => {
+        if (flashListRef.current && hasRecentReaction.current) {
+          flashListRef.current.scrollToOffset({
+            offset: currentScrollOffset,
+            animated: false
+          });
+          
+          setTimeout(() => {
+            hasRecentReaction.current = false;
+          }, 300);
+        }
+      }, 10);
+    }
+  }, [/* Only include essential dependencies */]);
+
+  // 3. Handle reply with no dependencies
   const handleReply = useCallback((message: ChatMessage) => {
     setReplyingTo({
       id: message.id,
@@ -452,47 +412,63 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
       senderName: message.senderName
     });
   }, []);
-  
-  // Handle refresh
+
+  // 4. Handle refresh
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
     // The refreshing state will be reset when new messages come in
   }, []);
   
-  // Add this new useEffect to manage keyboard behavior
-  useEffect(() => {
-    // Function to handle keyboard showing
-    const handleKeyboardShow = (event: KeyboardEvent) => {
-      // Only scroll if we have messages
-      if (messages.length > 0) {
-        // Get keyboard height
-        const keyboardHeight = event.endCoordinates.height;
-        
-        console.log(`[CHAT] Keyboard shown with height: ${keyboardHeight}`);
-        
-        // Slight delay to let the layout adjust
-        setTimeout(() => {
-          // Scroll to end (latest message) with extra padding to account for the keyboard
-          flashListRef.current?.scrollToEnd({ animated: true });
-        }, 100);
-      }
-    };
+  // 8. Estimate message size (for FlashList optimization)
+  const estimateMessageSize = useCallback((message: ChatMessage): number => {
+    // Base size for a message bubble
+    let size = 60;
+    
+    // Add height for text
+    const textLines = Math.ceil(message.text.length / 40); // Approx chars per line
+    size += textLines * 20; // 20px per line of text
+    
+    // Add space for reactions if any
+    if (message.reactions && message.reactions.length > 0) {
+      size += 30;
+    }
+    
+    // Add space if it's a reply
+    if (message.replyTo) {
+      size += 40;
+    }
+    
+    // Add space for image if any
+    if (message.imageUrl) {
+      size += 200;
+    }
+    
+    return size;
+  }, []);
 
-    // Set up keyboard listeners
-    const keyboardDidShowListener = Keyboard.addListener(
-      'keyboardDidShow',
-      handleKeyboardShow
+  // Define renderItem outside the render function using useCallback
+  const renderItem = useCallback(({ item }: { item: ChatItemType }) => {
+    // Check if item is a date separator
+    if ('type' in item && item.type === 'dateSeparator') {
+      return <DateSeparator date={item.date} />;
+    }
+    
+    // Regular message - cast once and use consistently
+    const message = item as ChatMessage;
+    return (
+      <MessageBubble 
+        message={message}
+        isFromCurrentUser={message.senderId === profile?.uid}
+        onReactionPress={handleReaction}
+        onReplyPress={handleReply}
+        // Use message ID as the key prop for React's reconciliation
+        key={message.id}
+      />
     );
-
-    // Clean up
-    return () => {
-      keyboardDidShowListener.remove();
-    };
-  }, [messages.length]);
+  }, [profile?.uid, handleReaction, handleReply]);
 
   // Sentry and performance monitoring
   const chatId = route.params?.chatId || currentGroop?.id || 'unknown_chat';
-  const sentryTransaction = useRef<SentrySpan | null>(null);
   const perf = usePerformance('ChatScreen');
   
   // Start monitoring when component mounts
@@ -503,6 +479,24 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
       // Start chat performance monitoring
       if (currentGroop?.id) {
         ChatPerformanceMonitor.startChatMonitoring(currentGroop.id);
+        
+        // Add FlashList specific tracking
+        if (sentryTransaction.current) {
+          sentryTransaction.current.setTag('using_flashlist', 'true');
+          
+          // Track initial render time
+          const startTime = performance.now();
+          
+          // After component is mounted, record the initial render time
+          setTimeout(() => {
+            const renderTime = performance.now() - startTime;
+            sentryTransaction.current?.setMeasurement(
+              'initial_render_time', 
+              renderTime, 
+              'millisecond'
+            );
+          }, 300);
+        }
       }
       
       sentryTransaction.current = SentryService.startTransaction(
@@ -630,6 +624,182 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
     }, 100);
   };
   
+  // The issue is likely with the callback handlers and the render functions
+
+// FIX 1: Move useCallback hooks to the top, ensuring consistent order
+
+// ===== Effects =====
+  
+  // Now implement your useEffects, ensuring they also have consistent ordering
+  // (The order of these doesn't matter as much as the callbacks above)
+  useEffect(() => {
+    // Debug log
+    // ...
+  }, [currentGroop]);
+
+  useEffect(() => {
+    // Encryption initialization
+    // ...
+  }, [profile, currentGroop]);
+
+  useEffect(() => {
+    // Process key exchanges whenever the screen is focused
+    const checkForKeyExchanges = async () => {
+      if (profile && currentGroop) {
+        await KeyExchangeService.processPendingKeyExchanges(profile.uid);
+      }
+    };
+    
+    // Run on mount
+    checkForKeyExchanges();
+    
+    // Set up an interval to check periodically
+    const interval = setInterval(checkForKeyExchanges, 60000); // Check every minute
+    
+    return () => {
+      clearInterval(interval);
+    };
+  }, [profile, currentGroop]);
+
+  useEffect(() => {
+    if (currentGroop) {
+      console.log('[CHAT_DEBUG] Current groop details:', {
+        id: currentGroop.id,
+        name: currentGroop.name,
+        membersCount: currentGroop.members?.length || 0,
+        isMember: currentGroop.members?.includes(profile?.uid || '') || false,
+      });
+    }
+  }, [currentGroop, profile]);
+  
+  // Reset notifications when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('[CHAT] Chat screen focused, refreshing unread count');
+      if (profile?.uid) {
+        refreshUnreadCount();
+      }
+      return () => {};
+    }, [refreshUnreadCount, profile])
+  );
+
+  // Load messages
+  useEffect(() => {
+    if (!profile || !currentGroop) return;
+    
+    console.log(`[CHAT] Subscribing to messages for groop: ${currentGroop.name} (${currentGroop.id})`);
+    
+    // Subscribe to messages
+    const unsubscribe = ChatService.subscribeToMessages(currentGroop.id, (newMessages) => {
+      setMessages(newMessages);
+      setLoading(false);
+      setRefreshing(false);
+      
+      // Count unread messages
+      const unread = newMessages.filter(msg => 
+        !msg.read.includes(profile.uid) && msg.senderId !== profile.uid
+      );
+      setUnreadCount(unread.length);
+    });
+    
+    // Cleanup subscription
+    return () => {
+      console.log(`[CHAT] Unsubscribing from messages for groop: ${currentGroop?.id || 'unknown'}`);
+      unsubscribe();
+      setHasScrolledToUnread(false); // Reset for next time
+    };
+  }, [profile, currentGroop]);
+
+  // Add a separate useEffect specifically for scrolling logic
+  useEffect(() => {
+    // Only run scroll logic when we have messages and haven't scrolled yet
+    if (messages.length > 0 && !hasScrolledToUnread && !loading) {
+      console.log('[CHAT] Attempting to scroll to first unread message');
+      
+      // Process messages first to ensure reliable indexes
+      const processedItems = processMessagesWithDateSeparators();
+      
+      // Find the first unread message
+      const firstUnreadMsg = messages.find(msg => 
+        !msg.read.includes(profile?.uid || '') && msg.senderId !== profile?.uid
+      );
+      
+      // Use a shorter timeout - FlashList initializes faster
+      setTimeout(() => {
+        if (firstUnreadMsg) {
+          // Find unread message in processed items
+          const unreadIndex = processedItems.findIndex(item => 
+            'id' in item && item.id === firstUnreadMsg.id
+          );
+          
+          if (unreadIndex !== -1) {
+            console.log(`[CHAT] Scrolling to first unread message at index ${unreadIndex}`);
+            
+            // Use scrollToIndex with viewOffset and viewPosition for better positioning
+            flashListRef.current?.scrollToIndex({ 
+              index: unreadIndex, 
+              animated: true,
+              viewOffset: 20, // Extra space at the top
+              viewPosition: 0.3 // Position the item 30% from the top
+            });
+          }
+        } else {
+          // No unread messages, scroll to bottom
+          console.log('[CHAT] No unread messages, scrolling to latest message');
+          flashListRef.current?.scrollToEnd({ animated: false });
+        }
+        
+        setHasScrolledToUnread(true);
+        
+        // Mark messages as read after scrolling
+        if (messages.length > 0 && profile?.uid) {
+          const unreadIds = messages
+            .filter(msg => !msg.read.includes(profile.uid) && msg.senderId !== profile.uid)
+            .map(msg => msg.id);
+          
+          if (unreadIds.length > 0) {
+            console.log(`[CHAT] Marking ${unreadIds.length} messages as read`);
+            ChatService.markAsRead(currentGroop?.id || '', unreadIds, profile.uid);
+          }
+        }
+      }, 150); // Reduced timeout
+    }
+  }, [messages, hasScrolledToUnread, loading, profile?.uid, processMessagesWithDateSeparators]);
+
+  // Add this new useEffect to manage keyboard behavior
+  useEffect(() => {
+    // Function to handle keyboard showing
+    const handleKeyboardShow = (event: KeyboardEvent) => {
+      // Only scroll if we have messages
+      if (messages.length > 0) {
+        // Get keyboard height
+        const keyboardHeight = event.endCoordinates.height;
+        
+        console.log(`[CHAT] Keyboard shown with height: ${keyboardHeight}`);
+        
+        // Slight delay to let the layout adjust
+        setTimeout(() => {
+          // Scroll to end (latest message) with extra padding to account for the keyboard
+          flashListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      }
+    };
+
+    // Set up keyboard listeners
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      handleKeyboardShow
+    );
+
+    // Clean up
+    return () => {
+      keyboardDidShowListener.remove();
+    };
+  }, [messages.length]);
+
+  // ===== Conditional Rendering =====
+  
+  // IMPORTANT: Only put conditions here, after all hooks are defined
   if (!currentGroop) {
     return (
       <SafeAreaView style={tw`flex-1 justify-center items-center bg-light`}>
@@ -690,30 +860,35 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
       <FlashList
         ref={flashListRef}
         data={processMessagesWithDateSeparators()}
-        renderItem={({ item }) => {
-          // Check if item is a date separator
-          if ('type' in item && item.type === 'dateSeparator') {
-            return <DateSeparator date={item.date} />;
-          }
-          
-          // Regular message (using type assertion)
-          return (
-            <MessageBubble 
-              message={item as ChatMessage}
-              isFromCurrentUser={(item as ChatMessage).senderId === profile?.uid}
-              onReactionPress={handleReaction}
-              onReplyPress={() => handleReply(item as ChatMessage)}
-            />
-          );
-        }}
+        renderItem={renderItem}
         keyExtractor={(item) => item.id}
-        estimatedItemSize={80}
+        estimatedItemSize={100} // More accurate estimate based on your message bubble size
         contentContainerStyle={tw`px-4 pt-4 pb-2`}
         onRefresh={handleRefresh}
         refreshing={refreshing}
         ListEmptyComponent={<EmptyChat />}
         onScroll={handleScroll}
         scrollEventThrottle={16}
+        onEndReachedThreshold={0.1} // Keep this low for better performance
+        onEndReached={() => {
+          // Optional: Load older messages if you implement pagination
+        }}
+        initialScrollIndex={0} // If you know where to start
+        maintainVisibleContentPosition={{ // Helps maintain position during updates
+          minIndexForVisible: 0,
+        }}
+        drawDistance={300} // Controls how far ahead/behind to render
+        overrideItemLayout={(layout, item) => {
+          // Optional: For more precise item sizing
+          if ('type' in item && item.type === 'dateSeparator') {
+            layout.size = 40; // Height of date separator
+          } else {
+            // Estimate message size based on content
+            const message = item as ChatMessage;
+            const estimatedHeight = 70 + (message.text.length / 50) * 20; // Base height + text length adjustment
+            layout.size = Math.min(estimatedHeight, 250); // Cap the height
+          }
+        }}
       />
 
       {showScrollButton && (

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ChatMessage } from '../../models/chat';
@@ -16,7 +16,8 @@ interface MessageBubbleProps {
   onReplyPress: (messageId: string) => void;
 }
 
-export default function MessageBubble({ 
+// First, define the MessageBubble function component as normal
+function MessageBubble({ 
   message, 
   isFromCurrentUser,
   onReactionPress,
@@ -24,12 +25,32 @@ export default function MessageBubble({
 }: MessageBubbleProps) {
   const [showReactions, setShowReactions] = useState(false);
   
-  // Format timestamp
-  const formatTime = (timestamp: any) => {
+  // Memoize expensive operations
+  const reactionCounts = useMemo(() => {
+    const counts: {[key: string]: number} = {};
+    
+    if (message.reactions) {
+      Object.entries(message.reactions).forEach(([emoji, users]) => {
+        if (Array.isArray(users) && users.length > 0) {
+          counts[emoji] = users.length;
+        }
+      });
+    }
+    
+    return counts;
+  }, [message.reactions]);
+
+  // Memoize the hasReactions calculation
+  const hasReactions = useMemo(() => {
+    return Object.keys(reactionCounts).length > 0;
+  }, [reactionCounts]);
+
+  // Optimize other expensive calculations
+  const formatTime = useCallback((timestamp: any) => {
     if (!timestamp) return '';
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
+  }, []);
   
   console.log(`[MESSAGE] Avatar details:`, {
   exists: !!message.senderAvatar,
@@ -42,60 +63,6 @@ export default function MessageBubble({
   isFromCurrentUser
 });
 
-  // Get reaction counts
-  const getReactionCounts = () => {
-    const counts: {[key: string]: number} = {};
-    
-    if (message.reactions) {
-      Object.entries(message.reactions).forEach(([emoji, users]) => {
-        if (Array.isArray(users) && users.length > 0) {
-          counts[emoji] = users.length;
-        }
-      });
-    }
-    
-    return counts;
-  };
-
-  // Helper to handle legacy message formats (for backward compatibility)
-const renderLegacyAvatar = () => {
-  // If message doesn't have the new avatar structure but has the old senderAvatar string
-  if (!message.senderAvatar && typeof message.senderAvatar === 'string' && message.senderAvatar.length > 0) {
-    console.log(`[MESSAGE] Found legacy avatar format for ${message.senderName}`);
-    // If it's a URL, render as image
-    if (message.senderAvatar.startsWith('http')) {
-      return (
-        <Image 
-          source={{ uri: message.senderAvatar as string }} 
-          style={tw`w-9 h-9 rounded-full mr-2`}
-        />
-      );
-    } 
-    // If it's a color code, render as color circle with initial
-    else if (message.senderAvatar.startsWith('#')) {
-      return (
-        <View style={[
-          tw`w-9 h-9 rounded-full mr-2 items-center justify-center`,
-          { backgroundColor: message.senderAvatar as string }
-        ]}>
-          <Text style={tw`text-white font-bold`}>
-            {message.senderName?.charAt(0) || '?'}
-          </Text>
-        </View>
-      );
-    }
-  }
-  
-  // Default avatar
-  return (
-    <View style={tw`w-9 h-9 rounded-full bg-gray-300 mr-2 items-center justify-center`}>
-      <Text style={tw`text-white font-bold`}>
-        {message.senderName?.charAt(0) || '?'}
-      </Text>
-    </View>
-  );
-};
-  
   // Check if current user has reacted with this emoji
   const hasUserReacted = (emoji: string) => {
     return message.reactions && 
@@ -130,17 +97,14 @@ const renderLegacyAvatar = () => {
       return (
         <Ionicons 
           name="lock-open" 
-          size={14} 
-          color={isFromCurrentUser ? "#e6e6e6" : "#9ca3af"} 
-          style={tw`mr-1 opacity-50`} 
+            size={14} 
+            color={isFromCurrentUser ? "#e6e6e6" : "#9ca3af"} 
+            style={tw`mr-1 opacity-50`} 
         />
       );
     }
   };
   
-  const reactionCounts = getReactionCounts();
-  const hasReactions = Object.keys(reactionCounts).length > 0;
-
   // Special handling for encrypted messages that couldn't be decrypted
   if (message.isEncrypted && message.text === "[Cannot decrypt - missing key]") {
     return (
@@ -323,3 +287,12 @@ const renderLegacyAvatar = () => {
     </View>
   );
 }
+
+// Then export a memoized version with custom comparison function
+export default memo(MessageBubble, (prevProps, nextProps) => {
+  // Simplified comparison - only check message ID and minimal props
+  return (
+    prevProps.message.id === nextProps.message.id &&
+    prevProps.isFromCurrentUser === nextProps.isFromCurrentUser
+  );
+});
