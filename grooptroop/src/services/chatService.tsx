@@ -179,6 +179,8 @@ export class ChatService {
     senderName: string;
     senderAvatar?: UserAvatar; // Updated to use UserAvatar type instead of string
     replyTo?: string;
+    replyToName?: string, 
+    replyToText?: string,
     imageUrl?: string;
   }) {
     try {

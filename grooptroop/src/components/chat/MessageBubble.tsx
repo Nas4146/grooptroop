@@ -238,10 +238,14 @@ function MessageBubble({
           delayLongPress={200} // Make it respond more quickly
         >
           {/* Reply content if exists */}
-          {message.replyTo && (
+          {message.replyTo && message.replyToText && (
             <View style={tw`bg-gray-100 p-2 rounded-lg mb-2 opacity-80`}>
-              <Text style={tw`text-xs text-gray-500`}>{message.replyToName}</Text>
-              <Text style={tw`text-sm`} numberOfLines={1}>{message.replyToText}</Text>
+              <Text style={tw`text-xs text-gray-500`}>
+                Replying to <Text style={tw`font-medium`}>{message.replyToName || 'User'}</Text>
+              </Text>
+              <Text style={tw`text-sm text-gray-700`} numberOfLines={1}>
+                {message.replyToText}
+              </Text>
             </View>
           )}
           
@@ -312,7 +316,8 @@ function MessageBubble({
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setShowReactions(false);
-                onReplyPress(message.id);
+                // Pass the entire message object instead of just the ID
+                onReplyPress(message);
               }}
             >
               <Ionicons name="return-down-back" size={18} color="#7C3AED" />

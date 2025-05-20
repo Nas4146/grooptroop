@@ -331,6 +331,8 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
         senderName: profile.displayName || 'Anonymous',
         senderAvatar: profile.avatar,
         replyTo: replyingTo?.id,
+        replyToName: replyingTo?.senderName,
+        replyToText: replyingTo?.text,
         imageUrl
       });
       
@@ -397,11 +399,15 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
 
   // 3. Handle reply with no dependencies
   const handleReply = useCallback((message: ChatMessage) => {
+    // Store the complete reply information
     setReplyingTo({
       id: message.id,
       text: message.text,
       senderName: message.senderName
     });
+    
+    // Optionally focus the input when replying
+    inputRef.current?.focus();
   }, []);
 
   // 4. Handle refresh
