@@ -59,12 +59,12 @@ encryptionInitiatedBy
 
 
 encryptionSetupAt
-May 9, 2025 at 12:11:53 PM UTC-7
+May 13, 2025 at 4:32:12 PM UTC-7
 (timestamp)
 
 
 encryptionSetupBy
-"qvzxDSCfxNhhVMDiWaCBYUSMOVd2"
+"cSL0j73hjJbonCgm6YKEcHWBNP93"
 (string)
 
 
@@ -74,7 +74,7 @@ June 8, 2025 at 12:00:00 AM UTC-7
 
 
 lastActivity
-May 10, 2025 at 3:45:51 PM UTC-7
+May 19, 2025 at 4:22:28 PM UTC-7
 (timestamp)
 
 
@@ -89,7 +89,7 @@ false
 
 
 id
-"Fu5jYNzufQxt4X5HolFA"
+"hHOwJlk0hZE0JYRGzOKQ"
 (string)
 
 
@@ -114,7 +114,7 @@ text
 
 
 timestamp
-May 10, 2025 at 3:45:51 PM UTC-7
+May 19, 2025 at 4:22:28 PM UTC-7
 (timestamp)
 
 
@@ -143,6 +143,11 @@ members
 (string)
 
 
+2
+"9bFQysH0y6eXAkkwmuQZtgzxvDL2"
+(string)
+
+
 name
 "Nick's Bachelor Party"
 (string)
@@ -155,6 +160,16 @@ organizerID
 
 0
 "cSL0j73hjJbonCgm6YKEcHWBNP93"
+(string)
+
+
+
+paymentSettings
+(map)
+
+
+venmoUsername
+"Nas4146"
 (string)
 
 
@@ -171,3 +186,5 @@ June 5, 2025 at 12:00:00 AM UTC-7
 totalTripCost
 750
 (number)
+
+

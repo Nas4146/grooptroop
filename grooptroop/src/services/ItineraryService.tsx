@@ -464,4 +464,15 @@ export class ItineraryService {
       throw error;
     }
   }
+
+  // Debugging function to test itinerary access
+  static async debugItineraryAccess(groopId: string): Promise<void> {
+    console.log(`[ITINERARY DEBUG] Attempting to access: groops/${groopId}/itinerary`);
+    try {
+      const itinerarySnapshot = await getDocs(collection(db, 'groops', groopId, 'itinerary'));
+      console.log(`[ITINERARY DEBUG] Success! Got ${itinerarySnapshot.size} items`);
+    } catch (error) {
+      console.error(`[ITINERARY DEBUG] Failed with error:`, error);
+    }
+  }
 }

@@ -15,6 +15,7 @@ import {
   import { db } from '../lib/firebase';
   import { UserProfile } from '../contexts/AuthProvider';
   import { KeyExchangeService } from './KeyExchangeService';
+  import { auth } from '../lib/firebase'; // Import auth
 
   // Define our Groop type
   export interface Groop {
@@ -129,6 +130,8 @@ import {
     static async getUserGroops(userId: string): Promise<Groop[]> {
       try {
         console.log('[GROOP_SERVICE] ⚡️ Getting groops for user:', userId);
+        console.log("Current user UID:", auth.currentUser?.uid);
+        console.log("Querying groops where user is a member");
         
         // IMPORTANT: Only get groops where the user is explicitly listed as a member
         // This is the most important query to fix access control

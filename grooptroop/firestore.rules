@@ -2,18 +2,95 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // This rule allows anyone with your Firestore database reference to view, edit,
-    // and delete all data in your Firestore database. It is useful for getting
-    // started, but it is configured to expire after 30 days because it
-    // leaves your app open to attackers. At that time, all client
-    // requests to your Firestore database will be denied.
-    //
-    // Make sure to write security rules for your app before that time, or else
-    // all client requests to your Firestore database will be denied until you Update
-    // your rules
+    // Basic functions for rule reuse
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Groops collection rules - MAIN COLLECTION
+    match /groops/{groopId} {
+      // Allow reading only if the user is a member of this groop
+      allow read: if isAuthenticated() && 
+                  resource.data.members.hasAny([request.auth.uid]);
+      
+      // Anyone authenticated can create a groop
+      allow create: if isAuthenticated();
+      
+      // Only organizers/admins can update or delete
+      allow update, delete: if isAuthenticated() && 
+        ((resource.data.organizerID != null && resource.data.organizerID.hasAny([request.auth.uid])) ||
+         (resource.data.admins != null && resource.data.admins.hasAny([request.auth.uid])));
+      
+      // For ALL subcollections of groops - simplify access rules
+      match /{subCollection}/{document} {
+        // Simple rule: if you can read the parent groop, you can read its subcollections
+        allow read: if isAuthenticated() && 
+                    exists(/databases/$(database)/documents/groops/$(groopId)) &&
+                    get(/databases/$(database)/documents/groops/$(groopId)).data.members.hasAny([request.auth.uid]);
+                    
+        // Write requires membership too
+        allow write: if isAuthenticated() &&
+                    exists(/databases/$(database)/documents/groops/$(groopId)) &&
+                    get(/databases/$(database)/documents/groops/$(groopId)).data.members.hasAny([request.auth.uid]);
+      }
+      
+      // Special case for key exchanges that may need different permissions
+      match /keyExchanges/{exchangeId} {
+        allow read: if isAuthenticated() && 
+                   (resource.data.recipientId == request.auth.uid || 
+                    resource.data.senderId == request.auth.uid);
+        allow create: if isAuthenticated() && 
+                    request.resource.data.senderId == request.auth.uid;
+        allow update: if isAuthenticated() &&
+                    request.resource.data.recipientId == request.auth.uid &&
+                    resource.data.recipientId == request.auth.uid;
+        allow delete: if isAuthenticated() && 
+                    (resource.data.recipientId == request.auth.uid || 
+                     resource.data.senderId == request.auth.uid);
+      }
+    }
+    
+    // Users collection rules
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isOwner(userId);
+    }
+    
+    // Chats collection rules
+    match /chats/{chatId} {
+      allow read: if isAuthenticated() &&
+                 resource.data.participants.hasAny([request.auth.uid]);
+      allow create: if isAuthenticated() && 
+                  request.resource.data.participants.hasAny([request.auth.uid]);
+      allow update: if isAuthenticated() && 
+                  resource.data.participants.hasAny([request.auth.uid]);
+      allow delete: if false; // Prevent chat deletion, or set admin-only policy
+    }
+    
+    // Top-level messages collection
+    match /messages/{messageId} {
+      allow read: if isAuthenticated() && 
+                 resource.data.chatId != null &&
+                 exists(/databases/$(database)/documents/chats/$(resource.data.chatId)) &&
+                 get(/databases/$(database)/documents/chats/$(resource.data.chatId)).data.participants.hasAny([request.auth.uid]);
+      allow create: if isAuthenticated() && 
+                  request.resource.data.senderId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && 
+                         resource.data.senderId == request.auth.uid;
+    }
+    
+    // Allow access to test collection during development
+    match /test/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Prevent all other access by default
     match /{document=**} {
-      allow read, write: if request.time < timestamp.date(2025, 5, 21);
+      allow read, write: if false;
     }
   }
 }

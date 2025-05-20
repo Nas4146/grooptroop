@@ -1,10 +1,39 @@
+avatar
+(map)
+
+
+
+params
+(map)
+
+
+seed
+"iconic-9909"
+(string)
+
+
+style
+"croodles"
+(string)
+
+
+type
+"dicebear"
+(string)
+
+
+value
+"https://api.dicebear.com/9.x/croodles/png?seed=iconic-9909&size=256"
+(string)
+
+
 avatarColor
 "#FF6B6B"
 (string)
 
 
 createdAt
-May 7, 2025 at 1:36:13 PM UTC-7
+May 18, 2025 at 12:53:17 PM UTC-7
 (timestamp)
 
 
@@ -14,18 +43,13 @@ displayName
 
 
 email
-"nick.sanders.a@gmail.com"
+"nas4146@gmail.com"
 (string)
 
 
-
-groops
-(array)
-
-
-0
-"N4xUKv8w21Ih76LCDULS"
-(string)
+hasCompletedOnboarding
+true
+(boolean)
 
 
 isAnonymous
@@ -34,12 +58,12 @@ false
 
 
 lastActive
-May 8, 2025 at 11:59:17 AM UTC-7
+May 19, 2025 at 10:04:53 AM UTC-7
 (timestamp)
 
 
 photoURL
-"https://lh3.googleusercontent.com/a/ACg8ocJ9ng26pnY0i989Nb5XeZDJIFCzfFB_gTyhiUKz9SfZPIRGDA=s96-c"
+"https://lh3.googleusercontent.com/a/ACg8ocL8ZEI9wHHczrAuKlf70q9YrYv-iyhLw7LwKjmjWJ6Xr2uzsJo=s96-c"
 (string)
 
 
@@ -53,6 +77,20 @@ providers
 (string)
 
 
-uid
-"cSL0j73hjJbonCgm6YKEcHWBNP93"
+pushTokenUpdated
+May 19, 2025 at 10:04:53 AM UTC-7
+(timestamp)
+
+
+
+pushTokens
+(array)
+
+
+0
+"DEVELOPMENT-MOCK-TOKEN"
 (string)
+
+
+uid
+"9bFQysH0y6eXAkkwmuQZtgzxvDL2"
