@@ -139,3 +139,18 @@ export interface PerformanceBudgets {
   IMAGE_LOAD: number;
   TYPING_LATENCY: number;
 }
+
+// Update the TraceEntry interface to include measurements:
+
+export interface TraceEntry {
+  id: string;
+  name: string;
+  category: string;
+  parentId?: string;
+  startTime: number;
+  endTime?: number;
+  duration?: number;
+  status: string;
+  data?: Record<string, any>;
+  measurements?: Record<string, { value: number, unit: string }>;
+}

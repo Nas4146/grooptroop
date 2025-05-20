@@ -112,7 +112,8 @@ export class SentryService {
         endTime: undefined,
         duration: undefined,
         status: 'in_progress',
-        data: {}
+        data: {},
+        measurements: {} // Add this field to store measurements
       };
       
       this._transactionHistory.push(traceEntry);
@@ -138,6 +139,35 @@ export class SentryService {
           const trace = this._transactionHistory.find(t => t.id === id);
           if (trace) {
             trace.status = status;
+          }
+        },
+        // Add the missing setMeasurement method
+        setMeasurement: (name: string, value: number, unit: string) => {
+          try {
+            const trace = this._transactionHistory.find(t => t.id === id);
+            if (trace) {
+              trace.measurements = trace.measurements || {};
+              trace.measurements[name] = { value, unit };
+              
+              // Also add to data for backward compatibility
+              trace.data = trace.data || {};
+              trace.data[`measurement.${name}`] = `${value} ${unit}`;
+            }
+            
+            // If the real Sentry transaction exists, call its setMeasurement too
+            if (Sentry.getCurrentHub().getScope().getTransaction()) {
+              try {
+                const transaction = Sentry.getCurrentHub().getScope().getTransaction();
+                if (transaction && typeof transaction.setMeasurement === 'function') {
+                  transaction.setMeasurement(name, value, unit);
+                }
+              } catch (e) {
+                // Silently handle errors with the actual Sentry SDK
+                console.debug('[SENTRY] Could not set measurement on actual transaction:', e);
+              }
+            }
+          } catch (e) {
+            console.warn('[SENTRY] Error in setMeasurement:', e);
           }
         },
         startChild: (operation: string, description?: string) => {
@@ -226,7 +256,8 @@ export class SentryService {
         setTag: () => {},
         setData: () => {},
         setStatus: () => {},
-        startChild: () => ({ finish: () => {} }),
+        setMeasurement: () => {}, // Add missing dummy method
+        startChild: () => ({ setData: () => {}, finish: () => {} }),
         finish: () => {}
       };
     }
@@ -311,6 +342,7 @@ export interface SentrySpan {
   setTag: (key: string, value: string) => void;
   setData: (key: string, value: any) => void;
   setStatus: (status: string) => void;
+  setMeasurement: (name: string, value: number, unit: string) => void; // Remove optional ?
   startChild: (operation: string, description?: string) => {
     setData: (key: string, value: any) => void;
     finish: () => void;

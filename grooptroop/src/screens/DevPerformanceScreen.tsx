@@ -1906,7 +1906,6 @@ export default function DevPerformanceScreen({ navigation }: { navigation: DevPe
           </TouchableOpacity>
         </View>
         
-        {/* Tab content with error boundaries */}
         <View style={styles.tabContentContainer}>
           {activeTab === 'summary' && (
             <ScrollView>
