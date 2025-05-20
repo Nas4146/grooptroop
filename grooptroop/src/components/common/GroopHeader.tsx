@@ -146,7 +146,13 @@ export default function GroopHeader({
   const handlePressMembers = () => {
     // If custom handler is provided, use that instead
     if (onPressMembers) {
-      onPressMembers();
+      // Try-catch to handle potential navigation errors
+      try {
+        onPressMembers();
+      } catch (error) {
+        console.warn('[GROOP_HEADER] Error in onPressMembers callback, falling back to modal:', error);
+        setShowMembersModal(true);
+      }
       return;
     }
     
@@ -195,23 +201,38 @@ export default function GroopHeader({
   };
 
   const MemberAvatar = ({ profile, index }: { profile: any, index: number }) => {
-    console.log(`[GROOP_HEADER] Rendering avatar for member: ${profile.displayName}, index: ${index}`);
-    console.log(`[GROOP_HEADER] Avatar data:`, profile.avatar);
+    // Only log in development mode
+    if (__DEV__) {
+      console.log(`[GROOP_HEADER] Rendering avatar for member: ${profile.displayName}, index: ${index}`);
+    }
     
-    // Ensure the avatar data is properly passed to the Avatar component
     return (
+      // Shadow-capable wrapper with opaque background
       <View style={[
-        tw`w-7 h-7 rounded-full border-2 border-white overflow-hidden`,
-        { marginLeft: index === 0 ? 0 : -8, zIndex: 10 - index }
+        tw`rounded-full overflow-hidden`,
+        { 
+          marginLeft: index === 0 ? 0 : -8, 
+          zIndex: 10 - index,
+          backgroundColor: 'white',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.1,
+          shadowRadius: 1,
+          elevation: 1
+        }
       ]}>
-        <Avatar
-          user={profile.displayName}
-          size="sm"
-          avatarType={profile.avatar?.type}
-          avatarSeed={profile.avatar?.seed}
-          avatarUrl={profile.avatar?.url}
-          backgroundColor={profile.avatar?.color}
-        />
+        {/* Inner content with no shadows */}
+        <View style={tw`w-7 h-7 rounded-full border-2 border-white overflow-hidden`}>
+          <Avatar
+            user={profile.displayName}
+            size="sm"
+            avatarType={profile.avatar?.type}
+            avatarSeed={profile.avatar?.seed}
+            avatarUrl={profile.avatar?.url}
+            backgroundColor={profile.avatar?.color}
+            // Remove shadow props from Avatar
+          />
+        </View>
       </View>
     );
   };

@@ -24,9 +24,8 @@ export default function MapScreen() {
   const floatAnim = useRef(new Animated.Value(0)).current;
   
   // Navigate to members
-  const navigateToMembers = () => {
-    navigation.navigate('GroupMembers');
-  };
+const navigateToMembers = () => {
+};
 
   // Handle notify me action
   const handleNotifyMe = () => {
@@ -56,7 +55,7 @@ export default function MapScreen() {
 
   return (
     <SafeAreaView style={tw`flex-1 bg-light`}>
-      <GroopHeader minimal={true} onPressMembers={navigateToMembers} />
+      <GroopHeader minimal={true} />
       
       <View style={tw`flex-1 items-center justify-center px-6`}>
         {/* Simplified map illustration with floating avatars */}

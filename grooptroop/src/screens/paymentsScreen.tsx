@@ -30,11 +30,8 @@ export default function PaymentsScreen() {
   const [selectedPaymentItem, setSelectedPaymentItem] = useState<PaymentItem | null>(null);
   const navigation = useNavigation(); 
 
-    const navigateToMembers = () => {
-    if (currentGroop?.id) {
-      navigation.navigate('GroupMembers', { groopId: currentGroop.id });
-    }
-  };
+const navigateToMembers = () => {
+};
 
   // Fetch payment data
   const fetchPayments = async () => {
@@ -230,9 +227,7 @@ export default function PaymentsScreen() {
         minimal={true} 
         showMembers={true}
         isChatScreen={false}
-        isItineraryScreen={false}
-        onPressMembers={navigateToMembers}
-/>
+        isItineraryScreen={false}/>
       
       <FlatList
         data={paymentItems}

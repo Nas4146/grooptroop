@@ -399,3 +399,20 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 };
+
+// In your AuthProvider or wherever profile data is loaded
+const fetchUserProfile = async (uid: string) => {
+  const userDoc = await getDoc(doc(db, 'users', uid));
+  if (userDoc.exists()) {
+    const userData = userDoc.data();
+    return {
+      uid,
+      displayName: userData.displayName,
+      email: userData.email,
+      // Make sure avatar is included here
+      avatar: userData.avatar,
+      // Other fields...
+    };
+  }
+  return null;
+};

@@ -173,7 +173,7 @@ export class ChatService {
   }
 
   // Send message to a specific groop
-  static async sendMessage(groopId: string, message: {
+  static async sendMessage(groopId: string, messageData: {
     text: string;
     senderId: string;
     senderName: string;
@@ -183,14 +183,14 @@ export class ChatService {
   }) {
     try {
       console.log(`[CHAT] Sending message to groop: ${groopId}`);
-      console.log(`[CHAT] Message sender: ${message.senderName} (${message.senderId})`);
-      console.log(`[CHAT] Avatar data included:`, message.senderAvatar ? `${message.senderAvatar.type} avatar` : 'no avatar');
+      console.log(`[CHAT] Message sender: ${messageData.senderName} (${messageData.senderId})`);
+      console.log(`[CHAT] Avatar data included:`, messageData.senderAvatar ? `${messageData.senderAvatar.type} avatar` : 'no avatar');
       
       // First verify that the groop exists
       const groopRef = doc(db, 'groops', groopId);
       const groopSnap = await getDoc(groopRef);
   
-      let encryptedText = message.text;
+      let encryptedText = messageData.text;
       let isEncrypted = false;
       
       // If encryption is enabled, encrypt the message
@@ -203,7 +203,7 @@ export class ChatService {
           const hasKey = await EncryptionService.hasGroopKey(groopId);
           console.log(`[CHAT] Group key exists: ${hasKey}`);
           
-          const encrypted = await EncryptionService.encryptMessage(message.text, groopId);
+          const encrypted = await EncryptionService.encryptMessage(messageData.text, groopId);
           if (encrypted) {
             encryptedText = encrypted;
             isEncrypted = true;
@@ -212,7 +212,7 @@ export class ChatService {
             console.warn('[CHAT] Failed to encrypt message, sending in plaintext');
             // If possible, try to regenerate the key
             console.log('[CHAT] Attempting to initialize encryption again');
-            await KeyExchangeService.setupGroopEncryption(groopId, message.senderId);
+            await KeyExchangeService.setupGroopEncryption(groopId, messageData.senderId);
           }
         } catch (error) {
           console.error('[CHAT] Encryption error:', error);
@@ -224,29 +224,29 @@ export class ChatService {
       const messagesRef = collection(db, `groops/${groopId}/messages`);
       
       // Prepare message data with encrypted text
-      const messageData: any = {
+      const messageDocData: any = {
         text: encryptedText,
         isEncrypted: isEncrypted, // Set proper encryption flag
-        senderId: message.senderId,
-        senderName: message.senderName,
+        senderId: messageData.senderId,
+        senderName: messageData.senderName,
         createdAt: serverTimestamp(),
         reactions: {},
-        read: [message.senderId]
+        read: [messageData.senderId]
       };
       
       // Include avatar data if available
-      if (message.senderAvatar) {
-        console.log(`[CHAT] Including avatar of type: ${message.senderAvatar.type}`);
-        messageData.senderAvatar = message.senderAvatar;
+      if (messageData.senderAvatar) {
+        console.log(`[CHAT] Including avatar of type: ${messageData.senderAvatar.type}`);
+        messageDocData.senderAvatar = messageData.senderAvatar;
       }
       
       // Only add these fields if they have values
-      if (message.replyTo) {
-        messageData.replyTo = message.replyTo;
+      if (messageData.replyTo) {
+        messageDocData.replyTo = messageData.replyTo;
         
         // Fetch the original message to get its text and sender
         try {
-          const replyToDoc = await getDoc(doc(messagesRef, message.replyTo));
+          const replyToDoc = await getDoc(doc(messagesRef, messageData.replyTo));
           if (replyToDoc.exists()) {
             const replyToData = replyToDoc.data();
             
@@ -256,25 +256,25 @@ export class ChatService {
               try {
                 // Make sure we're using the correct function name from your EncryptionService
                 const decryptedText = await EncryptionService.decryptMessage(replyToData.text, groopId);
-                messageData.replyToText = decryptedText || "[Encrypted message]";
+                messageDocData.replyToText = decryptedText || "[Encrypted message]";
                 
                 // Add debug logging to verify the reply text is being set
                 console.log(`[CHAT] Decrypted reply text (${decryptedText ? 'success' : 'failed'}): Length ${decryptedText?.length || 0}`);
               } catch (err) {
                 console.error("[CHAT] Error decrypting replied message:", err);
-                messageData.replyToText = "[Encrypted message]";
+                messageDocData.replyToText = "[Encrypted message]";
               }
             } else {
-              messageData.replyToText = replyToData.text;
+              messageDocData.replyToText = replyToData.text;
               console.log(`[CHAT] Setting plain text reply: "${replyToData.text.substring(0, 30)}..."`);
             }
             
-            messageData.replyToSenderName = replyToData.senderName;
+            messageDocData.replyToSenderName = replyToData.senderName;
             
             console.log("[CHAT] Added reply context:", {
-              replyTo: message.replyTo,
-              replyToSenderName: messageData.replyToSenderName,
-              replyToTextLength: messageData.replyToText?.length || 0
+              replyTo: messageData.replyTo,
+              replyToSenderName: messageDocData.replyToSenderName,
+              replyToTextLength: messageDocData.replyToText?.length || 0
             });
           }
         } catch (error) {
@@ -283,24 +283,28 @@ export class ChatService {
         }
       }
       
-      if (message.imageUrl) {
+      if (messageData.imageUrl) {
         // For now, we're not encrypting image URLs
-        messageData.imageUrl = message.imageUrl;
+        messageDocData.imageUrl = messageData.imageUrl;
       }
       
       // Create a new message document
-      const newMessageRef = await addDoc(messagesRef, messageData);
+      const newMessageRef = await addDoc(messagesRef, {
+        // Make sure senderAvatar is included here
+        senderAvatar: messageData.senderAvatar || null,
+        ...messageDocData
+      });
       
       // Update groop's lastActivity field - Use placeholder for preview if encrypted
       await updateDoc(groopRef, {
         lastActivity: serverTimestamp(),
         lastMessage: {
           id: newMessageRef.id,
-          text: isEncrypted ? "🔒 Encrypted message" : message.text.substring(0, 50),
-          senderId: message.senderId,
-          senderName: message.senderName,
+          text: isEncrypted ? "🔒 Encrypted message" : messageData.text.substring(0, 50),
+          senderId: messageData.senderId,
+          senderName: messageData.senderName,
           timestamp: serverTimestamp(),
-          hasImage: !!message.imageUrl,
+          hasImage: !!messageData.imageUrl,
           isEncrypted: isEncrypted
         }
       });
@@ -314,15 +318,15 @@ export class ChatService {
           
           // Don't notify the sender
           const recipientsToNotify = membersToNotify.filter(
-            (memberId: string) => memberId !== message.senderId
+            (memberId: string) => memberId !== messageData.senderId
           );
           
           if (recipientsToNotify.length > 0) {
             await this.sendChatNotification(
               groopId, 
               groopSnap.data()?.name || 'Group Chat',
-              message.senderName,
-              isEncrypted ? "New encrypted message" : message.text,
+              messageData.senderName,
+              isEncrypted ? "New encrypted message" : messageData.text,
               recipientsToNotify,
               newMessageRef.id
             );

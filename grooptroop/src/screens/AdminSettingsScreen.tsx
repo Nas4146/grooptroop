@@ -37,12 +37,8 @@ export default function AdminSettingsScreen() {
   const [generatingLink, setGeneratingLink] = useState(false);
   const [showCopiedToast, setShowCopiedToast] = useState(false);
   
-  // Define navigateToMembers function outside of useEffect
-  const navigateToMembers = () => {
-    if (currentGroop?.id) {
-      navigation.navigate('GroupMembers', { groopId: currentGroop.id });
-    }
-  };
+const navigateToMembers = () => {
+};
   
   useEffect(() => {
     if (!currentGroop || !profile) {
@@ -227,7 +223,6 @@ export default function AdminSettingsScreen() {
         showMembers={true}
         isChatScreen={false}
         isItineraryScreen={false}
-        onPressMembers={navigateToMembers}
       />
       
       {loading ? (

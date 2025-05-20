@@ -446,6 +446,16 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
     
     // Regular message - cast once and use consistently
     const message = item as ChatMessage;
+    
+    // Ensure message has all required fields for the avatar
+    if (__DEV__ && message.senderId === profile?.uid) {
+      // Only log for current user's messages to reduce noise
+      console.log('[CHAT] Sending message with avatar:', 
+        message.senderAvatar ? 
+        `type: ${message.senderAvatar.type}` : 
+        'undefined avatar');
+    }
+    
     return (
       <MessageBubble 
         message={message}
@@ -853,33 +863,22 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
         data={processMessagesWithDateSeparators()}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
-        estimatedItemSize={100} // More accurate estimate based on your message bubble size
+        estimatedItemSize={120} // Slightly increased from 100 to better account for average message size
         contentContainerStyle={tw`px-4 pt-4 pb-2`}
         onRefresh={handleRefresh}
         refreshing={refreshing}
         ListEmptyComponent={<EmptyChat />}
         onScroll={handleScroll}
         scrollEventThrottle={16}
-        onEndReachedThreshold={0.1} // Keep this low for better performance
+        onEndReachedThreshold={0.1}
         onEndReached={() => {
           // Optional: Load older messages if you implement pagination
         }}
-        initialScrollIndex={0} // If you know where to start
-        maintainVisibleContentPosition={{ // Helps maintain position during updates
+        initialScrollIndex={0}
+        maintainVisibleContentPosition={{
           minIndexForVisible: 0,
         }}
-        drawDistance={300} // Controls how far ahead/behind to render
-        overrideItemLayout={(layout, item) => {
-          // Optional: For more precise item sizing
-          if ('type' in item && item.type === 'dateSeparator') {
-            layout.size = 40; // Height of date separator
-          } else {
-            // Estimate message size based on content
-            const message = item as ChatMessage;
-            const estimatedHeight = 70 + (message.text.length / 50) * 20; // Base height + text length adjustment
-            layout.size = Math.min(estimatedHeight, 250); // Cap the height
-          }
-        }}
+        drawDistance={300}
       />
 
       {showScrollButton && (

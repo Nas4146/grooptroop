@@ -174,6 +174,44 @@ function MessageBubble({
     }, 2000);
   };
 
+  // Update the avatar rendering in MessageBubble
+  const renderAvatar = useCallback(() => {
+    // If there's no sender name, provide a fallback
+    const senderName = message.senderName || 'User';
+    
+    // Log the render operation
+    if (__DEV__) {
+      console.log(`[MESSAGE] Rendering avatar for ${senderName} type: ${message.senderAvatar?.type || 'undefined'}`);
+    }
+    
+    // Create a visible container with proper dimensions and position
+    return (
+      <View 
+        style={tw`absolute ${isFromCurrentUser ? 'right-0 mr-1' : 'left-0 ml-1'} bottom-0`}
+      >
+        <View style={[
+          tw`rounded-full overflow-hidden`,
+          { 
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.1,
+            shadowRadius: 1,
+            elevation: 1,
+            backgroundColor: 'white'
+          }
+        ]}>
+          <View style={{width: 32, height: 32, borderRadius: 16, overflow: 'hidden'}}>
+            <Avatar 
+              displayName={senderName}
+              size={32}
+              avatar={message.senderAvatar}
+            />
+          </View>
+        </View>
+      </View>
+    );
+  }, [message.senderAvatar, message.senderName, isFromCurrentUser]);
+
   return (
     <View style={tw`mb-3 ${isFromCurrentUser ? 'items-end' : 'items-start'}`}>
       {/* Sender name for messages from others */}
@@ -182,58 +220,28 @@ function MessageBubble({
       )}
       
       <View style={tw`flex-row items-end`}>
-        {/* Avatar for other users */}
-        {!isFromCurrentUser && (
-          <View style={tw`mr-2`}>
-            <Avatar
-              avatar={message.senderAvatar}
-              displayName={message.senderName}
-              size={36}
-              style={tw`shadow-sm`}
-            />
-          </View>
-        )}
+        {/* Avatar for other users' messages only */}
+        {!isFromCurrentUser && renderAvatar()}
         
-        {/* Message bubble */}
+        {/* Message bubble with proper margin for avatar - ADD LONG PRESS HERE */}
         <TouchableOpacity
-  style={[
-    tw`max-w-[80%] rounded-2xl p-3`,
-    isFromCurrentUser ? 
-      tw`bg-primary rounded-tr-none` : 
-      tw`bg-gray-200 rounded-tl-none shadow-sm`
-  ]}
-  onLongPress={() => {
-    // Add haptic feedback on long press
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setShowReactions(true);
-  }}
-  delayLongPress={200} // This makes sure it's intentional
-  activeOpacity={0.9}
->
-  {/* Optional: Add a subtle gradient or pattern for Gen Z appeal */}
-  {isFromCurrentUser && (
-    <View style={tw`absolute inset-0 rounded-2xl overflow-hidden opacity-10`}>
-      {/* You can add gradient or pattern image here */}
-    </View>
-  )}
-          {/* Reply reference */}
+          style={[
+            tw`rounded-2xl p-3 ${isFromCurrentUser ? 'bg-primary rounded-tr-none' : 'bg-gray-200 rounded-tl-none ml-10'}`,
+            { maxWidth: '80%' }
+          ]}
+          onLongPress={() => {
+            // Add haptic feedback
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            // Show reaction selector
+            setShowReactions(true);
+          }}
+          delayLongPress={200} // Make it respond more quickly
+        >
+          {/* Reply content if exists */}
           {message.replyTo && (
-            <View style={tw`bg-black bg-opacity-5 rounded-lg p-2 mb-2 border-l-2 ${isFromCurrentUser ? 'border-white' : 'border-primary'}`}>
-              <Text 
-                style={tw`text-xs ${isFromCurrentUser ? 'text-gray-100' : 'text-gray-600'}`}
-                numberOfLines={1}
-              >
-                {message.replyToSenderName || 'message'}
-              </Text>
-              {message.replyToText && (
-                <Text 
-                  style={tw`text-xs ${isFromCurrentUser ? 'text-gray-200' : 'text-gray-700'}`}
-                  numberOfLines={2}
-                  ellipsizeMode="tail"
-                >
-                  {message.replyToText}
-                </Text>
-              )}
+            <View style={tw`bg-gray-100 p-2 rounded-lg mb-2 opacity-80`}>
+              <Text style={tw`text-xs text-gray-500`}>{message.replyToName}</Text>
+              <Text style={tw`text-sm`} numberOfLines={1}>{message.replyToText}</Text>
             </View>
           )}
           
@@ -242,24 +250,19 @@ function MessageBubble({
             {message.text}
           </Text>
           
-          {/* Image if present */}
+          {/* Image if exists */}
           {message.imageUrl && (
             <Image 
               source={{ uri: message.imageUrl }} 
-              style={tw`w-full h-40 rounded-lg mt-2`}
+              style={tw`w-full h-40 mt-2 rounded-lg`}
               resizeMode="cover"
             />
           )}
           
-          {/* Time and encryption indicator */}
-          <View style={tw`flex-row items-center justify-end mt-1`}>
-            {renderEncryptionIndicator()}
-            <Text 
-              style={tw`text-xs ${isFromCurrentUser ? 'text-gray-200' : 'text-gray-500'}`}
-            >
-              {formatTime(message.createdAt)}
-            </Text>
-          </View>
+          {/* Timestamp */}
+          <Text style={tw`text-xs ${isFromCurrentUser ? 'text-white opacity-70' : 'text-gray-500'} mt-1 text-right`}>
+            {formatTime(message.createdAt)}
+          </Text>
         </TouchableOpacity>
       </View>
       
@@ -270,10 +273,7 @@ function MessageBubble({
             <TouchableOpacity
               key={emoji}
               style={tw`bg-white border border-gray-200 rounded-full px-2 py-0.5 mr-1 flex-row items-center shadow-sm`}
-              onPress={() => {
-                console.log(`[CHAT] Pressed existing reaction: ${emoji}`);
-                onReactionPress(message.id, emoji);
-              }}
+              onPress={() => onReactionPress(message.id, emoji)}
             >
               <Text style={tw`mr-1`}>{emoji}</Text>
               <Text style={tw`text-xs text-gray-600`}>{count}</Text>

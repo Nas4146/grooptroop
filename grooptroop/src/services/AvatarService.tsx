@@ -90,8 +90,38 @@ export const STYLE_PARAMETERS = {
   }
 };
 
+// Fix the export syntax by properly separating class methods from standalone exports
+
+// Add these standalone functions at the top of the file, before the class definition
+export const generateColorFromName = (name: string): string => {
+  if (!name) return AVATAR_COLORS[0];
+  
+  // Simple hash function to get consistent colors
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  
+  // Use the hash to pick a color from your array
+  const index = Math.abs(hash) % AVATAR_COLORS.length;
+  return AVATAR_COLORS[index];
+};
+
+export const getInitials = (name: string): string => {
+  if (!name) return '?';
+  
+  return name
+    .split(' ')
+    .map(word => word[0])
+    .join('')
+    .toUpperCase()
+    .substring(0, 2);
+};
+
+// Then update the AvatarService class to use these functions instead of having them at the end
+
 export class AvatarService {
-  // Get initials from a display name
+  // Use the standalone functions inside the class methods
   static getInitials(name: string | undefined | null): string {
     console.log('[AVATAR] Getting initials for name:', name);
     
@@ -100,13 +130,7 @@ export class AvatarService {
       return '?';
     }
     
-    const initials = name
-      .split(' ')
-      .map(n => n[0])
-      .join('')
-      .toUpperCase()
-      .substring(0, 2);
-      
+    const initials = getInitials(name);
     console.log('[AVATAR] Generated initials:', initials);
     return initials;
   }
