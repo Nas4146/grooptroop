@@ -24,6 +24,8 @@ function MessageBubble({
   onReplyPress
 }: MessageBubbleProps) {
   const [showReactions, setShowReactions] = useState(false);
+  // Local state to track pending reactions
+  const [pendingReactions, setPendingReactions] = useState<string[]>([]);
   
   // Memoize expensive operations
   const reactionCounts = useMemo(() => {
@@ -40,8 +42,30 @@ function MessageBubble({
     return counts;
   }, [message.reactions]);
 
-  // Memoize the hasReactions calculation
+  // Check if there are any reactions
   const hasReactions = useMemo(() => {
+    return Object.keys(reactionCounts).length > 0;
+  }, [reactionCounts]);
+
+  // Handle when user selects a reaction - this is the key fix
+  const handleReactionSelect = useCallback((emoji: string) => {
+    // Close reaction panel
+    setShowReactions(false);
+    
+    // Add to pending reactions for immediate feedback
+    setPendingReactions(prev => [...prev, emoji]);
+    
+    // Call the actual reaction handler
+    onReactionPress(message.id, emoji);
+    
+    // Remove from pending after a short delay
+    setTimeout(() => {
+      setPendingReactions(prev => prev.filter(e => e !== emoji));
+    }, 2000);
+  }, [message.id, onReactionPress]);
+  
+  // Memoize the hasReactions calculation
+  const hasReactionsMemo = useMemo(() => {
     return Object.keys(reactionCounts).length > 0;
   }, [reactionCounts]);
 
@@ -64,12 +88,12 @@ function MessageBubble({
 });
 
   // Check if current user has reacted with this emoji
-  const hasUserReacted = (emoji: string) => {
+  const hasUserReacted = useCallback((emoji: string) => {
     return message.reactions && 
            message.reactions[emoji] && 
            Array.isArray(message.reactions[emoji]) && 
            message.reactions[emoji].includes(message.senderId);
-  };
+  }, [message.reactions, message.senderId]);
   
   // Render encryption indicator based on message status
   const renderEncryptionIndicator = () => {
@@ -124,7 +148,32 @@ function MessageBubble({
   
   console.log(`[MESSAGE] Rendering message from ${message.senderName}, avatar:`, 
     message.senderAvatar ? `${message.senderAvatar.type} avatar` : 'no avatar');
+    
+  // For debugging reactions
+  useEffect(() => {
+    if (__DEV__) {
+      console.log(`[CHAT_REACTIONS] Message ${message.id.slice(0, 6)}: `, 
+        message.reactions ? 
+          `Has ${Object.keys(message.reactions).length} reaction types` :
+          'No reactions'
+      );
+    }
+  }, [message.id, message.reactions]);
   
+  // Add this function to handle reaction taps with local feedback
+  const handleReactionPress = (emoji: string) => {
+    // Add to pending reactions for immediate visual feedback
+    setPendingReactions(prev => [...prev, emoji]);
+    
+    // Call the actual handler
+    onReactionPress(message.id, emoji);
+    
+    // Remove from pending after a timeout (optimize UX)
+    setTimeout(() => {
+      setPendingReactions(prev => prev.filter(e => e !== emoji));
+    }, 2000);
+  };
+
   return (
     <View style={tw`mb-3 ${isFromCurrentUser ? 'items-end' : 'items-start'}`}>
       {/* Sender name for messages from others */}
@@ -221,7 +270,10 @@ function MessageBubble({
             <TouchableOpacity
               key={emoji}
               style={tw`bg-white border border-gray-200 rounded-full px-2 py-0.5 mr-1 flex-row items-center shadow-sm`}
-              onPress={() => onReactionPress(message.id, emoji)}
+              onPress={() => {
+                console.log(`[CHAT] Pressed existing reaction: ${emoji}`);
+                onReactionPress(message.id, emoji);
+              }}
             >
               <Text style={tw`mr-1`}>{emoji}</Text>
               <Text style={tw`text-xs text-gray-600`}>{count}</Text>
@@ -242,12 +294,7 @@ function MessageBubble({
               <TouchableOpacity
                 key={emoji}
                 style={tw`p-1.5 ${hasUserReacted(emoji) ? 'bg-gray-100 rounded-full' : ''}`}
-                onPress={() => {
-                  // Add haptic feedback when selecting a reaction
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  onReactionPress(message.id, emoji);
-                  setShowReactions(false);
-                }}
+                onPress={() => handleReactionPress(emoji)}
               >
                 <Text style={tw`text-lg`}>{emoji}</Text>
               </TouchableOpacity>
@@ -290,9 +337,14 @@ function MessageBubble({
 
 // Then export a memoized version with custom comparison function
 export default memo(MessageBubble, (prevProps, nextProps) => {
-  // Simplified comparison - only check message ID and minimal props
+  // Only re-render if these props change
+  const prevReactionsString = JSON.stringify(prevProps.message.reactions || {});
+  const nextReactionsString = JSON.stringify(nextProps.message.reactions || {});
+
   return (
     prevProps.message.id === nextProps.message.id &&
+    prevProps.message.text === nextProps.message.text &&
+    prevReactionsString === nextReactionsString &&
     prevProps.isFromCurrentUser === nextProps.isFromCurrentUser
   );
 });

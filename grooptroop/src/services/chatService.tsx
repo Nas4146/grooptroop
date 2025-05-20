@@ -412,7 +412,7 @@ export class ChatService {
     userId: string
   ) {
     try {
-      console.log(`[CHAT] Adding reaction ${emoji} to message ${messageId}`);
+      console.log(`[CHAT] Adding reaction ${emoji} to message ${messageId} in groop ${groopId}`);
       
       const messageRef = doc(db, `groops/${groopId}/messages`, messageId);
       
@@ -425,7 +425,7 @@ export class ChatService {
       return true;
     } catch (error) {
       console.error("[CHAT] Error adding reaction:", error);
-      return false;
+      throw error; // Re-throw so the caller can handle it
     }
   }
   
@@ -552,6 +552,7 @@ export class ChatService {
       for (const doc of snapshot.docs) {
         const data = doc.data();
         let messageText = data.text || '';
+        let isDecrypted = false;
         
         // Decrypt if encrypted
         if (data.isEncrypted) {
@@ -559,16 +560,19 @@ export class ChatService {
             const decryptedText = await EncryptionService.decryptMessage(messageText, groopId);
             if (decryptedText) {
               messageText = decryptedText;
+              isDecrypted = true;
             } else {
-              messageText = "[Cannot decrypt]";
+              messageText = "[Cannot decrypt - missing key]";
+              isDecrypted = false;
             }
           } catch (error) {
             console.error('[CHAT] Error decrypting message during search:', error);
             messageText = "[Decryption error]";
+            isDecrypted = false;
           }
         }
         
-        // Add to results only if it contains the search text
+        // Check if the message contains the search text
         if (messageText.toLowerCase().includes(searchText.toLowerCase())) {
           messages.push({
             id: doc.id,
@@ -576,20 +580,24 @@ export class ChatService {
             senderId: data.senderId,
             senderName: data.senderName,
             senderAvatar: data.senderAvatar,
-            createdAt: data.createdAt,
+            createdAt: data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt),
             reactions: data.reactions || {},
             replyTo: data.replyTo,
+            replyToText: data.replyToText,
+            replyToSenderName: data.replyToSenderName,
             imageUrl: data.imageUrl,
             read: data.read || [],
             isEncrypted: data.isEncrypted || false,
+            isDecrypted: data.isEncrypted ? isDecrypted : null,
             attachments: data.attachments || []
           });
         }
       }
-      
+
+      console.log(`[CHAT] Search found ${messages.length} matching messages`);
       return messages;
     } catch (error) {
-      console.error("[CHAT] Error searching messages:", error);
+      console.error('[CHAT] Error searching messages:', error);
       return [];
     }
   }

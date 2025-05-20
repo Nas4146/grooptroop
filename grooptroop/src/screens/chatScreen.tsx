@@ -373,8 +373,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
   const handleReaction = useCallback((messageId: string, emoji: string) => {
     if (!profile || !currentGroop) return;
     
-    // Get current scroll position before adding reaction
-    const currentScrollOffset = scrollOffsetRef.current;
+    console.log(`[CHAT] Adding reaction ${emoji} to message ${messageId}`);
     
     // Set flag to prevent auto-scroll
     hasRecentReaction.current = true;
@@ -385,24 +384,16 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
       messageId, 
       emoji, 
       profile.uid
-    ).catch(err => console.error('[CHAT] Error adding reaction:', err));
-    
-    // Maintain scroll position
-    if (flashListRef.current) {
-      setTimeout(() => {
-        if (flashListRef.current && hasRecentReaction.current) {
-          flashListRef.current.scrollToOffset({
-            offset: currentScrollOffset,
-            animated: false
-          });
-          
-          setTimeout(() => {
-            hasRecentReaction.current = false;
-          }, 300);
-        }
-      }, 10);
-    }
-  }, [/* Only include essential dependencies */]);
+    )
+    .then(() => {
+      console.log(`[CHAT] Successfully added reaction ${emoji}`);
+    })
+    .catch(err => {
+      console.error('[CHAT] Error adding reaction:', err);
+      // Show an error toast
+      Alert.alert('Error', 'Failed to add reaction');
+    });
+  }, [profile, currentGroop]);
 
   // 3. Handle reply with no dependencies
   const handleReply = useCallback((message: ChatMessage) => {
