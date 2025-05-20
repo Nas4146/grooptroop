@@ -1,5 +1,6 @@
 import './src/utils/cryptoPolyfill';
 import React, { useEffect } from 'react';
+import { Platform } from 'react-native';
 import 'react-native-gesture-handler';
 import './src/styles/global.css';
 import { AuthProvider, useAuth } from './src/contexts/AuthProvider';
@@ -11,109 +12,65 @@ import { View, Text, ActivityIndicator } from 'react-native';
 import tw from './src/utils/tw';
 import { GroopProvider } from './src/contexts/GroopProvider';
 import { NotificationProvider } from './src/contexts/NotificationProvider';
-import { SimplePerformance } from './src/utils/simplePerformance';
-import { useComponentPerformance } from './src/utils/usePerformance';
-import { setupAppMonitoring } from './src/utils/appPerformanceMonitor';
-import { NetworkMonitor } from './src/utils/networkMonitor';
-import { SentryPerformance, Sentry } from './src/utils/sentryPerformance';
+import { SentryService, usePerformance } from './src/utils/sentryService';
+import * as Sentry from '@sentry/react-native';
 
 // Import the root navigator
 import RootNavigator from './src/navigation/RootNavigator';
 
-// Initialize Sentry early in the application lifecycle
-SentryPerformance.initialize('YOUR_SENTRY_DSN'); // Replace with your Sentry DSN
+// Initialize Sentry at the very beginning of your app
+Sentry.init({
+  dsn: 'YOUR_SENTRY_DSN', 
+  enableAutoSessionTracking: true,
+  tracesSampleRate: __DEV__ ? 1.0 : 0.2,
+  enableAutoPerformanceTracing: true,
+  attachStacktrace: true,
+  environment: __DEV__ ? 'development' : 'production'
+});
 
-// Start app load trace at the top level
-const appLoadTraceId = SimplePerformance.startTrace('app_load');
-const appStartTransaction = SentryPerformance.startTransaction('app.startup', 'app.lifecycle');
+// Tell SentryService that we've already initialized Sentry
+SentryService.markAsInitialized();
 
 // Main app content with navigation
 const AppContent = () => {
-  const { isAuthenticated, isLoading, user } = useAuth();
-  const perf = useComponentPerformance('AppContent');
+  // Update this line to include profile
+  const { isAuthenticated, isLoading, user, profile } = useAuth();
+  const perf = usePerformance('AppContent');
   const navigationRef = useNavigationContainerRef();
   
-  // Add this to use the app monitoring
   useEffect(() => {
-    // Initialize app-wide performance monitoring
-    setupAppMonitoring(navigationRef);
+    // Set up navigation tracking
+    const unsubscribeNav = SentryService.configureNavigation(navigationRef);
+    // Set up network monitoring
+    SentryService.setupNetworkMonitoring();
     
-    // Initialize network monitoring
-    NetworkMonitor.initializeFetchMonitoring();
-    
-    // Track screen views in Sentry
-    if (navigationRef.current) {
-      const trackedRoutes = new Set<string>();
-      
-      navigationRef.addListener('state', () => {
-        const currentRouteName = navigationRef.getCurrentRoute()?.name;
-        
-        if (currentRouteName && !trackedRoutes.has(currentRouteName)) {
-          trackedRoutes.add(currentRouteName);
-          
-          // Track first view of each unique screen
-          const screenLoadSpan = Sentry.startTransaction({
-            name: `screen.${currentRouteName}.load`,
-            op: 'navigation'
-          });
-          
-          // Finish the span after the screen should be rendered
-          setTimeout(() => {
-            screenLoadSpan.finish();
-          }, 1000);
-          
-          SentryPerformance.trackScreenView(currentRouteName);
-        }
+    // Set user context in Sentry if authenticated
+    if (!isLoading && isAuthenticated && user) {
+      SentryService.setUser({
+        id: user.uid,
+        username: user.displayName || undefined,
+        email: user.email || undefined
       });
+      
+      // Now profile is properly defined
+      if (profile) {
+        SentryService.setTag('user.hasCompletedOnboarding', String(profile.hasCompletedOnboarding || false));
+        SentryService.setTag('user.isAdmin', String(profile.isAdmin || false));
+      }
     }
     
-    // Return cleanup function
+    // Track memory usage periodically
+    const memoryInterval = setInterval(() => {
+      // Use type assertion to avoid TypeScript error
+      const jsHeapSize = (global.performance as any)?.memory?.usedJSHeapSize;
+      SentryService.trackMemoryUsage(jsHeapSize);
+    }, 60000); // Check every minute
+    
     return () => {
-      if (navigationRef.current) {
-        // Clean up listeners if needed
-      }
+      unsubscribeNav();
+      clearInterval(memoryInterval);
     };
-  }, [navigationRef]);
-  
-  // Track when app is fully mounted and ready
-  useEffect(() => {
-    if (!isLoading) {
-      SimplePerformance.logEvent('app', `App mounted ${isAuthenticated ? 'authenticated' : 'unauthenticated'}`);
-      
-      // End the app load trace
-      SimplePerformance.endTrace(appLoadTraceId);
-      
-      // Finish the app start transaction
-      appStartTransaction.finish();
-      
-      // Set user context in Sentry if authenticated
-      if (isAuthenticated && user) {
-        SentryPerformance.setUser({
-          id: user.id,
-          username: user.username || undefined,
-          email: user.email || undefined
-        });
-        
-        // Add user properties as tags
-        Sentry.setTag('user.hasCompletedOnboarding', String(user.hasCompletedOnboarding || false));
-        Sentry.setTag('user.isAdmin', String(user.isAdmin || false));
-      }
-      
-      // Track memory usage periodically
-      const memoryInterval = setInterval(() => {
-        // This is a simple placeholder. In a real app, you would use
-        // a proper way to measure memory usage
-        SentryPerformance.trackMemoryUsage({
-          jsHeapSize: global.performance?.memory?.usedJSHeapSize,
-          nativeMemoryUsage: undefined
-        });
-      }, 60000); // Check every minute
-      
-      return () => {
-        clearInterval(memoryInterval);
-      };
-    }
-  }, [isLoading, isAuthenticated, user]);
+  }, [isLoading, isAuthenticated, user, profile, navigationRef]);
   
   console.log('[APP] AppContent rendering. Auth status:', isAuthenticated ? 'logged in' : 'not logged in');
   
@@ -131,30 +88,10 @@ const AppContent = () => {
     <NavigationContainer
       ref={navigationRef}
       onReady={() => {
-        const timestamp = new Date().toLocaleTimeString();
-        console.log(`[APP ${timestamp}] Navigation container is ready`);
-        // End the app load trace when navigation is ready
-        SimplePerformance.endTrace(appLoadTraceId);
-        
-        // Track navigation initialization in Sentry
-        Sentry.addBreadcrumb({
-          category: 'navigation',
-          message: 'Navigation container ready',
-          level: 'info'
-        });
-      }}
-      onStateChange={(state) => {
-        const timestamp = new Date().toLocaleTimeString();
-        const currentRouteName = navigationRef.getCurrentRoute()?.name;
-        console.log(`[APP ${timestamp}] Navigation state changed, current route: ${currentRouteName}`);
-        
-        // Track screen transitions
-        SentryPerformance.trackUIAction('screenTransition', {
-          toScreen: currentRouteName
-        });
+        SentryService.logEvent('navigation', 'Navigation container ready');
       }}
     >
-      <RootNavigator isAuthenticated={isAuthenticated} />
+      <RootNavigator />
       <StatusBar style="auto" />
     </NavigationContainer>
   );
@@ -162,8 +99,7 @@ const AppContent = () => {
 
 // Main App component
 export default function App() {
-  // Track app startup time
-  useComponentPerformance('App');
+  const perf = usePerformance('App');
   
   return (
     <GestureHandlerRootView style={tw`flex-1`}>

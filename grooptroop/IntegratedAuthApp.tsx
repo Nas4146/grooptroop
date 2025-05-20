@@ -17,6 +17,13 @@ import TestAdminSettingsModal from './src/screens/TestAdminSettingsModal';
 // Import your actual SimpleLoginScreen
 import SimpleLoginScreen from './src/screens/SimpleLoginScreen';
 
+// Import Sentry and your Sentry service
+import * as Sentry from '@sentry/react-native';
+import { SentryService } from './src/utils/sentryService';
+
+// Ensure Sentry is initialized before any other imports that might use it
+SentryService.initialize('YOUR_SENTRY_DSN');
+
 // Enhanced logging function with component names for better tracing
 const log = (message: string, data?: any) => {
   const timestamp = new Date().toLocaleTimeString();

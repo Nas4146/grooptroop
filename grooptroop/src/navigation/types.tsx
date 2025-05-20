@@ -29,6 +29,10 @@ export type RootStackParamList = {
   GroupMembers: { groopId?: string };
   AdminSettings: undefined;
   DevPerformance: undefined; // No parameters needed for this screen
+  Chat: {
+    chatId: string;
+    // any other params you pass to this screen
+  };
 };
 
 

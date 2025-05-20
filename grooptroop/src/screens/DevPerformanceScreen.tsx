@@ -9,31 +9,52 @@ import {
   ScrollView, 
   TextInput,
   Animated,
-  Dimensions
+  Dimensions,
+  StyleProp,
+  ViewStyle
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { SimplePerformance } from '../utils/simplePerformance';
-import { useComponentPerformance } from '../utils/usePerformance';
+import { SentryService, usePerformance } from '../utils/sentryService';
 import { Ionicons } from '@expo/vector-icons';
 import { MemoryMonitor } from '../utils/memoryMonitor';
 import { FrameRateMonitor } from '../utils/frameRateMonitor';
-import { PerformanceProfiler } from '../utils/performanceProfiles';
-import { NetworkMonitor } from '../utils/networkMonitor';
-import { CPUMonitor } from '../utils/cpuMonitor';
-import { PerformanceExporter } from '../utils/performanceExporter';
-import { UserPerceptionMetrics } from '../utils/userPerceptionMetrics';
+import { 
+  LogEntry,
+  TraceEntry,
+  PerformanceBudgetViolation,
+  ChatPerformanceMetrics
+} from '../utils/monitoringTypes';
+import { CHAT_PERFORMANCE_BUDGETS } from '../utils/chatPerformanceMonitor';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../navigation/types';
+
+// Define the navigation prop type for this screen
+type DevPerformanceScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'DevPerformance'>;
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // Tab content component - Reusable for different tabs
-const TabContent = ({ children, active }) => (
+const TabContent: React.FC<{ 
+  children: React.ReactNode; 
+  active: boolean; 
+}> = ({ children, active }) => (
   <Animated.View style={[styles.tabContent, { display: active ? 'flex' : 'none' }]}>
     {children}
   </Animated.View>
 );
 
 // Collapsible section component
-const CollapsibleSection = ({ title, children, initiallyExpanded = true }) => {
+interface CollapsibleSectionProps {
+  title: string;
+  children: React.ReactNode;
+  initiallyExpanded?: boolean;
+}
+
+const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({ 
+  title, 
+  children, 
+  initiallyExpanded = true 
+}) => {
   const [expanded, setExpanded] = useState(initiallyExpanded);
   const rotateAnim = useState(new Animated.Value(initiallyExpanded ? 1 : 0))[0];
 
@@ -93,86 +114,303 @@ const PerformanceBar = ({ value, max, label, barColor = '#7C3AED' }) => {
   );
 };
 
-// Card component for consistent UI
-const Card = ({ children, style }) => (
+// Define interface for Card props
+interface CardProps {
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>; // Make style optional
+}
+
+// Card component with proper typing
+const Card: React.FC<CardProps> = ({ children, style }) => (
   <View style={[styles.card, style]}>
     {children}
   </View>
 );
 
-export default function DevPerformanceScreen({ navigation }) {
-  useComponentPerformance('DevPerformanceScreen');
+// Add new ChatPerformanceSection component
+const ChatPerformanceSection = () => {
+  const [metrics, setMetrics] = useState<ChatPerformanceMetrics | null>(null);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   
-  // State management
-  const [logs, setLogs] = useState([]);
-  const [traces, setTraces] = useState([]);
+  useEffect(() => {
+    // Poll for chat metrics every second
+    const interval = setInterval(() => {
+      try {
+        // Get chat metrics through SentryService
+        const chatMetrics = SentryService.getChatPerformanceMetrics?.();
+        
+        if (!chatMetrics) {
+          setError('Chat metrics unavailable');
+          return;
+        }
+        
+        if (chatMetrics.isActive) {
+          setMetrics(chatMetrics as ChatPerformanceMetrics);
+          setActiveChatId(chatMetrics.chatId);
+          setError(null);
+        } else if (metrics && !chatMetrics.isActive) {
+          // Chat session ended
+          setMetrics(null);
+        }
+      } catch (e) {
+        setError(`Error getting metrics: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [metrics]);
+  
+  if (!metrics) {
+    return (
+      <Card>
+        <Text style={styles.sectionHeaderText}>Chat Performance</Text>
+        <View style={styles.emptyChatMetrics}>
+          <Text style={styles.infoText}>No active chat session</Text>
+          <Text style={styles.hintText}>
+            Open a chat screen to see real-time metrics
+          </Text>
+        </View>
+      </Card>
+    );
+  }
+  
+  // Calculate performance scores
+  const networkScore = calculatePerformanceScore(
+    metrics.avgNetworkLatency, 
+    CHAT_PERFORMANCE_BUDGETS.MESSAGE_SEND_RTT
+  );
+  
+  const renderScore = calculatePerformanceScore(
+    metrics.slowRenders,
+    5, // 5 slow renders is considered poor
+    true // Invert (less is better)
+  );
+  
+  const frameScore = calculatePerformanceScore(
+    metrics.frameDrops,
+    10, // 10 frame drops is considered poor
+    true // Invert (less is better)
+  );
+  
+  const memoryScore = calculatePerformanceScore(
+    metrics.jsHeapSize / (1024 * 1024),
+    CHAT_PERFORMANCE_BUDGETS.CHAT_MEMORY / (1024 * 1024),
+    true // Invert (less is better)
+  );
+  
+  const overallScore = Math.round((networkScore + renderScore + frameScore + memoryScore) / 4);
+  
+  // Get performance status color
+  const getStatusColor = (score: number): string => {
+    if (score >= 80) return '#10B981'; // Green
+    if (score >= 60) return '#F59E0B'; // Yellow/Orange
+    return '#EF4444'; // Red
+  };
+  
+  return (
+    <Card>
+      <View style={styles.chatHeaderRow}>
+        <Text style={styles.sectionHeaderText}>Chat Performance</Text>
+        <View style={[styles.chatBadge, { backgroundColor: getStatusColor(overallScore) }]}>
+          <Text style={styles.chatScore}>{overallScore}</Text>
+        </View>
+      </View>
+      
+      <Text style={styles.chatId}>
+        Session: {activeChatId ? activeChatId.slice(0, 8) : 'Unknown'}
+      </Text>
+      
+      <View style={styles.chatMetricsGrid}>
+        <View style={styles.chatMetricItem}>
+          <Text style={styles.metricLabel}>Messages Sent</Text>
+          <Text style={styles.metricValue}>{metrics.messagesSent}</Text>
+        </View>
+        <View style={styles.chatMetricItem}>
+          <Text style={styles.metricLabel}>Messages Received</Text>
+          <Text style={styles.metricValue}>{metrics.messagesReceived}</Text>
+        </View>
+        <View style={styles.chatMetricItem}>
+          <Text style={styles.metricLabel}>Avg Network Latency</Text>
+          <Text style={[
+            styles.metricValue, 
+            {color: getStatusColor(networkScore)}
+          ]}>
+            {metrics.avgNetworkLatency.toFixed(1)}ms
+          </Text>
+        </View>
+        <View style={styles.chatMetricItem}>
+          <Text style={styles.metricLabel}>Memory Usage</Text>
+          <Text style={[
+            styles.metricValue,
+            {color: getStatusColor(memoryScore)}
+          ]}>
+            {(metrics.jsHeapSize / (1024 * 1024)).toFixed(1)}MB
+          </Text>
+        </View>
+        <View style={styles.chatMetricItem}>
+          <Text style={styles.metricLabel}>Frame Drops</Text>
+          <Text style={[
+            styles.metricValue,
+            {color: getStatusColor(frameScore)}
+          ]}>
+            {metrics.frameDrops}
+          </Text>
+        </View>
+        <View style={styles.chatMetricItem}>
+          <Text style={styles.metricLabel}>Slow Renders</Text>
+          <Text style={[
+            styles.metricValue,
+            {color: getStatusColor(renderScore)}
+          ]}>
+            {metrics.slowRenders}
+          </Text>
+        </View>
+      </View>
+      
+      <View style={styles.chatSessionTime}>
+        <Ionicons name="time-outline" size={14} color="#6B7280" />
+        <Text style={styles.sessionDuration}>
+          Session duration: {formatDuration(metrics.sessionDuration)}
+        </Text>
+      </View>
+    </Card>
+  );
+};
+
+// Helper function to calculate performance scores (0-100)
+const calculatePerformanceScore = (value, threshold, invert = false) => {
+  let score;
+  if (invert) {
+    // For metrics where lower is better (memory, frame drops, etc)
+    score = 100 - (value / threshold * 100);
+  } else {
+    // For metrics where higher is better
+    score = 100 - (value / threshold * 100);
+  }
+  return Math.max(0, Math.min(100, Math.round(score)));
+};
+
+// Helper function to format duration
+const formatDuration = (seconds) => {
+  if (seconds < 60) return `${seconds.toFixed(0)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}m ${remainingSeconds}s`;
+};
+
+export default function DevPerformanceScreen({ navigation }: { navigation: DevPerformanceScreenNavigationProp }) {
+  const perf = usePerformance('DevPerformanceScreen');
+  
+  // State management with proper types
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [traces, setTraces] = useState<TraceEntry[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [testingInProgress, setTestingInProgress] = useState(false);
   const [isProfileActive, setIsProfileActive] = useState(false);
-  const [currentProfileName, setCurrentProfileName] = useState(null);
-  const [diagnosticResults, setDiagnosticResults] = useState(null);
+  const [currentProfileName, setCurrentProfileName] = useState<string | null>(null);
+  const [diagnosticResults, setDiagnosticResults] = useState<Record<string, any> | null>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   
   // Get performance data
-  const categoryStats = SimplePerformance.getCategoryStats();
-  const traceStats = SimplePerformance.getTraceStats();
-  const budgetViolations = SimplePerformance.getBudgetViolations?.() || [];
+  const getPerformanceStats = useCallback(() => {
+    // Get the performance data from SentryService
+    const budgetViolations: PerformanceBudgetViolation[] = SentryService.getBudgetViolations?.() || [];
+    
+    // Process category and trace stats
+    const categoryStats: Record<string, number> = {};
+    const traceStats: Record<string, number[]> = {};
+    
+    traces.forEach(trace => {
+      // Group by category
+      const category = trace.category || 'unknown';
+      categoryStats[category] = (categoryStats[category] || 0) + 1;
+      
+      // Group durations by name
+      if (trace.name && trace.duration) {
+        if (!traceStats[trace.name]) {
+          traceStats[trace.name] = [];
+        }
+        traceStats[trace.name].push(trace.duration);
+      }
+    });
+    
+    return { categoryStats, traceStats, budgetViolations };
+  }, [traces]);
+  
+  const { categoryStats, traceStats, budgetViolations } = getPerformanceStats();
   
   // Load performance data
   useEffect(() => {
-    const history = SimplePerformance.getHistory();
-    const completedTraces = SimplePerformance.getCompletedTraces()
-      .sort((a, b) => b.startTime - a.startTime);
+    const loadSentryData = async () => {
+      try {
+        // For logs, get breadcrumbs from Sentry
+        const sentryLogs = SentryService.getEventHistory?.() || [];
+        setLogs(sentryLogs);
+        
+        // For traces, get transactions from Sentry
+        const sentryTraces = SentryService.getCompletedTransactions?.() || [];
+        setTraces(sentryTraces);
+      } catch (error) {
+        console.error('Error loading Sentry data:', error);
+      }
+    };
     
-    setLogs(history);
-    setTraces(completedTraces);
-  }, [refreshKey]);
+    loadSentryData();
+    
+    // Add component mounting metrics
+    perf.trackMount();
+    
+    return () => {
+      // Cleanup if needed
+    };
+  }, [refreshKey, perf]);
 
   // Refresh data
   const handleRefresh = useCallback(() => {
     setRefreshKey(prev => prev + 1);
   }, []);
 
-  // Clear data
+  // Clear data - replace with SentryService methods
   const handleClear = useCallback(() => {
-    SimplePerformance.clearHistory();
+    // Clear Sentry event history if you've implemented that
+    SentryService.clearHistory?.();
     setRefreshKey(prev => prev + 1);
   }, []);
   
   // Testing functions (reusing your existing implementations)
   const runSimplePerformanceTest = async () => {
-    // Your existing implementation
     setTestingInProgress(true);
     
     // Clear existing results first
-    SimplePerformance.clearHistory();
+    SentryService.clearHistory?.();
     
     // Test 1: Array operations
-    const arrayTestId = SimplePerformance.startTrace('test_array_operations');
+    const arrayTestTransaction = SentryService.startTransaction('test_array_operations', 'benchmark');
     const largeArray = Array(10000).fill(0).map((_, i) => i);
     const result = largeArray.filter(n => n % 2 === 0).map(n => n * 2).reduce((a, b) => a + b, 0);
-    SimplePerformance.endTrace(arrayTestId);
+    arrayTestTransaction.finish();
     
     // Test 2: String operations
-    const stringTestId = SimplePerformance.startTrace('test_string_operations');
+    const stringTestTransaction = SentryService.startTransaction('test_string_operations', 'benchmark');
     let longString = '';
     for (let i = 0; i < 10000; i++) {
       longString += 'a';
     }
     longString = longString.replace(/a/g, 'b');
-    SimplePerformance.endTrace(stringTestId);
+    stringTestTransaction.finish();
     
     // Test 3: Async operation
-    const asyncTestId = SimplePerformance.startTrace('test_async_operation');
+    const asyncTestTransaction = SentryService.startTransaction('test_async_operation', 'benchmark');
     await new Promise(resolve => setTimeout(resolve, 500));
-    SimplePerformance.endTrace(asyncTestId);
+    asyncTestTransaction.finish();
     
     // Test 4: Multiple quick operations
     for (let i = 0; i < 5; i++) {
-      const quickOpId = SimplePerformance.startTrace(`test_quick_op_${i}`);
+      const quickOpTransaction = SentryService.startTransaction(`test_quick_op_${i}`, 'benchmark');
       // Do something quick
       const dummy = Math.sqrt(i * 1000);
-      SimplePerformance.endTrace(quickOpId);
+      quickOpTransaction.finish();
       // Small delay between operations
       await new Promise(resolve => setTimeout(resolve, 50));
     }
@@ -183,32 +421,38 @@ export default function DevPerformanceScreen({ navigation }) {
   };
   
   const runNetworkPerformanceTest = async () => {
-    // Your existing implementation
     setTestingInProgress(true);
     
     // Clear existing results first
-    SimplePerformance.clearHistory();
+    SentryService.clearHistory?.();
     
     // Test 1: Basic network request
-    const fetchBasicId = SimplePerformance.startTrace('network_basic_fetch', 
-      { type: 'GET', endpoint: 'basic' }, 
-      'network-request');
+    const fetchBasicTransaction = SentryService.startTransaction('network_basic_fetch', 'network.request');
+    fetchBasicTransaction.setTag('endpoint', 'basic');
+    fetchBasicTransaction.setTag('method', 'GET');
     
     try {
       // Use a public API for testing
       const response = await fetch('https://jsonplaceholder.typicode.com/todos/1');
       const data = await response.json();
-      SimplePerformance.logEvent('network', `Fetch basic completed with status ${response.status}`);
+      SentryService.logEvent('network', `Fetch basic completed with status ${response.status}`);
+      fetchBasicTransaction.setData('status', response.status);
+      fetchBasicTransaction.setStatus('ok');
     } catch (error) {
-      SimplePerformance.logEvent('network', `Fetch basic error: ${error.message}`, undefined, true);
+      // Add type guard to safely access error properties
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      SentryService.logEvent('network', `Fetch basic error: ${errorMessage}`, undefined, true);
+      fetchBasicTransaction.setStatus('internal_error');
+      fetchBasicTransaction.setData('error', errorMessage);
     }
     
-    SimplePerformance.endTrace(fetchBasicId);
+    fetchBasicTransaction.finish();
     
     // Test 2: Multiple parallel requests
-    const parallelId = SimplePerformance.startTrace('network_parallel_requests', 
-      { type: 'GET', count: '5' }, 
-      'network-request');
+    const parallelTransaction = SentryService.startTransaction('network_parallel_requests', 'network.request');
+    parallelTransaction.setTag('count', '5');
+    parallelTransaction.setTag('method', 'GET');
     
     try {
       const promises = Array(5).fill(0).map((_, i) => 
@@ -217,28 +461,35 @@ export default function DevPerformanceScreen({ navigation }) {
       );
       
       const results = await Promise.all(promises);
-      SimplePerformance.logEvent('network', `Parallel fetches completed, got ${results.length} results`);
+      SentryService.logEvent('network', `Parallel fetches completed, got ${results.length} results`);
+      parallelTransaction.setData('count', results.length);
+      parallelTransaction.setStatus('ok');
     } catch (error) {
-      SimplePerformance.logEvent('network', `Parallel fetch error: ${error.message}`, undefined, true);
+      // Type guard to check if error is an Error object
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      SentryService.logEvent('network', `Parallel fetch error: ${errorMessage}`, undefined, true);
+      parallelTransaction.setStatus('internal_error');
+      parallelTransaction.setData('error', errorMessage);
     }
     
-    SimplePerformance.endTrace(parallelId);
+    parallelTransaction.finish();
     
     // Test 3: Large payload
-    const largePayloadId = SimplePerformance.startTrace('network_large_payload', 
-      { type: 'GET', endpoint: 'photos' }, 
-      'network-request');
+    const largePayloadTransaction = SentryService.startTransaction('network_large_payload', 'network.request');
+    largePayloadTransaction.setTag('endpoint', 'photos');
+    largePayloadTransaction.setTag('method', 'GET');
     
     try {
       // Fetch a larger dataset
       const response = await fetch('https://jsonplaceholder.typicode.com/photos');
       const photos = await response.json();
-      SimplePerformance.logEvent('network', `Fetched large payload: ${photos.length} items`);
+      SentryService.logEvent('network', `Fetched large payload: ${photos.length} items`);
+      largePayloadTransaction.setData('count', photos.length);
       
       // Test data processing performance
-      const processId = SimplePerformance.startTrace('process_large_payload', 
-        { count: String(photos.length) }, 
-        'data-transform');
+      const processTransaction = largePayloadTransaction.startChild('process_large_payload', 'data.transform');
+      processTransaction.setData('count', photos.length);
       
       // Simulate processing the data
       const processed = photos
@@ -250,12 +501,17 @@ export default function DevPerformanceScreen({ navigation }) {
           dimensions: { width: 150, height: 150 }
         }));
       
-      SimplePerformance.endTrace(processId);
+      processTransaction.finish();
+      largePayloadTransaction.setStatus('ok');
     } catch (error) {
-      SimplePerformance.logEvent('network', `Large payload fetch error: ${error.message}`, undefined, true);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      SentryService.logEvent('network', `Large payload fetch error: ${errorMessage}`, undefined, true);
+      largePayloadTransaction.setStatus('internal_error');
+      largePayloadTransaction.setData('error', errorMessage);
     }
     
-    SimplePerformance.endTrace(largePayloadId);
+    largePayloadTransaction.finish();
     
     // Refresh the data
     handleRefresh();
@@ -263,15 +519,15 @@ export default function DevPerformanceScreen({ navigation }) {
   };
   
   const runMemoryTest = async () => {
-    // Your existing implementation
     setTestingInProgress(true);
     
     // Clear existing results first
-    SimplePerformance.clearHistory();
-    MemoryMonitor.clearSnapshots();
+    SentryService.clearHistory?.();
     
     // Take initial snapshot
-    await MemoryMonitor.takeSnapshot('memory_test_start');
+    const initialMemoryTransaction = SentryService.startTransaction('memory_test_start', 'memory');
+    const initialMemory = await SentryService.trackMemoryUsage();
+    initialMemoryTransaction.finish();
     
     // Allocate some memory to see the difference
     const memoryHog = [];
@@ -284,7 +540,9 @@ export default function DevPerformanceScreen({ navigation }) {
     }
     
     // Take another snapshot after allocation
-    await MemoryMonitor.takeSnapshot('memory_test_after_allocation');
+    const peakMemoryTransaction = SentryService.startTransaction('memory_test_peak', 'memory');
+    const peakMemory = await SentryService.trackMemoryUsage();
+    peakMemoryTransaction.finish();
     
     // Clear the array to free memory
     memoryHog.length = 0;
@@ -295,7 +553,9 @@ export default function DevPerformanceScreen({ navigation }) {
     }
     
     // Take final snapshot
-    await MemoryMonitor.takeSnapshot('memory_test_end');
+    const finalMemoryTransaction = SentryService.startTransaction('memory_test_end', 'memory');
+    const finalMemory = await SentryService.trackMemoryUsage();
+    finalMemoryTransaction.finish();
     
     // Refresh the data
     handleRefresh();
@@ -303,14 +563,13 @@ export default function DevPerformanceScreen({ navigation }) {
   };
   
   const runFrameRateTest = () => {
-    // Your existing implementation
     setTestingInProgress(true);
     
     // Clear existing results first
-    SimplePerformance.clearHistory();
+    SentryService.clearHistory?.();
     
-    // Start monitoring frame rate
-    FrameRateMonitor.startMonitoring('ui_test');
+    // Create frame rate transaction
+    const frameRateTransaction = SentryService.startTransaction('ui_frame_rate_test', 'ui.performance');
     
     // Create some UI load to simulate heavy rendering
     const start = Date.now();
@@ -319,9 +578,12 @@ export default function DevPerformanceScreen({ navigation }) {
       const dummy = Math.random() * 1000;
     }
     
+    // Add metadata to transaction
+    frameRateTransaction.setData('blocked_duration_ms', Date.now() - start);
+    
     // Stop monitoring after 1 second
     setTimeout(() => {
-      FrameRateMonitor.stopMonitoring();
+      frameRateTransaction.finish();
       handleRefresh();
       setTestingInProgress(false);
     }, 1000);
@@ -330,554 +592,311 @@ export default function DevPerformanceScreen({ navigation }) {
   // Calculate stats
   const totalTraces = traces.length;
   const avgTraceDuration = totalTraces > 0 
-    ? Math.round(traces.reduce((sum, t) => sum + t.duration, 0) / totalTraces) 
+    ? Math.round(traces.reduce((sum, t) => sum + (t.duration || 0), 0) / totalTraces) 
     : 0;
   const slowestTrace = totalTraces > 0 
-    ? traces.sort((a, b) => b.duration - a.duration)[0] 
+    ? [...traces].sort((a, b) => (b.duration || 0) - (a.duration || 0))[0] 
     : null;
   
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header with tabs */}
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <TouchableOpacity 
             style={styles.backButton}
             onPress={() => navigation.goBack()}
           >
-            <Ionicons 
-              name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'} 
-              size={20} 
-              color="#7C3AED" 
-            />
+            <Ionicons name="chevron-back" size={24} color="#111827" />
           </TouchableOpacity>
           <Text style={styles.title}>Performance Monitor</Text>
           <View style={styles.headerActions}>
-            <TouchableOpacity 
-              style={styles.iconButton} 
-              onPress={handleRefresh}
-            >
-              <Ionicons name="refresh" size={20} color="#7C3AED" />
+            <TouchableOpacity style={styles.iconButton} onPress={handleRefresh}>
+              <Ionicons name="refresh" size={20} color="#4B5563" />
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.iconButton, {marginLeft: 8}]} 
-              onPress={handleClear}
-            >
-              <Ionicons name="trash-outline" size={20} color="#DC2626" />
+            <TouchableOpacity style={[styles.iconButton, {marginLeft: 8}]} onPress={handleClear}>
+              <Ionicons name="trash-outline" size={20} color="#4B5563" />
             </TouchableOpacity>
           </View>
         </View>
         
-        {/* Tab navigation */}
+        {/* Tab Bar */}
         <View style={styles.tabBar}>
           <TouchableOpacity 
-            style={[styles.tab, activeTab === 'dashboard' && styles.activeTab]}
+            style={[styles.tab, activeTab === 'dashboard' && styles.activeTab]} 
             onPress={() => setActiveTab('dashboard')}
           >
-            <Ionicons 
-              name="speedometer-outline" 
-              size={18} 
-              color={activeTab === 'dashboard' ? "#7C3AED" : "#6B7280"} 
-            />
-            <Text style={[styles.tabText, activeTab === 'dashboard' && styles.activeTabText]}>
-              Dashboard
-            </Text>
+            <Ionicons name="speedometer-outline" size={18} color={activeTab === 'dashboard' ? '#7C3AED' : '#6B7280'} />
+            <Text style={[styles.tabText, activeTab === 'dashboard' && styles.activeTabText]}>Dashboard</Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={[styles.tab, activeTab === 'tests' && styles.activeTab]}
-            onPress={() => setActiveTab('tests')}
-          >
-            <Ionicons 
-              name="flask-outline" 
-              size={18} 
-              color={activeTab === 'tests' ? "#7C3AED" : "#6B7280"} 
-            />
-            <Text style={[styles.tabText, activeTab === 'tests' && styles.activeTabText]}>
-              Tests
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.tab, activeTab === 'traces' && styles.activeTab]}
+            style={[styles.tab, activeTab === 'traces' && styles.activeTab]} 
             onPress={() => setActiveTab('traces')}
           >
-            <Ionicons 
-              name="analytics-outline" 
-              size={18} 
-              color={activeTab === 'traces' ? "#7C3AED" : "#6B7280"} 
-            />
-            <Text style={[styles.tabText, activeTab === 'traces' && styles.activeTabText]}>
-              Traces
-            </Text>
+            <Ionicons name="git-branch-outline" size={18} color={activeTab === 'traces' ? '#7C3AED' : '#6B7280'} />
+            <Text style={[styles.tabText, activeTab === 'traces' && styles.activeTabText]}>Traces</Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={[styles.tab, activeTab === 'logs' && styles.activeTab]}
+            style={[styles.tab, activeTab === 'logs' && styles.activeTab]} 
             onPress={() => setActiveTab('logs')}
           >
-            <Ionicons 
-              name="list-outline" 
-              size={18} 
-              color={activeTab === 'logs' ? "#7C3AED" : "#6B7280"} 
-            />
-            <Text style={[styles.tabText, activeTab === 'logs' && styles.activeTabText]}>
-              Logs
-            </Text>
+            <Ionicons name="list-outline" size={18} color={activeTab === 'logs' ? '#7C3AED' : '#6B7280'} />
+            <Text style={[styles.tabText, activeTab === 'logs' && styles.activeTabText]}>Logs</Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={[styles.tab, activeTab === 'profiles' && styles.activeTab]}
-            onPress={() => setActiveTab('profiles')}
+            style={[styles.tab, activeTab === 'testing' && styles.activeTab]} 
+            onPress={() => setActiveTab('testing')}
           >
-            <Ionicons 
-              name="options-outline" 
-              size={18} 
-              color={activeTab === 'profiles' ? "#7C3AED" : "#6B7280"} 
-            />
-            <Text style={[styles.tabText, activeTab === 'profiles' && styles.activeTabText]}>
-              Profiles
-            </Text>
+            <Ionicons name="flask-outline" size={18} color={activeTab === 'testing' ? '#7C3AED' : '#6B7280'} />
+            <Text style={[styles.tabText, activeTab === 'testing' && styles.activeTabText]}>Testing</Text>
           </TouchableOpacity>
         </View>
       </View>
       
-      {/* Tab Content */}
-      <ScrollView style={styles.content}>
-        {/* Dashboard Tab */}
-        <TabContent active={activeTab === 'dashboard'}>
-          {/* Performance at a glance */}
+      {/* Dashboard tab */}
+      <TabContent active={activeTab === 'dashboard'}>
+        <ScrollView style={styles.content}>
+          {/* Summary card */}
           <Card style={styles.dashboardCard}>
             <View style={styles.dashboardHeader}>
-              <Text style={styles.dashboardTitle}>Performance at a Glance</Text>
-              <View style={styles.dashboardStats}>
-                <View style={styles.stat}>
-                  <Text style={styles.statValue}>{totalTraces}</Text>
-                  <Text style={styles.statLabel}>Operations</Text>
-                </View>
-                <View style={styles.stat}>
-                  <Text style={styles.statValue}>{avgTraceDuration}ms</Text>
-                  <Text style={styles.statLabel}>Average Time</Text>
-                </View>
-                <View style={styles.stat}>
-                  <Text style={styles.statValue}>{budgetViolations.length}</Text>
-                  <Text style={styles.statLabel}>Violations</Text>
-                </View>
+              <Text style={styles.dashboardTitle}>Performance Summary</Text>
+            </View>
+            <View style={styles.dashboardStats}>
+              <View style={styles.stat}>
+                <Text style={styles.statValue}>{totalTraces}</Text>
+                <Text style={styles.statLabel}>Total Traces</Text>
+              </View>
+              <View style={styles.stat}>
+                <Text style={styles.statValue}>{avgTraceDuration}ms</Text>
+                <Text style={styles.statLabel}>Avg Duration</Text>
+              </View>
+              <View style={styles.stat}>
+                <Text style={styles.statValue}>{slowestTrace?.duration || 0}ms</Text>
+                <Text style={styles.statLabel}>Slowest Trace</Text>
               </View>
             </View>
           </Card>
           
-          {/* Budget violations */}
+          {/* Chat Performance Section */}
+          <ChatPerformanceSection />
+          
+          {/* Violations */}
           {budgetViolations.length > 0 && (
-            <CollapsibleSection title={`Performance Budget Violations (${budgetViolations.length})`}>
-              <Card>
-                <FlatList
-                  data={budgetViolations}
-                  keyExtractor={(item, index) => `violation-${index}`}
-                  renderItem={({ item }) => (
-                    <View style={styles.violationItem}>
-                      <View style={styles.violationHeader}>
-                        <Text style={styles.violationName}>{item.name}</Text>
-                        <Text style={styles.violationValue}>
-                          {item.actual}ms / {item.budget}ms
-                        </Text>
-                      </View>
-                      <View style={styles.violationBar}>
-                        <View 
-                          style={[
-                            styles.violationBarBudget, 
-                            { width: `${Math.min(100, (item.budget / item.actual) * 100)}%` }
-                          ]} 
-                        />
-                        <View 
-                          style={[
-                            styles.violationBarExcess, 
-                            { width: `${Math.min(100, Math.max(0, (item.actual - item.budget) / item.actual) * 100)}%` }
-                          ]} 
-                        />
-                      </View>
-                      <View style={styles.violationFooter}>
-                        <Text style={styles.violationCategory}>{item.category}</Text>
-                        <Text style={styles.violationOverage}>
-                          {Math.round((item.actual / item.budget - 1) * 100)}% over budget
-                        </Text>
-                      </View>
-                    </View>
-                  )}
-                  scrollEnabled={false}
-                  nestedScrollEnabled={true}
-                  style={{ maxHeight: 300 }}
-                />
-              </Card>
-            </CollapsibleSection>
-          )}
-          
-          {/* Category stats */}
-          {categoryStats.length > 0 && (
-            <CollapsibleSection title="Performance by Category">
-              <Card>
-                {categoryStats.map(cat => (
-                  <View key={cat.category} style={styles.categoryItem}>
-                    <View style={styles.categoryHeader}>
-                      <Text style={styles.categoryName}>{cat.category}</Text>
-                      <Text style={styles.categoryCount}>{cat.count} operations</Text>
-                    </View>
-                    <PerformanceBar 
-                      value={cat.averageTime} 
-                      max={100}
-                      label={`Avg: ${cat.averageTime}ms`}
-                      barColor={cat.averageTime > 100 ? '#DC2626' : '#10B981'}
+            <Card>
+              <Text style={styles.cardTitle}>Performance Issues</Text>
+              <Text style={styles.cardDescription}>
+                Operations exceeding performance budgets
+              </Text>
+              {budgetViolations.map((v, i) => (
+                <View key={i} style={styles.violationItem}>
+                  <View style={styles.violationHeader}>
+                    <Text style={styles.violationName}>{v.operation}</Text>
+                    <Text style={styles.violationValue}>{v.actual.toFixed(1)}ms</Text>
+                  </View>
+                  <View style={styles.violationBar}>
+                    <View 
+                      style={[
+                        styles.violationBarBudget, 
+                        { width: `${(v.budget / v.actual) * 100}%` }
+                      ]} 
                     />
-                    <Text style={styles.categoryDetail}>
-                      Total: {cat.totalTime}ms
+                    <View 
+                      style={[
+                        styles.violationBarExcess, 
+                        { width: `${100 - (v.budget / v.actual) * 100}%` }
+                      ]} 
+                    />
+                  </View>
+                  <View style={styles.violationFooter}>
+                    <Text style={styles.violationCategory}>{v.category}</Text>
+                    <Text style={styles.violationOverage}>
+                      {Math.round((v.actual / v.budget - 1) * 100)}% over budget
                     </Text>
                   </View>
-                ))}
-              </Card>
-            </CollapsibleSection>
-          )}
-          
-          {/* Operation Stats */}
-          {traceStats.length > 0 && (
-            <CollapsibleSection title="Operation Statistics">
-              <Card>
-                {traceStats.slice(0, 5).map(stat => (
-                  <View key={stat.name} style={styles.statItem}>
-                    <View style={styles.statItemHeader}>
-                      <Text style={styles.statItemName}>{stat.name}</Text>
-                      <Text style={styles.statItemCount}>{stat.count}x</Text>
-                    </View>
-                    <View style={styles.statItemBars}>
-                      <PerformanceBar 
-                        value={stat.averageTime} 
-                        max={Math.max(stat.maxTime, 100)}
-                        label="Avg"
-                        barColor="#3B82F6"
-                      />
-                      <PerformanceBar 
-                        value={stat.minTime} 
-                        max={Math.max(stat.maxTime, 100)}
-                        label="Min"
-                        barColor="#10B981"
-                      />
-                      <PerformanceBar 
-                        value={stat.maxTime} 
-                        max={Math.max(stat.maxTime, 100)}
-                        label="Max"
-                        barColor={stat.maxTime > 100 ? '#DC2626' : '#F59E0B'}
-                      />
-                    </View>
-                  </View>
-                ))}
-                {traceStats.length > 5 && (
-                  <TouchableOpacity 
-                    style={styles.viewMoreButton}
-                    onPress={() => setActiveTab('traces')}
-                  >
-                    <Text style={styles.viewMoreText}>
-                      View {traceStats.length - 5} more operations
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </Card>
-            </CollapsibleSection>
-          )}
-        </TabContent>
-        
-        {/* Tests Tab */}
-        <TabContent active={activeTab === 'tests'}>
-          {/* Performance testing section */}
-          <Card>
-            <CollapsibleSection title="Core Performance Tests">
-              <View style={styles.testButtons}>
-                <TouchableOpacity
-                  style={[
-                    styles.testButton,
-                    testingInProgress && styles.testButtonDisabled
-                  ]}
-                  onPress={runSimplePerformanceTest}
-                  disabled={testingInProgress}
-                >
-                  <Ionicons name="speedometer-outline" size={20} color="white" style={styles.buttonIcon} />
-                  <Text style={styles.testButtonText}>
-                    {testingInProgress ? 'Running...' : 'CPU & Memory Tests'}
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[
-                    styles.testButton,
-                    testingInProgress && styles.testButtonDisabled,
-                    { backgroundColor: '#3B82F6' }
-                  ]}
-                  onPress={runNetworkPerformanceTest}
-                  disabled={testingInProgress}
-                >
-                  <Ionicons name="cloud-outline" size={20} color="white" style={styles.buttonIcon} />
-                  <Text style={styles.testButtonText}>
-                    {testingInProgress ? 'Running...' : 'Network Tests'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </CollapsibleSection>
-            
-            <CollapsibleSection title="Advanced Tests">
-              <View style={styles.testButtons}>
-                <TouchableOpacity
-                  style={[
-                    styles.testButton,
-                    testingInProgress && styles.testButtonDisabled,
-                    { backgroundColor: '#8B5CF6' }
-                  ]}
-                  onPress={runMemoryTest}
-                  disabled={testingInProgress}
-                >
-                  <Ionicons name="hardware-chip-outline" size={20} color="white" style={styles.buttonIcon} />
-                  <Text style={styles.testButtonText}>
-                    {testingInProgress ? 'Running...' : 'Memory Usage Test'}
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[
-                    styles.testButton,
-                    testingInProgress && styles.testButtonDisabled,
-                    { backgroundColor: '#EC4899' }
-                  ]}
-                  onPress={runFrameRateTest}
-                  disabled={testingInProgress}
-                >
-                  <Ionicons name="film-outline" size={20} color="white" style={styles.buttonIcon} />
-                  <Text style={styles.testButtonText}>
-                    {testingInProgress ? 'Running...' : 'Frame Rate Test'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </CollapsibleSection>
-          </Card>
-          
-          {testingInProgress && (
-            <Card style={styles.testingCard}>
-              <View style={styles.testingProgress}>
-                <Text style={styles.testingText}>Running tests...</Text>
-                {/* Add animation indicator here */}
-                <View style={styles.loadingDots}>
-                  <Animated.View style={styles.loadingDot} />
-                  <Animated.View style={[styles.loadingDot, {animationDelay: '0.2s'}]} />
-                  <Animated.View style={[styles.loadingDot, {animationDelay: '0.4s'}]} />
                 </View>
-              </View>
+              ))}
             </Card>
           )}
-        </TabContent>
-        
-        {/* Traces Tab */}
-        <TabContent active={activeTab === 'traces'}>
-          {/* All completed traces */}
-          <Card>
-            <CollapsibleSection title={`Completed Traces (${traces.length})`}>
-              {traces.length > 0 ? (
-                <FlatList
-                  data={traces}
-                  keyExtractor={(item, index) => `trace-${index}`}
-                  renderItem={({ item }) => (
-                    <View style={styles.traceItemDetailed}>
-                      <View style={styles.traceItemDetailedHeader}>
-                        <Text style={styles.traceItemName}>{item.name}</Text>
-                        <View style={styles.traceItemBadge}>
-                          <Text style={styles.traceItemDuration}>{item.duration}ms</Text>
-                        </View>
-                      </View>
-                      {item.metadata && (
-                        <View style={styles.traceItemMetadata}>
-                          <Text style={styles.traceItemCategory}>
-                            Category: {item.metadata.category || 'uncategorized'}
-                          </Text>
-                          {item.metadata.type && (
-                            <Text style={styles.traceItemType}>Type: {item.metadata.type}</Text>
-                          )}
-                        </View>
-                      )}
-                    </View>
-                  )}
-                  scrollEnabled={false}
-                  nestedScrollEnabled={true}
-                  style={{ maxHeight: 500 }}
-                />
-              ) : (
-                <Text style={styles.emptyText}>No traces recorded</Text>
-              )}
-            </CollapsibleSection>
-          </Card>
           
-          {/* Operation Statistics */}
-          {traceStats.length > 0 && (
-            <Card style={{marginTop: 12}}>
-              <CollapsibleSection title="Detailed Operation Statistics">
-                <FlatList
-                  data={traceStats}
-                  keyExtractor={(item) => item.name}
-                  renderItem={({ item }) => (
-                    <View style={styles.traceItem}>
-                      <View style={styles.traceItemHeader}>
-                        <Text style={styles.traceName}>{item.name}</Text>
-                        <Text style={styles.statsValue}>{item.count}x</Text>
-                      </View>
-                      <View style={styles.traceItemBody}>
-                        <Text style={styles.traceTiming}>
-                          Avg: {item.averageTime}ms | Min: {item.minTime}ms | Max: {item.maxTime}ms
-                        </Text>
-                      </View>
-                    </View>
-                  )}
-                  scrollEnabled={false}
-                  nestedScrollEnabled={true}
-                  style={{ maxHeight: 400 }}
-                />
-              </CollapsibleSection>
-            </Card>
-          )}
-        </TabContent>
-        
-        {/* Logs Tab */}
-        <TabContent active={activeTab === 'logs'}>
-          <Card>
-            <CollapsibleSection title={`Performance Logs (${logs.length})`}>
-              {logs.length > 0 ? (
-                <FlatList
-                  data={logs}
-                  keyExtractor={(item, index) => `log-${index}`}
-                  renderItem={({ item, index }) => (
-                    <View style={[
-                      styles.logItem, 
-                      index % 2 === 0 ? styles.logItemEven : styles.logItemOdd,
-                      item.includes('⚠️') && styles.logItemWarning
-                    ]}>
-                      <Text style={[
-                        styles.logText,
-                        item.includes('⚠️') && styles.logTextWarning
-                      ]}>
-                        {item}
-                      </Text>
-                    </View>
-                  )}
-                  scrollEnabled={false}
-                  nestedScrollEnabled={true}
-                  style={{ maxHeight: 500 }}
-                />
-              ) : (
-                <Text style={styles.emptyText}>No logs recorded</Text>
+          {/* More dashboard content */}
+        </ScrollView>
+      </TabContent>
+      
+      {/* Traces tab */}
+      <TabContent active={activeTab === 'traces'}>
+        <View style={styles.content}>
+          {traces.length === 0 ? (
+            <Text style={styles.emptyText}>No trace data available yet</Text>
+          ) : (
+            <FlatList
+              data={traces}
+              keyExtractor={(item, index) => `trace-${index}`}
+              renderItem={({ item }) => (
+                <View style={styles.traceItem}>
+                  <View style={styles.traceItemHeader}>
+                    <Text style={styles.traceName}>{item.name}</Text>
+                    <Text style={[styles.traceItemDuration, { 
+                      color: (item.duration || 0) > 100 ? '#DC2626' : '#111827' 
+                    }]}>
+                      {item.duration}ms
+                    </Text>
+                  </View>
+                  <View style={styles.traceItemBody}>
+                    <Text style={styles.traceTiming}>
+                      {new Date(item.startTime).toLocaleTimeString()}
+                    </Text>
+                  </View>
+                </View>
               )}
-            </CollapsibleSection>
-          </Card>
-        </TabContent>
-        
-        {/* Profiles Tab */}
-        <TabContent active={activeTab === 'profiles'}>
+            />
+          )}
+        </View>
+      </TabContent>
+      
+      {/* Logs tab */}
+      <TabContent active={activeTab === 'logs'}>
+        <View style={styles.content}>
+          {logs.length === 0 ? (
+            <Text style={styles.emptyText}>No logs available yet</Text>
+          ) : (
+            <FlatList
+              data={logs}
+              keyExtractor={(item, index) => `log-${index}`}
+              renderItem={({ item, index }) => (
+                <View style={[
+                  styles.logItem,
+                  index % 2 === 0 ? styles.logItemEven : styles.logItemOdd,
+                  item.level === 'warning' && styles.logItemWarning
+                ]}>
+                  <Text style={[
+                    styles.logText,
+                    item.level === 'warning' && styles.logTextWarning
+                  ]}>
+                    [{new Date(item.timestamp).toLocaleTimeString()}] {item.category}: {item.message}
+                  </Text>
+                </View>
+              )}
+            />
+          )}
+        </View>
+      </TabContent>
+      
+      {/* Testing tab */}
+      <TabContent active={activeTab === 'testing'}>
+        <ScrollView style={styles.content}>
           <Card>
-            <Text style={styles.cardTitle}>Performance Profiling</Text>
+            <Text style={styles.cardTitle}>Performance Tests</Text>
             <Text style={styles.cardDescription}>
-              Create a profile to monitor performance during specific user flows or scenarios.
+              Run tests to measure app performance
             </Text>
             
-            <View style={styles.profileControls}>
-              <TextInput
-                style={styles.profileInput}
-                placeholder="Profile name"
-                value={currentProfileName || ''}
-                onChangeText={setCurrentProfileName}
-                editable={!isProfileActive}
-              />
-              
-              {!isProfileActive ? (
-                <TouchableOpacity
-                  style={[styles.profileButton, !currentProfileName && styles.disabledButton]}
-                  onPress={() => {
-                    if (currentProfileName) {
-                      PerformanceProfiler.startProfile(currentProfileName);
-                      setIsProfileActive(true);
-                    }
-                  }}
-                  disabled={!currentProfileName}
-                >
-                  <Ionicons name="play" size={20} color="white" />
-                  <Text style={styles.profileButtonText}>Start</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={[styles.profileButton, styles.stopButton]}
-                  onPress={() => {
-                    const results = PerformanceProfiler.stopProfile();
-                    console.log(`[PERF] Profile results:`, results);
-                    setIsProfileActive(false);
-                  }}
-                >
-                  <Ionicons name="stop" size={20} color="white" />
-                  <Text style={styles.profileButtonText}>Stop</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            
-            {isProfileActive && (
-              <View style={styles.activeProfileBanner}>
-                <Ionicons name="recording" size={16} color="#DC2626" />
-                <Text style={styles.activeProfileText}>
-                  Recording profile: {currentProfileName}
-                </Text>
-              </View>
-            )}
-            
-            <View style={styles.divider} />
-            
-            <Text style={styles.cardTitle}>Advanced Tools</Text>
-            <View style={styles.advancedTools}>
+            <View style={styles.testButtons}>
               <TouchableOpacity
-                style={styles.advancedToolButton}
-                onPress={async () => {
-                  setTestingInProgress(true);
-                  const results = await PerformanceProfiler.runDiagnostic(
-                    'navigation',
-                    async () => {
-                      // Simulate navigation actions
-                      await new Promise(resolve => setTimeout(resolve, 300));
-                    }
-                  );
-                  setDiagnosticResults(results);
-                  setTestingInProgress(false);
-                }}
+                style={[styles.testButton, testingInProgress && styles.testButtonDisabled]}
+                onPress={runSimplePerformanceTest}
                 disabled={testingInProgress}
               >
-                <Ionicons 
-                  name="navigate-outline" 
-                  size={24} 
-                  color="#059669"
-                  style={styles.advancedToolIcon} 
-                />
-                <Text style={styles.advancedToolName}>Navigation Diagnostic</Text>
-                <Text style={styles.advancedToolDescription}>
-                  Test navigation performance between screens
-                </Text>
+                <Ionicons name="code-outline" size={18} color="white" style={styles.buttonIcon} />
+                <Text style={styles.testButtonText}>Basic JS</Text>
               </TouchableOpacity>
               
               <TouchableOpacity
-                style={styles.advancedToolButton}
-                onPress={() => PerformanceExporter.exportData()}
+                style={[styles.testButton, testingInProgress && styles.testButtonDisabled]}
+                onPress={runNetworkPerformanceTest}
+                disabled={testingInProgress}
               >
-                <Ionicons 
-                  name="share-outline" 
-                  size={24} 
-                  color="#2563EB" 
-                  style={styles.advancedToolIcon}
-                />
-                <Text style={styles.advancedToolName}>Export Performance Data</Text>
-                <Text style={styles.advancedToolDescription}>
-                  Share results for further analysis
-                </Text>
+                <Ionicons name="cloud-outline" size={18} color="white" style={styles.buttonIcon} />
+                <Text style={styles.testButtonText}>Network</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.testButton, testingInProgress && styles.testButtonDisabled]}
+                onPress={runMemoryTest}
+                disabled={testingInProgress}
+              >
+                <Ionicons name="hardware-chip-outline" size={18} color="white" style={styles.buttonIcon} />
+                <Text style={styles.testButtonText}>Memory</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.testButton, testingInProgress && styles.testButtonDisabled]}
+                onPress={runFrameRateTest}
+                disabled={testingInProgress}
+              >
+                <Ionicons name="pulse-outline" size={18} color="white" style={styles.buttonIcon} />
+                <Text style={styles.testButtonText}>UI Thread</Text>
+              </TouchableOpacity>
+            </View>
+            
+            {testingInProgress && (
+              <View style={styles.testingProgress}>
+                <Text style={styles.testingText}>Running tests...</Text>
+                <View style={styles.loadingDots}>
+                  <View style={styles.loadingDot} />
+                  <View style={[styles.loadingDot, { animationDelay: '0.5s' }]} />
+                  <View style={[styles.loadingDot, { animationDelay: '1s' }]} />
+                </View>
+              </View>
+            )}
+          </Card>
+          
+          {/* Advanced Tools */}
+          <Card>
+            <Text style={styles.cardTitle}>Advanced Tools</Text>
+            <View style={styles.advancedTools}>
+              <TouchableOpacity 
+                style={styles.advancedToolButton}
+                onPress={() => {
+                  // Force garbage collection if possible
+                  if (global.gc) {
+                    global.gc();
+                    SentryService.logEvent('memory', 'Manually triggered garbage collection');
+                    handleRefresh();
+                  } else {
+                    SentryService.logEvent('memory', 'Garbage collection unavailable (needs --expose-gc)', undefined, true);
+                  }
+                }}
+              >
+                <View style={styles.advancedToolIcon}>
+                  <Ionicons name="trash-bin-outline" size={20} color="#4B5563" />
+                </View>
+                <View style={styles.advancedToolContent}>
+                  <Text style={styles.advancedToolName}>Force Garbage Collection</Text>
+                  <Text style={styles.advancedToolDescription}>
+                    Attempt to free unused memory
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.advancedToolButton}
+                onPress={async () => {
+                  try {
+                    await MemoryMonitor.takeSnapshot('manual_snapshot');
+                    SentryService.logEvent('memory', 'Manual memory snapshot taken');
+                    handleRefresh();
+                  } catch (e) {
+                    console.error('Error taking memory snapshot:', e);
+                  }
+                }}
+              >
+                <View style={styles.advancedToolIcon}>
+                  <Ionicons name="camera-outline" size={20} color="#4B5563" />
+                </View>
+                <View style={styles.advancedToolContent}>
+                  <Text style={styles.advancedToolName}>Memory Snapshot</Text>
+                  <Text style={styles.advancedToolDescription}>
+                    Take a snapshot of current memory usage
+                  </Text>
+                </View>
               </TouchableOpacity>
             </View>
           </Card>
-        </TabContent>
-      </ScrollView>
+        </ScrollView>
+      </TabContent>
     </SafeAreaView>
   );
 }
@@ -1405,4 +1424,75 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6B7280',
   },
+  // Add new styles for chat section
+  chatHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  chatBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#10B981',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  chatScore: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  chatId: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 16,
+  },
+  chatMetricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 16,
+  },
+  chatMetricItem: {
+    width: '50%',
+    paddingVertical: 8,
+    paddingRight: 8,
+  },
+  metricLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  metricValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  chatSessionTime: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderColor: '#F3F4F6',
+  },
+  sessionDuration: {
+    marginLeft: 4,
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  emptyChatMetrics: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  infoText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  hintText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+  }
 });

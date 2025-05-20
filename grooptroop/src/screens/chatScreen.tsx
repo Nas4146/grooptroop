@@ -16,7 +16,9 @@ import {
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../navigation/types';
 import { useAuth } from '../contexts/AuthProvider';
 import { useGroop } from '../contexts/GroopProvider';
 import { ChatService } from '../services/chatService';
@@ -27,16 +29,18 @@ import MessageBubble from '../components/chat/MessageBubble';
 import MessageInput from '../components/chat/MessageInput';
 import tw from '../utils/tw';
 import { KeyExchangeService } from '../services/KeyExchangeService';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../navigation/types';
 import EncryptionInfoModal from '../components/chat/EncryptionInfoModal';
 import { useNotification } from '../contexts/NotificationProvider';
 import { useFocusEffect } from '@react-navigation/native';
 import DateSeparator from '../components/chat/DateSeparator';
 import { ChatItemType } from '../models/chat';
 import GroopHeader from '../components/common/GroopHeader';
+import { SentryService } from '../utils/sentryService';
+import ChatPerformanceMonitor from '../utils/chatPerformanceMonitor';
+import { usePerformance } from '../utils/sentryService';
 
 type ChatScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type ChatScreenRouteProp = RouteProp<RootStackParamList, 'Chat'>; // Or whatever the route name is in your stack
 
 // Define a MessageInputHandle type to fix the ref issue
 type MessageInputHandle = {
@@ -44,7 +48,7 @@ type MessageInputHandle = {
   blur: () => void;
 };
 
-export default function ChatScreen() {
+export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
   const { profile } = useAuth();
   const { currentGroop } = useGroop();
   const navigation = useNavigation<ChatScreenNavigationProp>();
@@ -249,9 +253,17 @@ export default function ChatScreen() {
       const getDateValue = (msg: ChatMessage): number => {
         const createdAt = msg.createdAt;
         if (!createdAt) return 0;
+        // Handle Firestore Timestamp object
         if (createdAt?.toDate) return createdAt.toDate().getTime();
+        // Handle Date object
         if (createdAt instanceof Date) return createdAt.getTime();
-        return new Date(createdAt).getTime();
+        // Handle number (timestamp in ms)
+        if (typeof createdAt === 'number') return createdAt;
+        // Handle string (ISO date)
+        if (typeof createdAt === 'string') return new Date(createdAt).getTime();
+        
+        // Fallback - unlikely to happen, but prevents errors
+        return Date.now();
       };
       
       // Sort messages by timestamp (oldest first)
@@ -315,7 +327,13 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
     return;
   }
   
+  // Define messageId outside the try-catch so it's available in both blocks
+  const messageId = `msg_${Date.now()}`;
+  
   try {
+    // Track message send performance
+    ChatPerformanceMonitor.trackMessageSendStart(messageId, text.length);
+    
     console.log(`[CHAT] Sending message to groop: ${currentGroop.id}`);
     console.log('[CHAT] Current user profile:', JSON.stringify({
       displayName: profile.displayName,
@@ -340,8 +358,13 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
     setTimeout(() => {
       flashListRef.current?.scrollToEnd();
     }, 200);
+    
+    // When message sending completes successfully
+    ChatPerformanceMonitor.trackMessageSendComplete(messageId, true);
   } catch (error) {
-    console.error('[CHAT] Error in sendMessage:', error);
+    // Track failed message send
+    ChatPerformanceMonitor.trackMessageSendComplete(messageId, false);
+    console.error('[CHAT] Error sending message:', error);
   }
 }, [profile, currentGroop, replyingTo]);
   
@@ -358,8 +381,13 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
     
     try {
       // Get current layout measurements to maintain position
-      const info = await new Promise<any>(resolve => {
-        flashListRef.current?.measureInWindow((x, y, width, height) => {
+      const info = await new Promise<{x: number, y: number, width: number, height: number}>(resolve => {
+        // Use type assertion to access the native methods available on the ref
+        const flashListNode = flashListRef.current as unknown as {
+          measureInWindow: (callback: (x: number, y: number, width: number, height: number) => void) => void
+        };
+        
+        flashListNode?.measureInWindow((x, y, width, height) => {
           resolve({ x, y, width, height });
         });
       });
@@ -440,6 +468,124 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
     };
   }, [messages.length]);
 
+  // Sentry and performance monitoring
+  const chatId = route.params?.chatId || currentGroop?.id || 'unknown_chat';
+  const sentryTransaction = useRef<{
+    finish: () => void;
+    setData: (key: string, value: any) => void;
+    setTag: (key: string, value: string) => void;
+    startChild: (name: string, op: string) => { finish: () => void };
+  } | null>(null);
+  const perf = usePerformance('ChatScreen');
+  
+  // Start monitoring when component mounts
+  useEffect(() => {
+    // Start chat performance monitoring
+    if (currentGroop?.id) {
+      ChatPerformanceMonitor.startChatMonitoring(currentGroop.id);
+      
+      // Cleanup when unmounting
+      return () => {
+        ChatPerformanceMonitor.stopChatMonitoring();
+      };
+    }
+  }, [currentGroop?.id]);
+  
+  useEffect(() => {
+    // Create a transaction specifically for this chat session
+    sentryTransaction.current = SentryService.startTransaction(
+      `Chat:${chatId}`, 
+      'chat_session'
+    );
+    
+    // Set chat-specific tags for better filtering in Sentry
+    sentryTransaction.current.setTag('chat_id', chatId);
+    
+    // Track operation timing
+    const initialLoadOp = perf.trackOperation('initialLoad');
+    
+    // Simulate loading completion (replace with your actual loading logic)
+    setTimeout(() => {
+      initialLoadOp.end();
+    }, 500);
+    
+    // Cleanup function runs when component unmounts
+    return () => {
+      // Finish the transaction
+      if (sentryTransaction.current) {
+        sentryTransaction.current.finish();
+      }
+    };
+  }, [chatId]);
+
+  // Monitor message sends
+  const monitoredSendMessage = useCallback(async (messageText: string) => {
+    const messageId = `msg_${Date.now()}`;
+    
+    // Track message sending performance
+    ChatPerformanceMonitor.trackMessageSendStart(messageId, messageText.length);
+    
+    // Create a child span for this specific message send
+    const messageSendSpan = sentryTransaction.current?.startChild(
+      `SendMessage:${messageId.slice(0, 6)}`, 
+      'message.send'
+    );
+
+    try {
+      // Your message sending logic here
+      await sendMessage(messageText);
+      
+      // Mark as successfully sent
+      ChatPerformanceMonitor.trackMessageSendComplete(messageId, true);
+      messageSendSpan?.finish();
+    } catch (error) {
+      // Track failed sends
+      ChatPerformanceMonitor.trackMessageSendComplete(messageId, false);
+      
+      // Report error to Sentry
+      SentryService.captureError(error as Error, { 
+        messageId, 
+        chatId: route.params?.chatId || currentGroop?.id || 'unknown_chat',
+        messageLength: messageText.length 
+      });
+      
+      messageSendSpan?.finish();
+    }
+  }, [route.params?.chatId, currentGroop?.id, sendMessage]);
+
+  // Track message rendering performance
+  const renderMessage = (message: ChatMessage) => {
+    const startTime = performance.now();
+    
+    // Your message rendering logic here
+    const renderedMessage = (
+      <View key={message.id}>
+        <Text>{message.text}</Text>
+      </View>
+    );
+    
+    // Track rendering performance after the message renders
+    const endTime = performance.now();
+    ChatPerformanceMonitor.trackMessageRender(message.id, startTime, endTime);
+    
+    return renderedMessage;
+  };
+  
+  // Track user interactions
+  const onTyping = () => {
+    // Track user interaction
+    perf.trackInteraction('user_typing');
+  };
+  
+  const onScrollChat = () => {
+    const scrollOp = perf.trackOperation('chatScroll');
+    
+    // End the operation after scrolling completes
+    setTimeout(() => {
+      scrollOp.end();
+    }, 100);
+  };
+  
   if (!currentGroop) {
     return (
       <SafeAreaView style={tw`flex-1 justify-center items-center bg-light`}>
@@ -524,18 +670,6 @@ const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
         ListEmptyComponent={<EmptyChat />}
         onScroll={handleScroll}
         scrollEventThrottle={16}
-        onScrollToIndexFailed={(info) => {
-          console.log('[CHAT] Failed to scroll to index:', info.index);
-          // Schedule a retry
-          setTimeout(() => {
-            if (flashListRef.current) {
-              flashListRef.current.scrollToIndex({
-                index: Math.min(info.highestMeasuredFrameIndex, info.index),
-                animated: true
-              });
-            }
-          }, 500);
-        }}
       />
 
       {showScrollButton && (

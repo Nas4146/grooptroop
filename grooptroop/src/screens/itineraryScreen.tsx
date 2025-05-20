@@ -14,10 +14,7 @@ import PaymentSheet from '../components/payments/PaymentSheet';
 import { PaymentService } from '../services/PaymentService';
 import { useAuth } from '../contexts/AuthProvider';
 import GroopHeader from '../components/common/GroopHeader';
-import { useComponentPerformance } from '../utils/usePerformance';
-import { SimplePerformance } from '../utils/simplePerformance';
-import { useScreenPerformance } from '../utils/appPerformanceMonitor';
-import { UserPerceptionMetrics } from '../utils/userPerceptionMetrics';
+import { SentryService, usePerformance } from '../utils/sentryService';
 
 export default function ItineraryScreen() {
   const { currentGroop, userGroops, fetchUserGroops, setCurrentGroop } = useGroop();
@@ -32,11 +29,17 @@ export default function ItineraryScreen() {
   const [totalTripCost, setTotalTripCost] = useState(0);
   const { profile } = useAuth();
   const [addressCopied, setAddressCopied] = useState(false);
-  const { trackDataLoad, trackAnimation } = useScreenPerformance('ItineraryScreen');
   const [isFirstLoad, setIsFirstLoad] = useState(true);
 
-  // This will automatically track mount/unmount and renders
-  const perf = useComponentPerformance('ItineraryScreen');
+  // Replace with SentryService hook
+  // const perf = useComponentPerformance('ItineraryScreen');
+  const perf = usePerformance('ItineraryScreen');
+  
+  // Create a transaction reference for the screen
+  const sentryTransaction = useRef(SentryService.startTransaction(
+    'ItineraryScreen', 
+    'screen_view'
+  ));
 
   useEffect(() => {
     fetchUserGroops();
@@ -49,15 +52,24 @@ export default function ItineraryScreen() {
     }, [])
   );
 
-  const fetchItinerary = async () => {
+  const fetchItinerary = async (): Promise<ItineraryDay[]> => {
     if (!currentGroop) {
       console.log('[ITINERARY] No groop selected, skipping itinerary fetch');
       setItinerary([]);
       setLoading(false);
       setRefreshing(false);
-      return;
+      return [];
     }
 
+    // Add performance tracking
+    const fetchSpan = sentryTransaction.current?.startChild(
+      'fetch_itinerary_data',
+      'data_fetch'
+    );
+    
+    // Use optional chaining for all fetchSpan method calls
+    fetchSpan?.setTag('groopId', currentGroop.id);
+    
     try {
       console.log(`[ITINERARY] Fetching itinerary for groop: ${currentGroop.name} (${currentGroop.id})`);
       setLoading(true);
@@ -66,6 +78,9 @@ export default function ItineraryScreen() {
       if (refreshing) {
         console.log('[ITINERARY] Refreshing, clearing cache first');
         await ItineraryService.clearCache(currentGroop.id);
+        
+        // Use optional chaining
+        fetchSpan?.setTag('cache', 'cleared');
       }
 
       // When refreshing, bypass cache
@@ -74,19 +89,47 @@ export default function ItineraryScreen() {
         !refreshing // Use cache unless refreshing
       );
 
+      const eventCount = data.reduce((total, day) => total + day.events.length, 0);
+
       console.log(
         '[ITINERARY] Data loaded:',
         data.length,
         'days',
-        data.reduce((total, day) => total + day.events.length, 0),
+        eventCount,
         'events'
       );
+
+      // Add null check before accessing fetchSpan methods
+      if (fetchSpan) {
+        fetchSpan.setData('days', data.length);
+        fetchSpan.setData('events', eventCount);
+        fetchSpan.setStatus('ok');
+      }
+      
       setItinerary(data);
+      return data; // Make sure to return the data
     } catch (error) {
       console.error('[ITINERARY] Error fetching itinerary:', error);
+      
+      // Report error
+      SentryService.captureError(error as Error, {
+        context: 'ItineraryScreen.fetchItinerary',
+        groopId: currentGroop.id
+      });
+      
+      // Add null check here too
+      if (fetchSpan) {
+        fetchSpan.setStatus('internal_error');
+        fetchSpan.setData('error', (error as Error).message);
+      }
+      return []; // Return empty array on error
     } finally {
       setLoading(false);
       setRefreshing(false);
+      // And here
+      if (fetchSpan) {
+        fetchSpan.finish();
+      }
     }
   };
 
@@ -97,23 +140,31 @@ export default function ItineraryScreen() {
       const summary = await PaymentService.getUserPaymentSummary(currentGroop.id, profile.uid);
       setTotalOwed(summary.totalOwed);
       setTotalPaid(summary.totalPaid);
-      setTotalTripCost(currentGroop.totalTripCost ? parseFloat(currentGroop.totalTripCost) : 0);
+      
+      // Check if totalTripCost is a string or number and handle appropriately
+      if (currentGroop.totalTripCost) {
+        if (typeof currentGroop.totalTripCost === 'string') {
+          setTotalTripCost(parseFloat(currentGroop.totalTripCost));
+        } else {
+          setTotalTripCost(currentGroop.totalTripCost);
+        }
+      } else {
+        setTotalTripCost(0);
+      }
     } catch (error) {
       console.error('[ITINERARY_SCREEN] Error loading payment data:', error);
     }
   };
 
-  // Add this function below your fetchPaymentSummary function:
-
-  const fetchItineraryData = useCallback(() => {
+  const fetchItineraryData = useCallback((): Promise<ItineraryDay[]> => {
     console.log('[ITINERARY] Refreshing data from focus effect');
 
     // Refresh itinerary without showing the loading indicator
     if (currentGroop) {
       // We want to fetch fresh data but don't need the loading spinner
       // since this happens when returning to the tab
-      ItineraryService.clearCache(currentGroop.id).then(() => {
-        fetchItinerary();
+      return ItineraryService.clearCache(currentGroop.id).then(() => {
+        return fetchItinerary();
       });
 
       // Also refresh payment data
@@ -124,6 +175,9 @@ export default function ItineraryScreen() {
         PaymentService.clearPaymentStatusCache();
       }
     }
+    
+    // Return empty array if no groop
+    return Promise.resolve([]);
   }, [currentGroop, profile]);
 
   useEffect(() => {
@@ -179,46 +233,134 @@ export default function ItineraryScreen() {
 
   // Track when the component mounts
   useEffect(() => {
-    const mountTraceId = SimplePerformance.startTrace('itinerary_screen_mount');
-
+    // Replace this:
+    // const mountTraceId = SimplePerformance.startTrace('itinerary_screen_mount');
+    
+    // With this:
+    const mountSpan = sentryTransaction.current.startChild(
+      'itinerary_screen_mount', 
+      'component_lifecycle'
+    );
+    
+    SentryService.logEvent('screen', 'ItineraryScreen mounted');
+    
     return () => {
-      SimplePerformance.endTrace(mountTraceId);
+      // Replace this:
+      // SimplePerformance.endTrace(mountTraceId);
+    
+      // With this:
+      mountSpan.finish();
+      sentryTransaction.current.finish();
+      SentryService.logEvent('screen', 'ItineraryScreen unmounted');
     };
   }, []);
 
   // Load data with performance tracking
-  const loadItineraryData = async () => {
-    // Track this data loading operation
-    trackDataLoad('itineraryData', 'start');
-
+  const loadItineraryData = async (): Promise<ItineraryDay[] | null> => {
+    // Create dataLoadSpan with optional chaining
+    const dataLoadSpan = sentryTransaction.current?.startChild(
+      'itinerary_data_load', 
+      'data_fetch'
+    );
+    
     try {
       // Your existing data loading code
       const data = await fetchItineraryData();
 
-      // If this is the first successful load, record it for user perception metrics
+      // If this is the first successful load, record it
       if (isFirstLoad && data && data.length > 0) {
-        UserPerceptionMetrics.recordFirstScreenRender('ItineraryScreen');
+        // Replace this:
+        // UserPerceptionMetrics.recordFirstScreenRender('ItineraryScreen');
+        
+        // With this:
+        SentryService.logEvent('performance', 'First render complete', {
+          screen: 'ItineraryScreen',
+          dataPoints: data.length
+        });
+        
+        // Add null check before calling methods on dataLoadSpan
+        if (dataLoadSpan) {
+          dataLoadSpan.setData('loadSuccess', true);
+          dataLoadSpan.setData('dataPoints', data.length);
+        }
+        
         setIsFirstLoad(false);
       }
 
       return data;
     } catch (error) {
       console.error('Error loading itinerary:', error);
+      
+      // Add error tracking
+      SentryService.captureError(error as Error, {
+        context: 'ItineraryScreen.loadItineraryData'
+      });
+      
+      // Add null check before calling methods on dataLoadSpan
+      if (dataLoadSpan) {
+        dataLoadSpan.setData('error', (error as Error).message);
+        dataLoadSpan.setStatus('internal_error');
+      }
+      
       return null;
     } finally {
-      trackDataLoad('itineraryData', 'end');
+      // Add null check before calling methods on dataLoadSpan
+      if (dataLoadSpan) {
+        dataLoadSpan.finish();
+      }
     }
   };
 
   // Track user interactions
-  const handleItemPress = (itemId) => {
-    const interactionId = `itinerary_item_${itemId}_${Date.now()}`;
-    UserPerceptionMetrics.startInteractionTracking(interactionId);
-
+  const handleItemPress = (itemId: string) => {
+    // Create interactionSpan with optional chaining
+    const interactionSpan = sentryTransaction.current?.startChild(
+      `interact_item_${itemId.slice(0, 6)}`,
+      'user_interaction'
+    );
+    
+    // Add null check before calling methods on interactionSpan
+    if (interactionSpan) {
+      interactionSpan.setTag('itemId', itemId);
+    }
+    
     // Your existing handler code
     navigateToDetails(itemId);
+    
+    // Add null check before calling methods on interactionSpan
+    if (interactionSpan) {
+      interactionSpan.finish();
+    }
+    
+    SentryService.logEvent('interaction', 'Itinerary item selected', { itemId });
+  };
 
-    UserPerceptionMetrics.endInteractionTracking(interactionId, 'Itinerary Item Selection');
+  // Add this function before or after handleItemPress
+  const navigateToDetails = (eventId: string) => {
+    console.log(`[ITINERARY] Navigating to event details: ${eventId}`);
+    
+    // Find the event in the itinerary data
+    let selectedEvent = null;
+    
+    for (const day of itinerary) {
+      const event = day.events.find(e => e.id === eventId);
+      if (event) {
+        selectedEvent = event;
+        break;
+      }
+    }
+    
+    if (selectedEvent) {
+      // Navigate to the event details screen
+      // Assuming you have a modal or screen for event details
+      // You might need to adjust this navigation call based on your app's routing structure
+      navigation.navigate('EventDetails', { 
+        eventId: eventId,
+        groopId: currentGroop?.id
+      });
+    } else {
+      console.warn('[ITINERARY] Event not found:', eventId);
+    }
   };
 
   if (!currentGroop) {
@@ -510,15 +652,4 @@ export default function ItineraryScreen() {
       </SafeAreaView>
     </KeyboardAvoidingView>
   );
-}
-
-// In a service file
-async function loadUserData(userId) {
-  const traceId = SimplePerformance.startTrace('loadUserData');
-  try {
-    // Your code
-    return await fetchUserFromApi(userId);
-  } finally {
-    SimplePerformance.endTrace(traceId);
-  }
 }

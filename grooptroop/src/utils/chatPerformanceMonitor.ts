@@ -1,8 +1,8 @@
-import { SimplePerformance } from './simplePerformance';
+import * as Sentry from '@sentry/react-native';
 import { FrameRateMonitor } from './frameRateMonitor';
 import { MemoryMonitor } from './memoryMonitor';
 import * as FileSystem from 'expo-file-system';
-import * as Sentry from '@sentry/react-native';
+import { SentryService } from './sentryService';
 
 // Define performance budgets
 export const CHAT_PERFORMANCE_BUDGETS = {
@@ -43,7 +43,7 @@ class ChatPerformanceMonitor {
   private jsHeapSize = 0;
   private frameDrops = 0;
   private slowRenders = 0;
-  private sentryTransaction: Sentry.Transaction | null = null;
+  private sentryTransaction: Sentry.Span | null = null;
   
   /**
    * Start monitoring performance for a specific chat
@@ -78,9 +78,11 @@ class ChatPerformanceMonitor {
         op: 'chat.session'
       });
       
-      // Add initial data
-      this.sentryTransaction.setTag('chat_id', chatId);
-      this.sentryTransaction.setTag('environment', __DEV__ ? 'development' : 'production');
+      // Add initial data - Add null check here
+      if (this.sentryTransaction) {
+        this.sentryTransaction.setTag('chat_id', chatId);
+        this.sentryTransaction.setTag('environment', __DEV__ ? 'development' : 'production');
+      }
     }
     
     // Periodically check memory usage
@@ -92,7 +94,8 @@ class ChatPerformanceMonitor {
         
         // Check if memory exceeds budget
         if (this.jsHeapSize > CHAT_PERFORMANCE_BUDGETS.CHAT_MEMORY) {
-          SimplePerformance.logEvent('chat-memory', 
+          // Replace SimplePerformance.logEvent with SentryService.logEvent
+          SentryService.logEvent('chat-memory', 
             `⚠️ Chat memory exceeds budget: ${Math.round(this.jsHeapSize / (1024 * 1024))}MB / ${CHAT_PERFORMANCE_BUDGETS.CHAT_MEMORY / (1024 * 1024)}MB`, 
             undefined, true);
             
@@ -112,7 +115,8 @@ class ChatPerformanceMonitor {
       }
     }, 5000);
     
-    SimplePerformance.logEvent('chat', `Started monitoring chat: ${chatId}`);
+    // Replace SimplePerformance.logEvent with SentryService.logEvent
+    SentryService.logEvent('chat', `Started monitoring chat: ${chatId}`);
   }
   
   /**
@@ -150,8 +154,8 @@ class ChatPerformanceMonitor {
     const avgRenderTime = this.renderTimes.length > 0 ? 
       this.renderTimes.reduce((a, b) => a + b, 0) / this.renderTimes.length : 0;
     
-    // Log session summary
-    SimplePerformance.logEvent('chat-session', `Chat session summary:
+    // Log session summary - Replace SimplePerformance.logEvent with SentryService.logEvent
+    SentryService.logEvent('chat-session', `Chat session summary:
       - Duration: ${sessionDuration.toFixed(1)}s
       - Messages sent: ${this.messagesSent}
       - Messages received: ${this.messagesReceived}
@@ -206,7 +210,8 @@ class ChatPerformanceMonitor {
       this.sentryTransaction.finish();
       this.sentryTransaction = null;
       
-      SimplePerformance.logEvent('chat', 'Chat metrics sent to Sentry');
+      // Replace SimplePerformance.logEvent with SentryService.logEvent
+      SentryService.logEvent('chat', 'Chat metrics sent to Sentry');
     }
     
     this.isMonitoringChat = false;
@@ -274,16 +279,19 @@ class ChatPerformanceMonitor {
       }
       
       if (latency > CHAT_PERFORMANCE_BUDGETS.MESSAGE_SEND_RTT) {
-        SimplePerformance.logEvent('chat-network', 
+        // Replace SimplePerformance.logEvent with SentryService.logEvent
+        SentryService.logEvent('chat-network', 
           `⚠️ Message send latency exceeds budget: ${latency}ms / ${CHAT_PERFORMANCE_BUDGETS.MESSAGE_SEND_RTT}ms`,
           undefined, true);
       }
       
       if (success) {
-        SimplePerformance.logEvent('chat-network', 
+        // Replace SimplePerformance.logEvent with SentryService.logEvent
+        SentryService.logEvent('chat-network', 
           `Message ${messageId.slice(0, 6)} sent in ${latency}ms (${msgData.messageSize ? (msgData.messageSize / 1024).toFixed(1) + 'KB' : 'unknown size'})`);
       } else {
-        SimplePerformance.logEvent('chat-network', 
+        // Replace SimplePerformance.logEvent with SentryService.logEvent
+        SentryService.logEvent('chat-network', 
           `⚠️ Failed to send message ${messageId.slice(0, 6)} after ${latency}ms`,
           undefined, true);
       }
@@ -368,7 +376,8 @@ class ChatPerformanceMonitor {
     
     // Check if render time exceeds budget
     if (renderTime > CHAT_PERFORMANCE_BUDGETS.MESSAGE_LIST_RENDER) {
-      SimplePerformance.logEvent('chat-render', 
+      // Replace SimplePerformance.logEvent with SentryService.logEvent
+      SentryService.logEvent('chat-render', 
         `⚠️ Message render time exceeds budget: ${renderTime.toFixed(1)}ms / ${CHAT_PERFORMANCE_BUDGETS.MESSAGE_LIST_RENDER}ms`,
         undefined, true);
       this.slowRenders++;
