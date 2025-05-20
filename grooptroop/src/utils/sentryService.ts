@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/react-native';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   PerformanceTrace, 
   PerformanceMetrics, 
@@ -495,14 +496,28 @@ export class SentryService {
 
 // Add React hook for performance monitoring
 export const usePerformance = (componentName: string) => {
+  const isMountedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isMountedRef.current) {
+      // Only log on the first mount, not on re-renders
+      SentryService.logEvent('performance', `${componentName} mounted`);
+      isMountedRef.current = true;
+    }
+    
+    return () => {
+      SentryService.logEvent('performance', `${componentName} unmounted`);
+      isMountedRef.current = false;
+    };
+  }, []); // Empty dependency array
+  
   return {
     trackRender: (renderTime?: number) => {
       const time = renderTime || 0;
       SentryService.logEvent('performance', `${componentName} rendered ${time ? 'in ' + time + 'ms' : ''}`);
     },
-    trackMount: (mountTime?: number) => {
-      const time = mountTime || 0;
-      SentryService.logEvent('performance', `${componentName} mounted ${time ? 'in ' + time + 'ms' : ''}`);
+    trackMount: () => {
+      // No need to do anything here now since we're handling it in the useEffect
     },
     trackOperation: (name: string, fn: () => any) => {
       const start = performance.now();

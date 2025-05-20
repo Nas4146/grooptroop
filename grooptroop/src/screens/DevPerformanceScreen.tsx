@@ -11,7 +11,9 @@ import {
   Animated,
   Dimensions,
   StyleProp,
-  ViewStyle
+  ViewStyle,
+  Button,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SentryService, usePerformance } from '../utils/sentryService';
@@ -27,6 +29,7 @@ import {
 import { CHAT_PERFORMANCE_BUDGETS } from '../utils/chatPerformanceMonitor';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
+import * as Sentry from '@sentry/react-native';
 
 // Define the navigation prop type for this screen
 type DevPerformanceScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'DevPerformance'>;
@@ -146,9 +149,20 @@ const ChatPerformanceSection = () => {
         }
         
         if (chatMetrics.isActive) {
-          setMetrics(chatMetrics as ChatPerformanceMetrics);
-          setActiveChatId(chatMetrics.chatId);
-          setError(null);
+          // Only update state if the values are actually different
+          // This prevents unnecessary re-renders
+          if (!metrics || 
+              metrics.messagesSent !== chatMetrics.messagesSent ||
+              metrics.messagesReceived !== chatMetrics.messagesReceived ||
+              metrics.avgNetworkLatency !== chatMetrics.avgNetworkLatency ||
+              metrics.frameDrops !== chatMetrics.frameDrops ||
+              metrics.jsHeapSize !== chatMetrics.jsHeapSize ||
+              metrics.sessionDuration !== chatMetrics.sessionDuration ||
+              metrics.slowRenders !== chatMetrics.slowRenders) {
+            setMetrics(chatMetrics as ChatPerformanceMetrics);
+            setActiveChatId(chatMetrics.chatId);
+            setError(null);
+          }
         } else if (metrics && !chatMetrics.isActive) {
           // Chat session ended
           setMetrics(null);
@@ -159,7 +173,7 @@ const ChatPerformanceSection = () => {
     }, 1000);
     
     return () => clearInterval(interval);
-  }, [metrics]);
+  }, []);  // Notice the empty dependency array - it's crucial
   
   if (!metrics) {
     return (
@@ -358,13 +372,15 @@ export default function DevPerformanceScreen({ navigation }: { navigation: DevPe
     
     loadSentryData();
     
-    // Add component mounting metrics
-    perf.trackMount();
+    // Track mount ONLY ONCE!
+    if (refreshKey === 0) { // Only track the first time
+      perf.trackMount();
+    }
     
     return () => {
       // Cleanup if needed
     };
-  }, [refreshKey, perf]);
+  }, [refreshKey]); // Remove perf from dependency array
 
   // Refresh data
   const handleRefresh = useCallback(() => {
@@ -677,6 +693,111 @@ export default function DevPerformanceScreen({ navigation }: { navigation: DevPe
                 <Text style={styles.statValue}>{slowestTrace?.duration || 0}ms</Text>
                 <Text style={styles.statLabel}>Slowest Trace</Text>
               </View>
+            </View>
+            
+            {/* Add a separate section for the Sentry test button */}
+            <View style={styles.sentryTestContainer}>
+              <Text style={styles.cardDescription}>
+                Send a test error to your Sentry dashboard:
+              </Text>
+              <TouchableOpacity
+                style={styles.sentryTestButton}
+                onPress={async () => {
+                  console.log('[SENTRY] Sending test error to Sentry');
+                  try {
+                    // Create a more distinctive error
+                    const testError = new Error(`Test Error from GroopTroop at ${new Date().toISOString()}`);
+                    
+                    // Explicitly flush events after capturing
+                    Sentry.withScope(scope => {
+                      scope.setLevel(Sentry.Severity.Error);
+                      scope.setTag('manual_test', 'true');
+                      scope.setExtra('device_time', new Date().toString());
+                      
+                      console.log('[SENTRY] Capturing exception with scope');
+                      Sentry.captureException(testError);
+                    });
+                    
+                    // Force events to be sent immediately
+                    console.log('[SENTRY] Calling flush to send events immediately');
+                    await Sentry.flush(2000); // Wait up to 2 seconds for events to send
+                    
+                    console.log('[SENTRY] Flush completed');
+                    Alert.alert('Sent to Sentry', 'Test error was sent. Check dashboard in a few minutes.');
+                  } catch (e) {
+                    console.error('[SENTRY] Error sending test:', e);
+                    Alert.alert('Error', `Failed to send: ${e instanceof Error ? e.message : String(e)}`);
+                  }
+                }}
+              >
+                <Ionicons name="warning-outline" size={16} color="white" style={{marginRight: 8}} />
+                <Text style={styles.sentryTestButtonText}>Send Test Error (Debug)</Text>
+              </TouchableOpacity>
+
+              {/* Add another test button */}
+              <TouchableOpacity
+                style={[styles.sentryTestButton, {backgroundColor: '#3B82F6'}]}
+                onPress={() => {
+                  console.log('[SENTRY] Testing native crash reporting');
+                  
+                  // This will crash your JS thread, but should be caught by Sentry
+                  setTimeout(() => {
+                    const crashTest = null;
+                    // @ts-ignore
+                    crashTest.nonExistentMethod(); // This will cause a runtime exception
+                  }, 500);
+                }}
+              >
+                <Ionicons name="alert-circle-outline" size={16} color="white" style={{marginRight: 8}} />
+                <Text style={styles.sentryTestButtonText}>Test JS Crash</Text>
+              </TouchableOpacity>
+
+              {/* New test button for direct message capture */}
+              <TouchableOpacity
+                style={[styles.sentryTestButton, {backgroundColor: '#34D399', marginTop: 8}]}
+                onPress={() => {
+                  console.log('[SENTRY] Testing direct message capture');
+                  
+                  // Direct message capture - often more reliable than exception capture
+                  Sentry.captureMessage('Test message from GroopTroop app at ' + new Date().toISOString(), {
+                    level: 'error', // Making it an error so it definitely appears in issues
+                    tags: {
+                      direct_test: 'true',
+                      timestamp: Date.now()
+                    }
+                  });
+                  
+                  // Also try a different error approach
+                  Sentry.captureEvent({
+                    message: 'Manual event from GroopTroop',
+                    level: 'error',
+                    tags: { manual_event: 'true' }
+                  });
+                  
+                  Alert.alert('Direct Message Sent', 'Sent a direct message to Sentry');
+                }}
+              >
+                <Ionicons name="mail-outline" size={16} color="white" style={{marginRight: 8}} />
+                <Text style={styles.sentryTestButtonText}>Test Direct Message</Text>
+              </TouchableOpacity>
+
+              {/* New test button for network connectivity */}
+              <TouchableOpacity
+                style={[styles.sentryTestButton, {backgroundColor: '#6366F1', marginTop: 8}]}
+                onPress={async () => {
+                  try {
+                    console.log('[SENTRY] Testing network connectivity');
+                    const response = await fetch('https://sentry.io/api/');
+                    const status = response.status;
+                    Alert.alert('Network Test', `Sentry.io connectivity: ${status === 200 ? 'Good' : 'Status ' + status}`);
+                  } catch (e) {
+                    Alert.alert('Network Error', `Cannot reach Sentry servers: ${e instanceof Error ? e.message : String(e)}`);
+                  }
+                }}
+              >
+                <Ionicons name="globe-outline" size={16} color="white" style={{marginRight: 8}} />
+                <Text style={styles.sentryTestButtonText}>Test Network</Text>
+              </TouchableOpacity>
             </View>
           </Card>
           
@@ -1494,5 +1615,27 @@ const styles = StyleSheet.create({
   hintText: {
     fontSize: 12,
     color: '#9CA3AF',
-  }
+  },
+  sentryTestContainer: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    alignItems: 'center',
+  },
+  sentryTestButton: {
+    backgroundColor: '#EF4444',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    marginTop: 8,
+  },
+  sentryTestButtonText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 14,
+  },
 });

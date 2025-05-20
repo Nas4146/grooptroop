@@ -60,6 +60,14 @@
             "newArchEnabled": false
           }
         }
+      ],
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "project": "grooptroop",
+          "organization": "sandstudio"
+        }
       ]
     ]
   }

@@ -19,17 +19,76 @@ import * as Sentry from '@sentry/react-native';
 import RootNavigator from './src/navigation/RootNavigator';
 
 // Initialize Sentry at the very beginning of your app
+console.log('[SENTRY] Initializing Sentry in App.tsx');
 Sentry.init({
-  dsn: 'YOUR_SENTRY_DSN', 
+  dsn: 'https://4c10d218343709c4a2b2ebac9da0f21e@o4509352771452928.ingest.us.sentry.io/4509352775122944', 
+  debug: true, // This enables debug mode
   enableAutoSessionTracking: true,
-  tracesSampleRate: __DEV__ ? 1.0 : 0.2,
+  tracesSampleRate: 1.0, // Set to 1.0 for testing
   enableAutoPerformanceTracing: true,
   attachStacktrace: true,
-  environment: __DEV__ ? 'development' : 'production'
+  environment: __DEV__ ? 'development' : 'production',
+  beforeSend: (event) => {
+    console.log('[SENTRY] Sending event to Sentry:', JSON.stringify(event));
+    return event;
+  }
 });
+
+// Add network debugging for Sentry
+if (__DEV__) {
+  // Monitor network requests to see if Sentry events are being sent
+  const originalFetch = global.fetch;
+  global.fetch = async (...args) => {
+    const [url, options] = args;
+    if (typeof url === 'string' && url.includes('sentry.io')) {
+      console.log('[SENTRY NETWORK] Sending request to:', url);
+      console.log('[SENTRY NETWORK] Request body:', options?.body ? JSON.stringify(options.body).substring(0, 500) + "..." : "No body");
+      
+      try {
+        const response = await originalFetch(...args);
+        console.log(`[SENTRY NETWORK] Response: ${response.status} ${response.statusText}`);
+        return response;
+      } catch (e) {
+        console.error('[SENTRY NETWORK] Error in request:', e);
+        throw e;
+      }
+    } else {
+      return originalFetch(...args);
+    }
+  };
+}
 
 // Tell SentryService that we've already initialized Sentry
 SentryService.markAsInitialized();
+console.log('[SENTRY] Initialization complete, startTransaction available?', typeof Sentry.startTransaction === 'function');
+
+// Test that Sentry is working on app start
+try {
+  throw new Error('App startup test error');
+} catch (e) {
+  console.log('[SENTRY] Capturing test error at app startup');
+  Sentry.captureException(e);
+}
+
+// Simple test function to verify Sentry is working
+const testSentry = () => {
+  console.log('[SENTRY] Running basic Sentry test');
+  
+  // Basic message
+  Sentry.captureMessage('Test message from GroopTroop App');
+  
+  // Basic error
+  try {
+    throw new Error('Manual test error from App.tsx');
+  } catch (e) {
+    Sentry.captureException(e);
+  }
+  
+  console.log('[SENTRY] Test complete, events should appear in dashboard');
+};
+
+// Run the test when app starts
+testSentry();
 
 // Main app content with navigation
 const AppContent = () => {
@@ -98,7 +157,7 @@ const AppContent = () => {
 };
 
 // Main App component
-export default function App() {
+export default Sentry.wrap(function App() {
   const perf = usePerformance('App');
   
   return (
@@ -114,5 +173,4 @@ export default function App() {
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
-}
-
+});
