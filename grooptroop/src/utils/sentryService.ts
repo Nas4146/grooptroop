@@ -154,8 +154,8 @@ export class SentryService {
               trace.data[`measurement.${name}`] = `${value} ${unit}`;
             }
             
-            // If the real Sentry transaction exists, call its setMeasurement too
-            if (Sentry.getCurrentHub().getScope().getTransaction()) {
+            // Check if Sentry is initialized and available before using getCurrentHub
+            if (Sentry && typeof Sentry.getCurrentHub === 'function') {
               try {
                 const transaction = Sentry.getCurrentHub().getScope().getTransaction();
                 if (transaction && typeof transaction.setMeasurement === 'function') {

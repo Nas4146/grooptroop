@@ -1594,6 +1594,19 @@ const TestsSection = React.forwardRef((props, ref) => {
     rendering: { status: 'idle' },
   });
   
+  // Add this function to run all tests
+  const runAllTests = useCallback(async () => {
+    try {
+      // Start all tests in sequence
+      await runMemoryTest();
+      await runCpuTest();
+      await runFrameRateTest();
+    } catch (e) {
+      console.error('[DEV_PERF] Error running all tests:', e);
+      Alert.alert('Test Error', `Failed to run all tests: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, []);
+  
   // Run memory leak test
   const runMemoryTest = useCallback(async () => {
     try {
@@ -1750,7 +1763,8 @@ const TestsSection = React.forwardRef((props, ref) => {
   React.useImperativeHandle(ref, () => ({
     runMemoryTest,
     runCpuTest,
-    runFrameRateTest
+    runFrameRateTest,
+    runAllTests // Add this to expose it to the parent
   }));
   
   // Notify parent when test status changes
@@ -1817,7 +1831,7 @@ const TestsSection = React.forwardRef((props, ref) => {
         <View style={styles.testsContainer}>
           <TouchableOpacity
             style={styles.runAllButton}
-            onPress={runAllTests}
+            onPress={runAllTests} // Now this will correctly call the function
             disabled={Object.values(testStatus).some(t => t.status === 'running')}
           >
             <Ionicons name="play" size={18} color="white" style={{marginRight: 8}} />
@@ -1881,6 +1895,7 @@ export default function DevPerformanceScreen({ navigation }: { navigation: DevPe
     runMemoryTest: () => Promise<void>;
     runCpuTest: () => Promise<void>;
     runFrameRateTest: () => Promise<void>;
+    runAllTests: () => Promise<void>; // Add this line
   }>(null);
   
   // Export all performance data function
