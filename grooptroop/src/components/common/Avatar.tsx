@@ -43,8 +43,8 @@ const Avatar: React.FC<AvatarProps> = ({
   textStyle,
   imageStyle
 }) => {
-  // Debug log to see what props are being passed
-  if (__DEV__) {
+  // Debug log to see what props are being passed - only in development and explicitly enabled
+  if (__DEV__ && false) {
     console.log(`[AVATAR_COMP] Rendering avatar for ${displayName || 'unknown'}, type: ${avatar?.type || 'none'}`);
   }
   

@@ -76,16 +76,19 @@ function MessageBubble({
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }, []);
   
-  console.log(`[MESSAGE] Avatar details:`, {
-  exists: !!message.senderAvatar,
-  type: message.senderAvatar?.type,
-  valuePreview: message.senderAvatar?.value ? 
-    (typeof message.senderAvatar.value === 'string' ? 
-      message.senderAvatar.value.substring(0, 30) + '...' : 
-      'non-string value') : 
-    'no value',
-  isFromCurrentUser
-});
+  // Modify this console.log (around line 79)
+  if (__DEV__ && false) {
+    console.log(`[MESSAGE] Avatar details:`, {
+      exists: !!message.senderAvatar,
+      type: message.senderAvatar?.type,
+      valuePreview: message.senderAvatar?.value ? 
+        (typeof message.senderAvatar.value === 'string' ? 
+          message.senderAvatar.value.substring(0, 30) + '...' : 
+          'non-string value') : 
+        'no value',
+      isFromCurrentUser
+    });
+  }
 
   // Check if current user has reacted with this emoji
   const hasUserReacted = useCallback((emoji: string) => {
@@ -146,8 +149,11 @@ function MessageBubble({
     );
   }
   
-  console.log(`[MESSAGE] Rendering message from ${message.senderName}, avatar:`, 
-    message.senderAvatar ? `${message.senderAvatar.type} avatar` : 'no avatar');
+  // Modify this console.log (around line 147)
+  if (__DEV__ && false) {
+    console.log(`[MESSAGE] Rendering message from ${message.senderName}, avatar:`, 
+      message.senderAvatar ? `${message.senderAvatar.type} avatar` : 'no avatar');
+  }
     
   // For debugging reactions
   useEffect(() => {
@@ -179,8 +185,8 @@ function MessageBubble({
     // If there's no sender name, provide a fallback
     const senderName = message.senderName || 'User';
     
-    // Log the render operation
-    if (__DEV__) {
+    // Log the render operation - only in dev mode
+    if (__DEV__ && false) {
       console.log(`[MESSAGE] Rendering avatar for ${senderName} type: ${message.senderAvatar?.type || 'undefined'}`);
     }
     
@@ -245,9 +251,12 @@ function MessageBubble({
           )}
           
           {/* Message text */}
-          <Text style={tw`${isFromCurrentUser ? 'text-white' : 'text-gray-800'}`}>
-            {message.text}
-          </Text>
+          <View style={tw`flex-row items-center mb-1`}>
+            {renderEncryptionIndicator()}
+            <Text style={tw`${isFromCurrentUser ? 'text-white' : 'text-gray-800'} flex-1`}>
+              {message.text}
+            </Text>
+          </View>
           
           {/* Image if exists */}
           {message.imageUrl && (
