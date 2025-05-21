@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Image, View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import FastImage from 'react-native-fast-image';
 import { AvatarService } from '../../services/AvatarService';
 
 interface BitmojiAvatarProps {
@@ -29,10 +30,13 @@ const BitmojiAvatar = ({ url, displayName, size = 120, color = '#7C3AED' }: Bitm
   }
   
   return (
-    <Image
+    <FastImage
       source={{ uri: url }}
       style={{ width: size, height: size, borderRadius: size/2 }}
       onError={() => setHasError(true)}
+      priority={FastImage.priority.low}
+      resizeMode={FastImage.resizeMode.cover}
+      cacheControl={FastImage.cacheControl.immutable}
     />
   );
 };

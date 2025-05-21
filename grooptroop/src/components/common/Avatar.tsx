@@ -1,7 +1,11 @@
 import React, { useState, memo } from 'react';
-import { View, Text, Image, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
+import FastImage from 'react-native-fast-image';
 import { UserAvatar } from '../../contexts/AuthProvider';
 import { AvatarService } from '../../services/AvatarService';
+
+// Add this flag to control FastImage usage
+const USE_FAST_IMAGE = false; // Set to false to use regular Image component
 
 const generateColorFromName = (name: string): string => {
   if (!name) return '#7C3AED'; // Default purple
@@ -114,18 +118,36 @@ const Avatar: React.FC<AvatarProps> = ({
           style
         ]}
       >
-        <Image
-          source={{ uri: avatar.value }}
-          style={[
-            { 
-              width: '100%', 
-              height: '100%',
-              backgroundColor: 'white'
-            },
-            imageStyle
-          ]}
-          onError={() => setHasImageError(true)}
-        />
+        {USE_FAST_IMAGE ? (
+          <FastImage
+            source={{ uri: avatar.value }}
+            style={[
+              { 
+                width: '100%', 
+                height: '100%',
+                backgroundColor: 'white'
+              },
+              imageStyle
+            ]}
+            onError={() => setHasImageError(true)}
+            priority={FastImage.priority.low}
+            resizeMode={FastImage.resizeMode.cover}
+            cacheControl={FastImage.cacheControl.immutable}
+          />
+        ) : (
+          <Image
+            source={{ uri: avatar.value }}
+            style={[
+              { 
+                width: '100%', 
+                height: '100%',
+                backgroundColor: 'white'
+              },
+              imageStyle
+            ]}
+            onError={() => setHasImageError(true)}
+          />
+        )}
       </View>
     );
   }
@@ -145,18 +167,36 @@ const Avatar: React.FC<AvatarProps> = ({
           style
         ]}
       >
-        <Image
-          source={{ uri: avatar.value }}
-          style={[
-            { 
-              width: '100%', 
-              height: '100%',
-              backgroundColor: 'white'
-            },
-            imageStyle
-          ]}
-          onError={() => setHasImageError(true)}
-        />
+        {USE_FAST_IMAGE ? (
+          <FastImage
+            source={{ uri: avatar.value }}
+            style={[
+              { 
+                width: '100%', 
+                height: '100%',
+                backgroundColor: 'white'
+              },
+              imageStyle
+            ]}
+            onError={() => setHasImageError(true)}
+            priority={FastImage.priority.low}
+            resizeMode={FastImage.resizeMode.cover}
+            cacheControl={FastImage.cacheControl.immutable}
+          />
+        ) : (
+          <Image
+            source={{ uri: avatar.value }}
+            style={[
+              { 
+                width: '100%', 
+                height: '100%',
+                backgroundColor: 'white'
+              },
+              imageStyle
+            ]}
+            onError={() => setHasImageError(true)}
+          />
+        )}
       </View>
     );
   }
