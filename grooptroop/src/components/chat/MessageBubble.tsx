@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import FastImage from 'react-native-fast-image';
 import { Ionicons } from '@expo/vector-icons';
 import { ChatMessage } from '../../models/chat';
@@ -29,9 +29,53 @@ function MessageBubble({
   onReplyPress
 }: MessageBubbleProps) {
   const [showReactions, setShowReactions] = useState(false);
-  // Local state to track pending reactions
-  const [pendingReactions, setPendingReactions] = useState<string[]>([]);
+  // Replace pendingReactions array with a simple feedback key
+  const [feedbackKey, setFeedbackKey] = useState(0);
+  const [recentReactionEmoji, setRecentReactionEmoji] = useState<string | null>(null);
   
+  // Animation ref for reaction feedback
+  const reactionAnimRef = useRef(new Animated.Value(0)).current;
+  
+  // Function to flash the reaction feedback
+  const flashReaction = (emoji: string) => {
+    // Set the emoji to animate
+    setRecentReactionEmoji(emoji);
+    // Increment key to force animation restart
+    setFeedbackKey(k => k + 1);
+    // Reset animation value
+    reactionAnimRef.setValue(0);
+    
+    // Run animation sequence
+    Animated.sequence([
+      Animated.timing(reactionAnimRef, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.delay(400),
+      Animated.timing(reactionAnimRef, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      })
+    ]).start();
+  };
+  
+  // Replace handleReactionPress with simplified version
+  const handleReactionPress = (emoji: string) => {
+    // Close reaction panel
+    setShowReactions(false);
+    
+    // Call the actual handler
+    onReactionPress(message.id, emoji);
+    
+    // Show visual feedback
+    flashReaction(emoji);
+    
+    // Provide haptic feedback
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
   // Memoize expensive operations
   const reactionCounts = useMemo(() => {
     const counts: {[key: string]: number} = {};
@@ -58,15 +102,8 @@ function MessageBubble({
     setShowReactions(false);
     
     // Add to pending reactions for immediate feedback
-    setPendingReactions(prev => [...prev, emoji]);
-    
     // Call the actual reaction handler
     onReactionPress(message.id, emoji);
-    
-    // Remove from pending after a short delay
-    setTimeout(() => {
-      setPendingReactions(prev => prev.filter(e => e !== emoji));
-    }, 2000);
   }, [message.id, onReactionPress]);
   
   // Memoize the hasReactions calculation
@@ -172,17 +209,10 @@ function MessageBubble({
   }, [message.id, message.reactions]);
   
   // Add this function to handle reaction taps with local feedback
-  const handleReactionPress = (emoji: string) => {
+  const handleReactionPressDebug = (emoji: string) => {
     // Add to pending reactions for immediate visual feedback
-    setPendingReactions(prev => [...prev, emoji]);
-    
     // Call the actual handler
     onReactionPress(message.id, emoji);
-    
-    // Remove from pending after a timeout (optimize UX)
-    setTimeout(() => {
-      setPendingReactions(prev => prev.filter(e => e !== emoji));
-    }, 2000);
   };
 
   // Update the avatar rendering in MessageBubble
@@ -217,6 +247,41 @@ function MessageBubble({
       </View>
     );
   }, [message.senderAvatar, message.senderName, isFromCurrentUser]);
+
+  // Add this to render the reaction feedback animation
+  const renderReactionFeedback = () => {
+    if (!recentReactionEmoji) return null;
+    
+    return (
+      <Animated.View 
+        key={feedbackKey} // This forces the animation to restart on every tap
+        style={{
+          position: 'absolute',
+          right: isFromCurrentUser ? 0 : 'auto',
+          left: isFromCurrentUser ? 'auto' : 40,
+          top: 10,
+          backgroundColor: 'rgba(124, 58, 237, 0.1)',
+          borderRadius: 20,
+          padding: 8,
+          transform: [
+            { scale: reactionAnimRef.interpolate({
+                inputRange: [0, 0.5, 1],
+                outputRange: [0.5, 1.2, 1]
+              })
+            },
+            { translateY: reactionAnimRef.interpolate({
+                inputRange: [0, 1],
+                outputRange: [10, -20]
+              })
+            }
+          ],
+          opacity: reactionAnimRef
+        }}
+      >
+        <Text style={{ fontSize: 24 }}>{recentReactionEmoji}</Text>
+      </Animated.View>
+    );
+  };
 
   return (
     <View style={tw`mb-3 ${isFromCurrentUser ? 'items-end' : 'items-start'}`}>
@@ -349,6 +414,9 @@ function MessageBubble({
           </View>
         </View>
       )}
+      
+      {/* Add the reaction feedback animation */}
+      {renderReactionFeedback()}
     </View>
   );
 }
