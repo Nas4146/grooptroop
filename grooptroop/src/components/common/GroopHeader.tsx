@@ -11,6 +11,7 @@ import { db } from '../../lib/firebase';
 import MembersModal from './MembersModal';
 import { MainTabParamList } from '../../navigation/types';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import logger from '../../utils/logger';
 
 // Create a proper navigation type
 type GroopHeaderNavigationProp = BottomTabNavigationProp<MainTabParamList>;
@@ -22,6 +23,11 @@ interface GroopHeaderProps {
   isChatScreen?: boolean;
   isItineraryScreen?: boolean;
   onShowEncryptionInfo?: () => void;
+  title?: string; // Add title prop
+  onBackPress?: () => void; // Add onBackPress prop
+  showEncryptionInfo?: () => void; // Add showEncryptionInfo prop
+  encryptionEnabled?: boolean; // Add encryptionEnabled prop
+  loading?: boolean; // Add loading prop
 }
 
 interface MemberData {
@@ -36,7 +42,12 @@ export default function GroopHeader({
   onPressMembers,
   isChatScreen = false,
   isItineraryScreen = false,
-  onShowEncryptionInfo
+  onShowEncryptionInfo,
+  title,
+  onBackPress,
+  showEncryptionInfo,
+  encryptionEnabled,
+  loading
 }: GroopHeaderProps) {
   const { currentGroop } = useGroop();
   const navigation = useNavigation<GroopHeaderNavigationProp>();
@@ -52,31 +63,32 @@ export default function GroopHeader({
   const MAX_AVATARS = 3;
 
   useEffect(() => {
-    console.log(`[GROOP_HEADER] Component mounted with memberCount: ${memberCount}`);
+    // Replace console.log with logger.groop
+    logger.groop(`Component mounted with memberCount: ${memberCount}`);
   
     const startTime = Date.now();
   
     return () => {
       const totalTime = Date.now() - startTime;
-      console.log(`[GROOP_HEADER] Component was mounted for ${totalTime}ms`);
+      logger.groop(`Component was mounted for ${totalTime}ms`);
     };
   }, []);
 
-  // Log each render
-  console.log(`[GROOP_HEADER] Rendering with ${memberProfiles.length} member profiles loaded`);
-  console.log(`[GROOP_HEADER] isLoadingMembers: ${isLoadingMembers}`);
+  // Log each render - these will be no-ops in production
+  logger.groop(`Rendering with ${memberProfiles.length} member profiles loaded`);
+  logger.groop(`isLoadingMembers: ${isLoadingMembers}`);
 
   // Load member profiles
   useEffect(() => {
     const fetchMemberProfiles = async () => {
       if (!currentGroop || !currentGroop.members || currentGroop.members.length === 0) {
-        console.log('[GROOP_HEADER] No members to fetch');
+        logger.groop('No members to fetch');
         setIsLoadingMembers(false);
         return;
       }
 
       try {
-        console.log(`[GROOP_HEADER] Fetching profiles for ${currentGroop.members.length} members`);
+        logger.groop(`Fetching profiles for ${currentGroop.members.length} members`);
         setIsLoadingMembers(true);
         
         // Fetch ALL members instead of just MAX_AVATARS so we have complete data for the modal
@@ -84,14 +96,14 @@ export default function GroopHeader({
         
         for (const memberId of currentGroop.members) {
           try {
-            console.log(`[GROOP_HEADER] Fetching profile for member: ${memberId.substring(0, 5)}...`);
+            logger.groop(`Fetching profile for member: ${memberId.substring(0, 5)}...`);
             const memberRef = doc(db, 'users', memberId);
             const memberSnap = await getDoc(memberRef);
             
             if (memberSnap.exists()) {
               const data = memberSnap.data();
-              console.log(`[GROOP_HEADER] Got profile for ${data.displayName || 'Unknown User'}`);
-              console.log(`[GROOP_HEADER] Avatar data:`, data.avatar ? `type: ${data.avatar.type}` : 'none');
+              logger.groop(`Got profile for ${data.displayName || 'Unknown User'}`);
+              logger.groop('Avatar data:', data.avatar ? `type: ${data.avatar.type}` : 'none');
               
               memberData.push({
                 uid: memberId,
@@ -99,7 +111,7 @@ export default function GroopHeader({
                 avatar: data.avatar
               });
             } else {
-              console.log(`[GROOP_HEADER] No profile found for member: ${memberId.substring(0, 5)}...`);
+              logger.groop(`No profile found for member: ${memberId.substring(0, 5)}...`);
               // Add placeholder data for non-existent users
               memberData.push({
                 uid: memberId,
@@ -108,15 +120,16 @@ export default function GroopHeader({
               });
             }
           } catch (error) {
-            console.error(`[GROOP_HEADER] Error fetching member ${memberId}:`, error);
+            // Keep error logs for debugging
+            logger.error(`Error fetching member ${memberId}:`, error);
             // Continue with next member
           }
         }
         
-        console.log(`[GROOP_HEADER] Fetched ${memberData.length} member profiles`);
+        logger.groop(`Fetched ${memberData.length} member profiles`);
         setMemberProfiles(memberData);
       } catch (error) {
-        console.error('[GROOP_HEADER] Error fetching member profiles:', error);
+        logger.error('Error fetching member profiles:', error);
       } finally {
         setIsLoadingMembers(false);
       }
@@ -150,13 +163,13 @@ export default function GroopHeader({
       try {
         onPressMembers();
       } catch (error) {
-        console.warn('[GROOP_HEADER] Error in onPressMembers callback, falling back to modal:', error);
+        logger.warn('Error in onPressMembers callback, falling back to modal:', error);
         setShowMembersModal(true);
       }
       return;
     }
     
-    console.log('[GROOP_HEADER] Opening members modal');
+    logger.groop('Opening members modal');
     setShowMembersModal(true);
   };
 
@@ -167,7 +180,7 @@ export default function GroopHeader({
 
   // Render a member avatar - either with the Avatar component or a placeholder
   const renderMemberAvatar = (member: MemberData, index: number) => {
-    console.log(`[GROOP_HEADER] Rendering avatar for member: ${member.displayName}, index: ${index}`);
+    logger.groop(`Rendering avatar for member: ${member.displayName}, index: ${index}`);
     
     // Calculate a slight offset for a staggered effect
     const verticalOffset = index % 2 === 0 ? 0 : -1;
@@ -201,10 +214,8 @@ export default function GroopHeader({
   };
 
   const MemberAvatar = ({ profile, index }: { profile: any, index: number }) => {
-    // Only log in development mode
-    if (__DEV__) {
-      console.log(`[GROOP_HEADER] Rendering avatar for member: ${profile.displayName}, index: ${index}`);
-    }
+    // Only log in development mode using the logger - it's already DEV-guarded
+    logger.groop(`Rendering avatar for member: ${profile.displayName}, index: ${index}`);
     
     return (
       <View style={[

@@ -195,14 +195,24 @@ export class ChatService {
     imageUrl?: string;
   }) {
     try {
-      console.log(`[CHAT] Sending message to groop: ${groopId}`);
-      console.log(`[CHAT] Message sender: ${messageData.senderName} (${messageData.senderId})`);
-      console.log(`[CHAT] Avatar data included:`, messageData.senderAvatar ? `${messageData.senderAvatar.type} avatar` : 'no avatar');
+      console.log(`[CHAT] Sending message to groop: ${groopId}, checking permissions`);
       
-      // First verify that the groop exists
+      // First check if user has permission to access the group
       const groopRef = doc(db, 'groops', groopId);
       const groopSnap = await getDoc(groopRef);
-  
+      
+      if (!groopSnap.exists()) {
+        console.error(`[CHAT] Groop ${groopId} does not exist`);
+        throw new Error('Groop not found');
+      }
+      
+      if (!groopSnap.data().members.includes(messageData.senderId)) {
+        console.error(`[CHAT] User ${messageData.senderId} is not a member of groop ${groopId}`);
+        throw new Error('Not a member of this groop');
+      }
+      
+      console.log('[CHAT] Permission check passed, creating message document');
+      
       let encryptedText = messageData.text;
       let isEncrypted = false;
       

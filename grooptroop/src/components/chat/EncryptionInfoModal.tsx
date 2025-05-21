@@ -1,29 +1,47 @@
 import React from 'react';
-import { Modal, View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Modal, View, Text, TouchableOpacity } from 'react-native';
+import logger from '../../utils/logger';
 import tw from '../../utils/tw';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 interface EncryptionInfoModalProps {
-  isVisible: boolean;
+  visible: boolean; // Changed from isVisible to visible
   onClose: () => void;
+  groopId?: string; // Make groopId optional since it was in the chatScreen call
+  tw?: any; // Add tw as optional since it was passed from chatScreen
 }
 
-const EncryptionInfoModal: React.FC<EncryptionInfoModalProps> = ({ isVisible, onClose }) => {
+const EncryptionInfoModal: React.FC<EncryptionInfoModalProps> = ({ 
+  visible, // Changed from isVisible to visible 
+  onClose,
+  groopId
+}) => {
+  // Make sure we log when modal is rendered
+  logger.chat(`EncryptionInfoModal rendered with visible=${visible}`);
+  
+  const handleClose = () => {
+    // Add logging
+    logger.chat('EncryptionInfoModal close button pressed');
+    onClose();
+  };
+
   return (
     <Modal
       transparent={true}
-      visible={isVisible}
+      visible={visible} // Changed from isVisible to visible
       animationType="slide"
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
-      <View style={tw`flex-1 justify-end bg-black bg-opacity-50`}>
-        <TouchableOpacity 
-          style={tw`absolute inset-0`} 
-          onPress={onClose} 
-          activeOpacity={1}
-        />
-        
-        <View style={tw`bg-white w-full max-w-md rounded-t-3xl pb-10 pt-5 px-5`}>
+      <TouchableOpacity
+        style={tw`flex-1 bg-black bg-opacity-50 justify-center items-center`}
+        activeOpacity={1}
+        onPress={handleClose}
+      >
+        <View 
+          style={tw`bg-white p-5 rounded-xl w-5/6 max-w-md`}
+          onStartShouldSetResponder={() => true}
+          onTouchEnd={e => e.stopPropagation()}
+        >
           {/* Drag indicator */}
           <View style={tw`w-16 h-1 bg-gray-300 rounded-full mx-auto mb-6`} />
           
@@ -80,7 +98,7 @@ const EncryptionInfoModal: React.FC<EncryptionInfoModalProps> = ({ isVisible, on
           {/* Action buttons */}
           <TouchableOpacity 
             style={tw`bg-primary py-3.5 rounded-xl mb-2`}
-            onPress={onClose}
+            onPress={handleClose}
           >
             <Text style={tw`text-white text-center font-bold`}>
               Got it!
@@ -89,14 +107,14 @@ const EncryptionInfoModal: React.FC<EncryptionInfoModalProps> = ({ isVisible, on
           
           <TouchableOpacity 
             style={tw`py-2`}
-            onPress={onClose}
+            onPress={handleClose}
           >
             <Text style={tw`text-gray-500 text-center text-sm`}>
               Tap anywhere to dismiss
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </TouchableOpacity>
     </Modal>
   );
 };

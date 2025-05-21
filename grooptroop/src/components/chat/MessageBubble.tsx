@@ -6,6 +6,7 @@ import { ChatMessage } from '../../models/chat';
 import tw from '../../utils/tw';
 import Avatar from '../common/Avatar';
 import * as Haptics from 'expo-haptics';
+import logger from '../../utils/logger';
 
 // Common emoji reactions
 const COMMON_REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🔥'];
@@ -118,9 +119,10 @@ function MessageBubble({
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }, []);
   
-  // Modify this console.log (around line 79)
-  if (__DEV__ && false) {
-    console.log(`[MESSAGE] Avatar details:`, {
+  // Replace the console.log with logger
+  useEffect(() => {
+    // This is now optimized - in production it's a no-op
+    logger.avatar('Avatar details:', {
       exists: !!message.senderAvatar,
       type: message.senderAvatar?.type,
       valuePreview: message.senderAvatar?.value ? 
@@ -130,7 +132,7 @@ function MessageBubble({
         'no value',
       isFromCurrentUser
     });
-  }
+  }, [message.senderAvatar, isFromCurrentUser]);
 
   // Check if current user has reacted with this emoji
   const hasUserReacted = useCallback((emoji: string) => {
@@ -191,21 +193,21 @@ function MessageBubble({
     );
   }
   
-  // Modify this console.log (around line 147)
-  if (__DEV__ && false) {
-    console.log(`[MESSAGE] Rendering message from ${message.senderName}, avatar:`, 
-      message.senderAvatar ? `${message.senderAvatar.type} avatar` : 'no avatar');
-  }
-    
-  // For debugging reactions
+  // This log is now optimized in production
   useEffect(() => {
-    if (__DEV__) {
-      console.log(`[CHAT_REACTIONS] Message ${message.id.slice(0, 6)}: `, 
-        message.reactions ? 
-          `Has ${Object.keys(message.reactions).length} reaction types` :
-          'No reactions'
-      );
-    }
+    logger.chat(`Rendering message from ${message.senderName}, avatar:`, 
+      message.senderAvatar ? `${message.senderAvatar.type} avatar` : 'no avatar');
+  }, [message.senderName, message.senderAvatar]);
+    
+  // For debugging reactions - replace with optimized logger
+  useEffect(() => {
+    // This is now completely skipped in production
+    logger.chatReactions(
+      message.id,
+      message.reactions ? 
+        `Has ${Object.keys(message.reactions).length} reaction types` :
+        'No reactions'
+    );
   }, [message.id, message.reactions]);
   
   // Add this function to handle reaction taps with local feedback
@@ -220,10 +222,8 @@ function MessageBubble({
     // If there's no sender name, provide a fallback
     const senderName = message.senderName || 'User';
     
-    // Log the render operation - only in dev mode
-    if (__DEV__ && false) {
-      console.log(`[MESSAGE] Rendering avatar for ${senderName} type: ${message.senderAvatar?.type || 'undefined'}`);
-    }
+    // Log the render operation using our optimized logger
+    logger.avatar(`Rendering avatar for ${senderName} type: ${message.senderAvatar?.type || 'undefined'}`);
     
     // Create a visible container with proper dimensions and position
     return (

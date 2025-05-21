@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, Image, Platform } from 'react-native';
 import FastImage from 'react-native-fast-image';
 import { UserAvatar } from '../../contexts/AuthProvider';
 import { AvatarService } from '../../services/AvatarService';
+import logger from '../../utils/logger'; // Add this import
 
 // Create an image URI cache at module level
 const IMAGE_CACHE = new Map<string, string>();
@@ -23,7 +24,7 @@ const preloadImage = (uri: string) => {
         FastImage.preload([{ uri }]);
       } catch (e) {
         // Silently fail if FastImage is not available
-        console.warn('[AVATAR] FastImage preload failed', e);
+        logger.warn('FastImage preload failed', e);
       }
     }
   }
@@ -70,9 +71,7 @@ const Avatar: React.FC<AvatarProps> = ({
   imageStyle
 }) => {
   // Debug log to see what props are being passed - only in development
-  if (__DEV__ && false) {
-    console.log(`[AVATAR_COMP] Rendering avatar for ${displayName || 'unknown'}, type: ${avatar?.type || 'none'}`);
-  }
+  logger.avatar(`Rendering avatar for ${displayName || 'unknown'}, type: ${avatar?.type || 'none'}`);
   
   // Add state for tracking image loading errors
   const [hasImageError, setHasImageError] = useState(false);

@@ -855,11 +855,12 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
   return (
   <SafeAreaView style={tw`flex-1 bg-light`}>
 <GroopHeader 
-  minimal={true} 
-  showMembers={true}
-  isChatScreen={true}
-  isItineraryScreen={false}
-  onShowEncryptionInfo={() => setShowEncryptionInfo(true)}
+  title={currentGroop?.name} 
+  onBackPress={() => navigation.goBack()}
+  onShowEncryptionInfo={() => setShowEncryptionInfo(true)} // Changed from showEncryptionInfo to onShowEncryptionInfo
+  encryptionEnabled={currentGroop?.encryptionEnabled}
+  loading={encryptionLoading}
+  isChatScreen={true} // Make sure this is set since this is the chat screen
 />
 
     <KeyboardAvoidingView 
@@ -916,8 +917,10 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
       />
     </KeyboardAvoidingView>
     <EncryptionInfoModal 
-      isVisible={showEncryptionInfo}
+      visible={showEncryptionInfo} // Change from isVisible to visible
       onClose={() => setShowEncryptionInfo(false)}
+      groopId={currentGroop?.id} // Make sure to pass the groopId
+      tw={tw} // Pass the tw utility if needed by the component
     />
   </SafeAreaView>
 );
