@@ -14,7 +14,6 @@ import PaymentSheet from '../components/payments/PaymentSheet';
 import { PaymentService } from '../services/PaymentService';
 import { useAuth } from '../contexts/AuthProvider';
 import GroopHeader from '../components/common/GroopHeader';
-// Import from sentryService correctly
 import { SentryService } from '../utils/sentryService';
 
 export default function ItineraryScreen() {

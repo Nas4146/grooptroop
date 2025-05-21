@@ -11,7 +11,8 @@ import {
   Image,
   Alert,
   Keyboard,
-  KeyboardEvent
+  KeyboardEvent,
+  Dimensions // Make sure this is imported
 } from 'react-native';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -38,6 +39,7 @@ import GroopHeader from '../components/common/GroopHeader';
 import { SentryService, usePerformance, SentrySpan } from '../utils/sentryService';
 import ChatPerformanceMonitor from '../utils/chatPerformanceMonitor';
 import logger from '../utils/logger';
+
 
 type ChatScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type ChatScreenRouteProp = RouteProp<RootStackParamList, 'Chat'>; // Or whatever the route name is in your stack
@@ -765,6 +767,11 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
     </View>
   );
 
+  const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+  // Set drawDistance to be ~1.5x screen height for a good balance
+  // This is a bit less than 2x but still provides a buffer for smooth scrolling
+  const OPTIMAL_DRAW_DISTANCE = Math.round(SCREEN_HEIGHT * 1.5);
+
   return (
   <SafeAreaView style={tw`flex-1 bg-light`}>
 <GroopHeader 
@@ -797,7 +804,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
         maintainVisibleContentPosition={{
           minIndexForVisible: 0,
         }}
-        drawDistance={300}
+        drawDistance={OPTIMAL_DRAW_DISTANCE} // Optimized value based on screen height
         // Add these optimizations:
         removeClippedSubviews={true} // Offscreen views are detached
         disableAutoLayout={Platform.OS === 'ios' ? false : true} // Optimize layout on Android
