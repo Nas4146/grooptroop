@@ -9,6 +9,10 @@ import * as Haptics from 'expo-haptics';
 // Common emoji reactions
 const COMMON_REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🔥'];
 
+type Reactions = {
+  [emoji: string]: string[];
+};
+
 interface MessageBubbleProps {
   message: ChatMessage;
   isFromCurrentUser: boolean;
@@ -345,15 +349,20 @@ function MessageBubble({
 }
 
 // Then export a memoized version with custom comparison function
-export default memo(MessageBubble, (prevProps, nextProps) => {
-  // Only re-render if these props change
-  const prevReactionsString = JSON.stringify(prevProps.message.reactions || {});
-  const nextReactionsString = JSON.stringify(nextProps.message.reactions || {});
-
+export default memo(MessageBubble, (p, n) => {
   return (
-    prevProps.message.id === nextProps.message.id &&
-    prevProps.message.text === nextProps.message.text &&
-    prevReactionsString === nextReactionsString &&
-    prevProps.isFromCurrentUser === nextProps.isFromCurrentUser
+    p.message.id === n.message.id &&
+    p.message.text === n.message.text &&
+    shallowEqualReactions(p.message.reactions, n.message.reactions) &&
+    p.isFromCurrentUser === n.isFromCurrentUser
   );
 });
+
+// Add the helper function for shallow comparison of reactions
+const shallowEqualReactions = (a?: Reactions, b?: Reactions) => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keysA = Object.keys(a);
+  if (keysA.length !== Object.keys(b).length) return false;
+  return keysA.every(k => a[k]?.length === b[k]?.length);
+};
