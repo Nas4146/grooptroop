@@ -70,10 +70,11 @@ export class ChatService {
           senderName: data.senderName,
           senderAvatar: data.senderAvatar,
           createdAt: data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt),
-          reactions: data.reactions || {},
+          // Freeze the reactions object for stable references
+          reactions: Object.freeze({ ...(data.reactions || {}) }),
           replyTo: data.replyTo,
-          replyToText: data.replyToText, // Add this line
-          replyToSenderName: data.replyToSenderName, // Add this line
+          replyToText: data.replyToText,
+          replyToSenderName: data.replyToSenderName,
           imageUrl: data.imageUrl,
           read: data.read || [],
           isEncrypted: data.isEncrypted || false,
@@ -83,8 +84,18 @@ export class ChatService {
       }
       
       console.log(`[CHAT] Received and processed ${messages.length} messages from subscription`);
-      console.log('[CHAT] First message avatar data type:', messages.length > 0 ? 
-        (messages[0].senderAvatar ? typeof messages[0].senderAvatar : 'none') : 'no messages');
+      if (__DEV__ && messages.length > 0) {
+        console.log('[CHAT] First message avatar data type:', 
+          messages[0].senderAvatar ? typeof messages[0].senderAvatar : 'none');
+      }
+      
+      // Sort messages by creation time (newest last)
+      messages.sort((a, b) => {
+        const timeA = a.createdAt instanceof Date ? a.createdAt : new Date(0);
+        const timeB = b.createdAt instanceof Date ? b.createdAt : new Date(0);
+        return timeA.getTime() - timeB.getTime();
+      });
+      
       callback(messages);
     }, error => {
       console.error("[CHAT] Error listening to messages:", error);
