@@ -501,7 +501,7 @@ const openBitmojiPicker = () => {
           </View>
             
           {/* Profile Setup Form */}
-          <View style={tw`bg-white rounded-xl p-4 shadow-sm border border-indigo-50`}>
+          <View style={tw`bg-white rounded-xl p-4 border border-indigo-50`}>
             {/* Display Name Input */}
             <Text style={tw`text-sm font-semibold text-slate-700 mb-1.5`}>Display Name</Text>
             <TextInput
@@ -534,7 +534,7 @@ const openBitmojiPicker = () => {
                 style={[
                   tw`flex-1 items-center justify-center py-2.5 rounded-lg border mx-1`,
                   selectedAvatarType === 'bitmoji' 
-                    ? tw`border-violet-600 bg-violet-50 shadow` 
+                    ? tw`border-violet-600 bg-violet-50` 
                     : tw`border-slate-200 bg-slate-50`
                 ]}
                 onPress={openBitmojiPicker}
@@ -556,7 +556,7 @@ const openBitmojiPicker = () => {
                 style={[
                   tw`flex-1 items-center justify-center py-2.5 rounded-lg border mx-1`,
                   selectedAvatarType === 'initial' 
-                    ? tw`border-violet-600 bg-violet-50 shadow` 
+                    ? tw`border-violet-600 bg-violet-50` 
                     : tw`border-slate-200 bg-slate-50`
                 ]}
                 onPress={() => {
@@ -582,7 +582,7 @@ const openBitmojiPicker = () => {
                 style={[
                   tw`flex-1 items-center justify-center py-2.5 rounded-lg border mx-1`,
                   selectedAvatarType === 'dicebear' 
-                    ? tw`border-violet-600 bg-violet-50 shadow` 
+                    ? tw`border-violet-600 bg-violet-50` 
                     : tw`border-slate-200 bg-slate-50`
                 ]}
                 onPress={openDiceBearPicker}
@@ -637,7 +637,7 @@ const openBitmojiPicker = () => {
             </TouchableOpacity>
             
             <TouchableOpacity
-              style={tw`flex-1.5 py-2.5 px-4 rounded-lg items-center justify-center bg-violet-600 shadow-sm`}
+              style={tw`flex-1.5 py-2.5 px-4 rounded-lg items-center justify-center bg-violet-600`}
               onPress={saveProfile}
               disabled={isSubmitting || !displayName.trim()}
             >
@@ -687,10 +687,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderRadius: 16,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 15,
     elevation: 2,
     borderWidth: 1,
     borderColor: '#F3F0FF',
@@ -712,10 +708,6 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: '#7C3AED',
     paddingLeft: 8,
-    shadowColor: '#7C3AED',
-    shadowOpacity: 0.04,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 2 },
   },
   avatarPreviewContainer: {
     alignItems: 'center',
@@ -761,10 +753,6 @@ const styles = StyleSheet.create({
   selectedAvatarType: {
     borderColor: '#7C3AED',
     backgroundColor: '#EDE9FE',
-    shadowColor: '#7C3AED',
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
     elevation: 3,
   },
   avatarTypeText: {
@@ -827,10 +815,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#7C3AED',
     flex: 1.5,
-    shadowColor: '#7C3AED',
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
   saveButtonText: {
@@ -887,10 +871,6 @@ const styles = StyleSheet.create({
     marginRight: 8,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    shadowColor: '#7C3AED',
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
   categoryText: {
@@ -915,20 +895,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e2e8f0',
     backgroundColor: '#f8fafc',
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
     elevation: 2,
     marginHorizontal: 4,
   },
   selectedBitmojiOption: {
     borderColor: '#7C3AED',
     borderWidth: 2,
-    shadowColor: '#7C3AED',
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
     elevation: 4,
   },
   bitmojiImage: {

@@ -76,7 +76,7 @@ const navigateToMembers = () => {
             </View>
             
             {/* Central avatar */}
-            <View style={tw`absolute top-1/2 left-1/2 -mt-8 -ml-8 bg-primary rounded-full w-16 h-16 border-2 border-white items-center justify-center shadow-lg`}>
+            <View style={tw`absolute top-1/2 left-1/2 -mt-8 -ml-8 bg-primary rounded-full w-16 h-16 border-2 border-white items-center justify-center`}>
               <Ionicons name="person" size={30} color="white" />
             </View>
             
@@ -122,7 +122,7 @@ const navigateToMembers = () => {
         <TouchableOpacity
           onPress={handleNotifyMe}
           disabled={notifyPressed}
-          style={tw`${notifyPressed ? 'bg-green-500' : 'bg-primary'} py-3 px-8 rounded-xl shadow-md`}
+          style={tw`${notifyPressed ? 'bg-green-500' : 'bg-primary'} py-3 px-8 rounded-xl`}
         >
           <View style={tw`flex-row items-center justify-center`}>
             <Ionicons 
@@ -144,7 +144,7 @@ const navigateToMembers = () => {
       
       {/* Success notification */}
       {showNotification && (
-        <View style={tw`absolute bottom-8 left-6 right-6 px-4 py-3 bg-green-500 rounded-xl flex-row items-center shadow-md`}>
+        <View style={tw`absolute bottom-8 left-6 right-6 px-4 py-3 bg-green-500 rounded-xl flex-row items-center`}>
           <Ionicons name="checkmark-circle" size={22} color="white" />
           <Text style={tw`flex-1 text-white font-medium ml-2`}>
             We'll notify you when location sharing launches!

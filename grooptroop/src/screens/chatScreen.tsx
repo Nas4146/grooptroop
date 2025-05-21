@@ -889,7 +889,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
 
       {showScrollButton && (
         <TouchableOpacity
-              style={tw`absolute right-4 bottom-16 bg-primary rounded-full w-10 h-10 items-center justify-center shadow-md z-10`}
+              style={tw`absolute right-4 bottom-16 bg-primary rounded-full w-10 h-10 items-center justify-center z-10`}
               onPress={() => flashListRef.current?.scrollToEnd({ animated: true })}
         >
           <Ionicons name="arrow-down" size={24} color="white" />

@@ -176,7 +176,7 @@ export default function GroopHeader({
       <TouchableOpacity 
         key={member.uid || index} 
         style={[
-          tw`w-5 h-5 rounded-full border-2 border-white overflow-hidden shadow-sm`,
+          tw`w-5 h-5 rounded-full border-2 border-white overflow-hidden`,
           { transform: [{ translateY: verticalOffset }] }
         ]}
         onPress={handlePressMembers}
@@ -207,21 +207,14 @@ export default function GroopHeader({
     }
     
     return (
-      // Shadow-capable wrapper with opaque background
       <View style={[
         tw`rounded-full overflow-hidden`,
         { 
           marginLeft: index === 0 ? 0 : -8, 
           zIndex: 10 - index,
           backgroundColor: 'white',
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: 0.1,
-          shadowRadius: 1,
-          elevation: 1
         }
       ]}>
-        {/* Inner content with no shadows */}
         <View style={tw`w-7 h-7 rounded-full border-2 border-white overflow-hidden`}>
           <Avatar
             user={profile.displayName}
@@ -230,7 +223,6 @@ export default function GroopHeader({
             avatarSeed={profile.avatar?.seed}
             avatarUrl={profile.avatar?.url}
             backgroundColor={profile.avatar?.color}
-            // Remove shadow props from Avatar
           />
         </View>
       </View>
@@ -241,10 +233,9 @@ export default function GroopHeader({
     <View style={tw`${minimal ? 'pt-2' : 'pt-1'} pb-0 rounded-b-3xl`}>
       <View 
         style={[
-          tw`mx-4 mb-2 bg-sky-50 rounded-xl px-3 py-2.5 shadow-md`, 
+          tw`mx-4 mb-2 bg-sky-50 rounded-xl px-3 py-2.5`, 
           {
             zIndex: 20,
-            elevation: 4,
             position: 'relative',
           }
         ]}
@@ -379,7 +370,7 @@ export default function GroopHeader({
                 {memberCount > MAX_AVATARS && (
                   <TouchableOpacity 
                     style={[
-                      tw`w-5 h-5 rounded-full bg-primary border-2 border-white items-center justify-center shadow-sm`,
+                      tw`w-5 h-5 rounded-full bg-primary border-2 border-white items-center justify-center`,
                       { marginLeft: -6 }
                     ]}
                     onPress={handlePressMembers}

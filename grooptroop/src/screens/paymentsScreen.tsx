@@ -238,7 +238,7 @@ const navigateToMembers = () => {
         ListHeaderComponent={() => (
           <View style={tw`px-4 py-4`}>
             {/* Payment Summary Card */}
-            <View style={tw`bg-white rounded-xl shadow-sm p-4 mb-4`}>
+            <View style={tw`bg-white rounded-xl p-4 mb-4`}>
               <Text style={tw`text-lg font-bold text-neutral mb-3`}>Payment Summary</Text>
               
               <View style={tw`flex-row justify-between items-center mb-4`}>
@@ -295,7 +295,7 @@ const navigateToMembers = () => {
           
           return (
             <TouchableOpacity 
-              style={tw`mx-4 mb-3 bg-white rounded-lg shadow-sm p-4 flex-row items-center`}
+              style={tw`mx-4 mb-3 bg-white rounded-lg p-4 flex-row items-center`}
               onPress={() => handlePayItem(item)}
               disabled={item.isPaid}
             >

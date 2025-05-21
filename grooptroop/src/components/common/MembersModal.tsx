@@ -69,7 +69,6 @@ const MemberItem = React.memo(({ item, index }: { item: MemberData; index: numbe
             avatar={item.avatar}
             displayName={item.displayName}
             size={46}
-            style={tw`shadow-sm`}
           />
           
           {/* Online indicator dot - show randomly on some members */}
@@ -145,7 +144,7 @@ const MembersModal: React.FC<MembersModalProps> = ({ visible, onClose, members, 
           <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
             <Animated.View style={[tw`w-full max-w-xs overflow-hidden`, modalScaleAndOpacity]}>
               {/* Modal Content */}
-              <View style={tw`bg-white rounded-3xl shadow-xl overflow-hidden`}>
+              <View style={tw`bg-white rounded-3xl overflow-hidden`}>
                 {/* Header with vibrant background */}
                 <View style={tw`bg-violet-600 p-5`}>
                   <View style={tw`flex-row justify-between items-center`}>

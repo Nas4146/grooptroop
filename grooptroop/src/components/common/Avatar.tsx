@@ -37,7 +37,7 @@ interface AvatarProps {
 
 const Avatar: React.FC<AvatarProps> = ({ 
   avatar, 
-  displayName = '', // Provide default empty string
+  displayName = '', 
   size = 40, 
   style,
   textStyle,
@@ -101,34 +101,26 @@ const Avatar: React.FC<AvatarProps> = ({
   
   // Handle DiceBear avatars
   if (avatar.type === 'dicebear' && avatar.value) {
-    // Container with shadow
     return (
-      <View 
+      <View
         style={[
-          { 
-            width: sizeInPx, 
-            height: sizeInPx, 
+          {
+            width: sizeInPx,
+            height: sizeInPx,
             borderRadius: sizeInPx / 2,
             backgroundColor: 'white',
             overflow: 'hidden',
-            // Apply shadow to container instead of image
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 0.1,
-            shadowRadius: 1,
-            elevation: 2
           },
           style
         ]}
       >
-        {/* Image with no shadow */}
         <Image
           source={{ uri: avatar.value }}
           style={[
             { 
               width: '100%', 
               height: '100%',
-              backgroundColor: 'white' // Ensure image has opaque background
+              backgroundColor: 'white'
             },
             imageStyle
           ]}
@@ -140,34 +132,26 @@ const Avatar: React.FC<AvatarProps> = ({
   
   // Handle URL avatars
   if (avatar.type === 'url' && avatar.value) {
-    // Container with shadow
     return (
-      <View 
+      <View
         style={[
-          { 
-            width: sizeInPx, 
-            height: sizeInPx, 
+          {
+            width: sizeInPx,
+            height: sizeInPx,
             borderRadius: sizeInPx / 2,
             backgroundColor: 'white',
             overflow: 'hidden',
-            // Apply shadow to container instead of image
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 0.1,
-            shadowRadius: 1,
-            elevation: 2
           },
           style
         ]}
       >
-        {/* Image with no shadow */}
         <Image
           source={{ uri: avatar.value }}
           style={[
             { 
               width: '100%', 
               height: '100%',
-              backgroundColor: 'white' // Ensure image has opaque background
+              backgroundColor: 'white'
             },
             imageStyle
           ]}
@@ -243,22 +227,8 @@ const Avatar: React.FC<AvatarProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  image: {
-    overflow: 'hidden',
-  },
-  initialContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  initialText: {
-    color: 'white',
-    fontWeight: 'bold',
-  }
-});
-
 export default memo(Avatar, (prevProps, nextProps) => {
-  // Check if avatar is the same
+  // Memoization check remains the same
   const prevAvatarValue = prevProps.avatar?.value;
   const nextAvatarValue = nextProps.avatar?.value;
   

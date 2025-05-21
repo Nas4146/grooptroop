@@ -282,10 +282,6 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 20,
     elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
   },
   metaItem: {
     flexDirection: 'row',
@@ -311,10 +307,6 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 20,
     elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
   },
   descriptionTitle: {
     fontSize: 18,

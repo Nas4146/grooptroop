@@ -192,11 +192,6 @@ function MessageBubble({
         <View style={[
           tw`rounded-full overflow-hidden`,
           { 
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 0.1,
-            shadowRadius: 1,
-            elevation: 1,
             backgroundColor: 'white'
           }
         ]}>
@@ -276,7 +271,7 @@ function MessageBubble({
           {Object.entries(reactionCounts).map(([emoji, count]) => (
             <TouchableOpacity
               key={emoji}
-              style={tw`bg-white border border-gray-200 rounded-full px-2 py-0.5 mr-1 flex-row items-center shadow-sm`}
+              style={tw`bg-white border border-gray-200 rounded-full px-2 py-0.5 mr-1 flex-row items-center`}
               onPress={() => onReactionPress(message.id, emoji)}
             >
               <Text style={tw`mr-1`}>{emoji}</Text>
@@ -289,7 +284,7 @@ function MessageBubble({
       {/* Reaction selector */}
       {showReactions && (
         <View style={[
-          tw`flex-row bg-white rounded-full p-1 shadow-md border border-gray-100 mt-2`,
+          tw`flex-row bg-white rounded-full p-1 border border-gray-100 mt-2`,
           isFromCurrentUser ? tw`mr-2` : tw`ml-10`
         ]}>
           {/* Emoji reactions */}

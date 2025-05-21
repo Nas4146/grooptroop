@@ -10,7 +10,7 @@ export default function DaySection({ day }: DaySectionProps) {
     <View style={tw`mb-6`}>
       {/* Modern day header with blob-shaped background - Gen Z loves asymmetrical shapes */}
       <View style={tw`mb-2 flex-row items-center`}>
-        <View style={tw`bg-secondary rounded-l-full rounded-tr-3xl rounded-br-lg px-4 py-2 shadow-sm`}>
+        <View style={tw`bg-secondary rounded-l-full rounded-tr-3xl rounded-br-lg px-4 py-2`}>
           <Text style={tw`text-base font-bold text-white`}>
             {day.formattedDate}
           </Text>

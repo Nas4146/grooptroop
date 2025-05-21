@@ -131,7 +131,7 @@ export default function EventCard({
           
           <TouchableOpacity
             onPress={handlePress}
-            style={tw`flex-1 rounded-2xl px-3 py-2.5 shadow-sm ${
+            style={tw`flex-1 rounded-2xl px-3 py-2.5 ${
               isSelected 
               ? 'bg-sky-100 border border-sky-300' 
               : `bg-white border ${mood.border}`

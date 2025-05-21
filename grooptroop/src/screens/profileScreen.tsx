@@ -194,12 +194,11 @@ export default function ProfileScreen({ navigation }: { navigation: ProfileScree
               avatar={displayAvatar}
               displayName={displayName}
               size={96} // Equivalent to w-24 h-24
-              style={tw`shadow-sm`}
               forceUpdate={forceUpdate} // Force avatar to refresh when profile changes
             />
             
             {/* Edit button overlay */}
-            <View style={tw`absolute bottom-0 right-0 bg-primary rounded-full w-8 h-8 items-center justify-center shadow-sm`}>
+            <View style={tw`absolute bottom-0 right-0 bg-primary rounded-full w-8 h-8 items-center justify-center`}>
               <Ionicons name="pencil" size={16} color="white" />
             </View>
           </TouchableOpacity>
@@ -259,7 +258,7 @@ export default function ProfileScreen({ navigation }: { navigation: ProfileScree
         {/* User information cards */}
         <View style={tw`px-4`}>
           {/* Member Since card */}
-          <View style={tw`bg-white rounded-xl p-4 shadow-sm mb-4`}>
+          <View style={tw`bg-white rounded-xl p-4 mb-4`}>
             <View style={tw`flex-row items-center mb-1`}>
               <Ionicons name="calendar-outline" size={18} color="#7C3AED" style={tw`mr-2`} />
               <Text style={tw`text-sm font-medium text-primary`}>Member Since</Text>
@@ -297,7 +296,7 @@ export default function ProfileScreen({ navigation }: { navigation: ProfileScree
           </View>
           
           {/* Email card */}
-          <View style={tw`bg-white rounded-xl p-4 shadow-sm mb-4`}>
+          <View style={tw`bg-white rounded-xl p-4 mb-4`}>
             <View style={tw`flex-row items-center mb-1`}>
               <Ionicons name="mail-outline" size={18} color="#7C3AED" style={tw`mr-2`} />
               <Text style={tw`text-sm font-medium text-primary`}>Email</Text>

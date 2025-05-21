@@ -237,7 +237,7 @@ const navigateToMembers = () => {
             </Text>
             
             {/* Invite Members Section */}
-            <View style={tw`mb-8 bg-white p-4 rounded-xl shadow-sm`}>
+            <View style={tw`mb-8 bg-white p-4 rounded-xl`}>
               <View style={tw`flex-row items-center mb-4`}>
                 <Ionicons name="people-outline" size={24} color="#7C3AED" style={tw`mr-3`} />
                 <Text style={tw`text-lg font-bold text-neutral`}>Invite Members</Text>
@@ -303,7 +303,7 @@ const navigateToMembers = () => {
             </View>
             
             {/* Payment Settings Section */}
-            <View style={tw`mb-8 bg-white p-4 rounded-xl shadow-sm`}>
+            <View style={tw`mb-8 bg-white p-4 rounded-xl`}>
               <View style={tw`flex-row items-center mb-4`}>
                 <Ionicons name="wallet-outline" size={24} color="#7C3AED" style={tw`mr-3`} />
                 <Text style={tw`text-lg font-bold text-neutral`}>Payment Settings</Text>
@@ -336,7 +336,7 @@ const navigateToMembers = () => {
             </View>
             
             {/* Future sections */}
-            <View style={tw`mb-8 bg-white p-4 rounded-xl shadow-sm opacity-50`}>
+            <View style={tw`mb-8 bg-white p-4 rounded-xl opacity-50`}>
               <View style={tw`flex-row items-center mb-4`}>
                 <Ionicons name="notifications-outline" size={24} color="#7C3AED" style={tw`mr-3`} />
                 <Text style={tw`text-lg font-bold text-neutral`}>Notification Settings</Text>
@@ -345,7 +345,7 @@ const navigateToMembers = () => {
             </View>
             
             {/* Performance Monitor Section - New */}
-            <View style={tw`mb-8 bg-white p-4 rounded-xl shadow-sm`}>
+            <View style={tw`mb-8 bg-white p-4 rounded-xl`}>
               <View style={tw`flex-row items-center mb-4`}>
                 <Ionicons name="speedometer-outline" size={24} color="#7C3AED" style={tw`mr-3`} />
                 <Text style={tw`text-lg font-bold text-neutral`}>Performance Monitor</Text>
@@ -368,7 +368,7 @@ const navigateToMembers = () => {
       
       {/* Toast notification for copy action */}
       {showCopiedToast && (
-        <View style={tw`absolute bottom-8 left-4 right-4 bg-gray-800 rounded-lg px-4 py-3 flex-row items-center justify-center shadow-lg`}>
+        <View style={tw`absolute bottom-8 left-4 right-4 bg-gray-800 rounded-lg px-4 py-3 flex-row items-center justify-center`}>
           <Ionicons name="checkmark-circle" size={20} color="#22c55e" style={tw`mr-2`} />
           <Text style={tw`text-white font-medium`}>Invite link copied to clipboard!</Text>
         </View>

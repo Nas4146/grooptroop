@@ -81,7 +81,10 @@ const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(({
     <View style={styles.container}>
       {/* Reply interface - floating style */}
       {replyingTo && (
-        <View style={[tw`flex-row items-center rounded-xl mx-1 mb-1`, styles.replyContainer]}>
+        <View style={[
+          tw`flex-row items-center rounded-xl mx-1 mb-1`, 
+          styles.replyContainer
+        ]}>
           <View style={tw`flex-1 py-2 px-3`}>
             <Text style={tw`text-gray-500 text-xs`}>
               Replying to <Text style={tw`font-medium text-violet-700`}>{replyingTo.senderName}</Text>
@@ -98,7 +101,10 @@ const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(({
       
       {/* Attachment options - expanded when button is pressed */}
       {showAttachOptions && (
-        <View style={[tw`flex-row justify-around mx-1 mb-1 rounded-xl`, styles.attachOptionsContainer]}>
+        <View style={[
+          tw`flex-row justify-around mx-1 mb-1 rounded-xl`, 
+          styles.attachOptionsContainer
+        ]}>
           <TouchableOpacity style={tw`items-center py-2`} onPress={() => console.log('[CHAT] Photo library')}>
             <View style={[tw`w-11 h-11 rounded-full items-center justify-center mb-1`, styles.attachIcon]}>
               <Ionicons name="images-outline" size={22} color="#7C3AED" />
@@ -186,7 +192,7 @@ const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 8,
     paddingTop: 4,
-    paddingBottom: Platform.OS === 'ios' ? 2 : 1, // Less bottom padding
+    paddingBottom: Platform.OS === 'ios' ? 2 : 1,
     backgroundColor: 'rgba(255,255,255,0.9)',
     backdropFilter: 'blur(10px)',
   },
@@ -195,16 +201,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.9)',
     borderRadius: 24,
-    shadowColor: '#8b5cf6',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
     borderWidth: 1,
     borderColor: 'rgba(233,213,255,0.5)',
     paddingHorizontal: 4,
     paddingVertical: 2,
-    marginVertical: 1, // Minimal vertical margin
+    marginVertical: 1,
   },
   input: {
     flex: 1,
@@ -224,11 +225,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#7C3AED',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#7C3AED',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    elevation: 2,
   },
   attachBtn: {
     width: 38, 
@@ -240,33 +236,18 @@ const styles = StyleSheet.create({
   },
   replyContainer: {
     backgroundColor: 'rgba(237,233,254,0.8)',
-    shadowColor: '#8b5cf6',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
     borderWidth: 1,
     borderColor: 'rgba(233,213,255,0.5)',
     marginBottom: 6,
   },
   attachOptionsContainer: {
     backgroundColor: 'rgba(243,232,255,0.8)',
-    shadowColor: '#8b5cf6',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
-    elevation: 2,
     borderWidth: 1,
     borderColor: 'rgba(233,213,255,0.5)',
     marginBottom: 6,
   },
   attachIcon: {
     backgroundColor: 'rgba(255,255,255,0.7)',
-    shadowColor: '#8b5cf6',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 1,
     borderWidth: 1,
     borderColor: 'rgba(233,213,255,0.7)',
   }

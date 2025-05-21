@@ -249,10 +249,6 @@ const styles = StyleSheet.create({
     borderRadius: 75,
     borderWidth: 3,
     borderColor: 'white',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
     elevation: 3,
   },
   optionsContainer: {
@@ -339,10 +335,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#7C3AED',
     paddingHorizontal: 24,
-    shadowColor: '#7C3AED',
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
   applyText: {

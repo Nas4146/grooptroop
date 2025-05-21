@@ -23,7 +23,7 @@ const EncryptionInfoModal: React.FC<EncryptionInfoModalProps> = ({ isVisible, on
           activeOpacity={1}
         />
         
-        <View style={tw`bg-white w-full max-w-md rounded-t-3xl pb-10 pt-5 px-5 shadow-lg`}>
+        <View style={tw`bg-white w-full max-w-md rounded-t-3xl pb-10 pt-5 px-5`}>
           {/* Drag indicator */}
           <View style={tw`w-16 h-1 bg-gray-300 rounded-full mx-auto mb-6`} />
           

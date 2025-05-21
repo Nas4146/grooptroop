@@ -299,7 +299,7 @@ const EditAvatarModal: React.FC<EditAvatarModalProps> = ({ visible, onClose, onA
               }}
               displayName={profile?.displayName || 'User'}
               size={120}
-              style={tw`shadow-lg mb-6`}
+              style={tw`mb-6`}
               key={`${dicebearSeed}-${dicebearStyle}-${JSON.stringify(dicebearParams)}`}
             />
             
@@ -362,7 +362,7 @@ const EditAvatarModal: React.FC<EditAvatarModalProps> = ({ visible, onClose, onA
           style={[
             tw`flex-1 items-center justify-center py-2.5 rounded-lg border mx-1`,
             selectedAvatarType === 'bitmoji' 
-              ? tw`border-violet-600 bg-violet-50 shadow` 
+              ? tw`border-violet-600 bg-violet-50` 
               : tw`border-slate-200 bg-slate-50`
           ]}
           onPress={() => {
@@ -394,7 +394,7 @@ const EditAvatarModal: React.FC<EditAvatarModalProps> = ({ visible, onClose, onA
           style={[
             tw`flex-1 items-center justify-center py-2.5 rounded-lg border mx-1`,
             selectedAvatarType === 'dicebear' 
-              ? tw`border-violet-600 bg-violet-50 shadow` 
+              ? tw`border-violet-600 bg-violet-50` 
               : tw`border-slate-200 bg-slate-50`
           ]}
           onPress={() => {
@@ -425,7 +425,7 @@ const EditAvatarModal: React.FC<EditAvatarModalProps> = ({ visible, onClose, onA
           style={[
             tw`flex-1 items-center justify-center py-2.5 rounded-lg border mx-1`,
             selectedAvatarType === 'initial' 
-              ? tw`border-violet-600 bg-violet-50 shadow` 
+              ? tw`border-violet-600 bg-violet-50` 
               : tw`border-slate-200 bg-slate-50`
           ]}
           onPress={() => {

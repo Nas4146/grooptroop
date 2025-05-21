@@ -190,7 +190,7 @@ useEffect(() => {
         </View>
         
         {/* Form */}
-        <View style={tw`bg-white rounded-xl p-4 shadow-sm`}>
+        <View style={tw`bg-white rounded-xl p-4`}>
           {/* Name field - only for sign up */}
           {isSignUp && (
             <>

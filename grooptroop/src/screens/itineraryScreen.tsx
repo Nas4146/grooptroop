@@ -326,7 +326,7 @@ export default function ItineraryScreen() {
 
         {/* Keep your existing header section with dynamic groop data */}
         <Animated.View style={[
-          tw`px-4 pt-1 pb-4 bg-primary rounded-b-3xl shadow-lg`,
+          tw`px-4 pt-1 pb-4 bg-primary rounded-b-3xl`,
           {
             height: headerHeight,
             zIndex: 30,
@@ -378,7 +378,7 @@ export default function ItineraryScreen() {
 
         {/* Quick access location info */}
         <View style={[
-          tw`mx-4 -mt-2 bg-white rounded-xl px-3 py-3 shadow-md`,
+          tw`mx-4 -mt-2 bg-white rounded-xl px-3 py-3`,
           {
             zIndex: 20,
             elevation: 4,

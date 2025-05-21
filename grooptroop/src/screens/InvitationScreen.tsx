@@ -216,7 +216,7 @@ export default function InvitationScreen() {
           </View>
           
           {/* Invitation card */}
-          <View style={tw`bg-white rounded-3xl shadow-md overflow-hidden mb-8`}>
+          <View style={tw`bg-white rounded-3xl overflow-hidden mb-8`}>
             {/* Top banner/image */}
             <View style={tw`bg-primary h-24 items-center justify-center`}>
               {invitation.groopPhoto ? (
@@ -257,7 +257,7 @@ export default function InvitationScreen() {
               </View>
               
               <TouchableOpacity
-                style={tw`bg-primary py-4 rounded-xl flex-row justify-center items-center shadow-sm mb-4`}
+                style={tw`bg-primary py-4 rounded-xl flex-row justify-center items-center mb-4`}
                 onPress={handleJoinGroop}
                 disabled={joining}
               >

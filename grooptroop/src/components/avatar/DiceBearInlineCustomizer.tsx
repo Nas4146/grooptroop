@@ -268,7 +268,7 @@ const DiceBearInlineCustomizer: React.FC<DiceBearInlineCustomizerProps> = ({
     <View style={tw`w-full bg-indigo-50 rounded-lg p-3`}>
       <View style={tw`flex-row justify-between items-center mb-2`}>
         {/* Avatar Preview */}
-        <View style={tw`w-[90px] h-[90px] rounded-full bg-slate-100 overflow-hidden border-2 border-white shadow-sm items-center justify-center`}>
+        <View style={tw`w-[90px] h-[90px] rounded-full bg-slate-100 overflow-hidden border-2 border-white items-center justify-center`}>
           {loading ? (
             <ActivityIndicator size="large" color="#7C3AED" style={tw`absolute`} />
           ) : url ? (
@@ -291,7 +291,7 @@ const DiceBearInlineCustomizer: React.FC<DiceBearInlineCustomizerProps> = ({
         
         {/* Random Button */}
         <TouchableOpacity 
-          style={tw`flex-row items-center justify-center bg-violet-600 py-2 px-3 rounded-full shadow-sm mr-2`}
+          style={tw`flex-row items-center justify-center bg-violet-600 py-2 px-3 rounded-full mr-2`}
           onPress={handleRandomize}
         >
           <Ionicons name="shuffle" size={16} color="#ffffff" />
@@ -359,10 +359,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 3,
     borderColor: 'white',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
     elevation: 3,
     marginBottom: 0, // Removed margin
     justifyContent: 'center',
@@ -397,10 +393,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 20,
     marginRight: 10,
-    shadowColor: '#7C3AED',
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
   randomizeText: {
