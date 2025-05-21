@@ -25,78 +25,97 @@ import { UserAvatar } from '../contexts/AuthProvider';
 
 export class ChatService {
   // Subscribe to messages with pagination
-  static subscribeToMessages(groopId: string, callback: (messages: ChatMessage[]) => void, maxMessages = 50) {
+  static subscribeToMessages(groopId: string, callback: (messages: ChatMessage[], changes?: {
+    added: ChatMessage[];
+    modified: ChatMessage[];
+    removed: string[];
+  }) => void, maxMessages = 50) {
     console.log(`[CHAT] Subscribing to messages for groop: ${groopId}`);
     const messagesRef = collection(db, `groops/${groopId}/messages`);
     const q = query(messagesRef, orderBy('createdAt', 'desc'), limit(maxMessages));
     
+    // Track the current message state internally to handle changes
+    const currentMessages: Record<string, ChatMessage> = {};
+    
     return onSnapshot(q, async (snapshot) => {
-      const messages: ChatMessage[] = [];
+      const changes = {
+        added: [] as ChatMessage[],
+        modified: [] as ChatMessage[],
+        removed: [] as string[]
+      };
       
-      // Process messages one by one for decryption
-      for (const doc of snapshot.docs) {
-        const data = doc.data();
+      // First, process the doc changes to categorize them
+      const docChanges = snapshot.docChanges();
+      
+      for (const change of docChanges) {
+        const data = change.doc.data();
+        const messageId = change.doc.id;
         
-        // Determine if this message needs decryption
+        // Process the message (including decryption if needed)
         let messageText = data.text || '';
-        let isDecrypted = false; // Add this to track decryption status
+        let isDecrypted = false;
         
         if (data.isEncrypted) {
           try {
             // Try to decrypt the message
             const decryptedText = await EncryptionService.decryptMessage(messageText, groopId);
-            
-            if (decryptedText) {
-              // Successfully decrypted
-              messageText = decryptedText;
-              isDecrypted = true; // Set to true when decryption succeeds
-            } else {
-              // Failed to decrypt
-              messageText = "[Cannot decrypt - missing key]";
-              isDecrypted = false;
-            }
-          } catch (error) {
-            console.error('[CHAT] Error decrypting message:', error);
-            messageText = "[Decryption error]";
-            isDecrypted = false;
+            messageText = decryptedText || '[Decrypting...]';
+            isDecrypted = !!decryptedText;
+            console.log(`[CHAT_DEBUG] Post-decryption state for ${messageId}: text="${messageText.substring(0, 5)}...", isDecrypted=${isDecrypted}`);
+          } catch (err) {
+            console.error('[CHAT] Error decrypting message:', err);
+            messageText = '[Cannot decrypt - missing key]';
           }
         }
         
-        // Create the message object with decryption status
-        messages.push({
-          id: doc.id,
+        // Convert the timestamp
+        const timestamp = data.createdAt ? 
+          (typeof data.createdAt.toDate === 'function' ? data.createdAt.toDate() : new Date(data.createdAt)) 
+          : new Date();
+        
+        // Create message object
+        const message: ChatMessage = {
+          id: messageId,
           text: messageText,
-          senderId: data.senderId,
-          senderName: data.senderName,
-          senderAvatar: data.senderAvatar,
-          createdAt: data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt),
-          // Freeze the reactions object for stable references
+          senderId: data.senderId || '',
+          senderName: data.senderName || 'Unknown',
+          senderAvatar: data.senderAvatar || null,
+          createdAt: timestamp,
           reactions: Object.freeze({ ...(data.reactions || {}) }),
           replyTo: data.replyTo,
           replyToText: data.replyToText,
-          replyToSenderName: data.replyToSenderName,
+          replyToName: data.replyToName,
           imageUrl: data.imageUrl,
           read: data.read || [],
           isEncrypted: data.isEncrypted || false,
-          isDecrypted: data.isEncrypted ? isDecrypted : null, // Only relevant for encrypted messages
+          isDecrypted: data.isEncrypted ? isDecrypted : null,
           attachments: data.attachments || []
-        });
+        };
+        
+        if (change.type === 'added') {
+          currentMessages[messageId] = message;
+          changes.added.push(message);
+        } else if (change.type === 'modified') {
+          currentMessages[messageId] = message;
+          changes.modified.push(message);
+        } else if (change.type === 'removed') {
+          delete currentMessages[messageId];
+          changes.removed.push(messageId);
+        }
       }
       
-      console.log(`[CHAT] Received and processed ${messages.length} messages from subscription`);
-      if (__DEV__ && messages.length > 0) {
-        console.log('[CHAT] First message avatar data type:', 
-          messages[0].senderAvatar ? typeof messages[0].senderAvatar : 'none');
-      }
-      
-      // Sort messages by creation time (newest last)
-      messages.sort((a, b) => {
+      // Convert our map to an array and sort
+      const allMessages = Object.values(currentMessages);
+      allMessages.sort((a, b) => {
         const timeA = a.createdAt instanceof Date ? a.createdAt : new Date(0);
         const timeB = b.createdAt instanceof Date ? b.createdAt : new Date(0);
         return timeA.getTime() - timeB.getTime();
       });
       
-      callback(messages);
+      console.log(`[CHAT] Update: ${changes.added.length} added, ${changes.modified.length} modified, ${changes.removed.length} removed`);
+      
+      // Call the callback with both the full messages array and the changes
+      callback(allMessages, changes);
     }, error => {
       console.error("[CHAT] Error listening to messages:", error);
     });

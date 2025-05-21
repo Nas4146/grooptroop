@@ -222,18 +222,72 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
     
     logger.chat(`Subscribing to messages for groop: ${currentGroop.name} (${currentGroop.id})`);
     
-    // Subscribe to messages
-    const unsubscribe = ChatService.subscribeToMessages(currentGroop.id, (newMessages) => {
-      setMessages(newMessages);
-      setLoading(false);
-      setRefreshing(false);
-      
-      // Count unread messages
-      const unread = newMessages.filter(msg => 
-        !msg.read.includes(profile.uid) && msg.senderId !== profile.uid
-      );
-      setUnreadCount(unread.length);
-    });
+    // Subscribe to messages with the updated handler
+    const unsubscribe = ChatService.subscribeToMessages(
+      currentGroop.id, 
+      (newMessages, changes) => {
+        // If this is the first load or we're refreshing, replace the entire array
+        if (!changes || loading || refreshing) {
+          logger.chat('Initial load or refresh: setting all messages', newMessages.length);
+          setMessages(newMessages);
+          setLoading(false);
+          setRefreshing(false);
+        } else {
+          // Otherwise, apply the incremental updates
+          setMessages(currentMessages => {
+            // Start with a copy of current messages in a map for easy access
+            const messageMap = new Map(currentMessages.map(msg => [msg.id, msg]));
+            let hasChanges = false;
+            
+            // Apply removals first
+            if (changes.removed.length > 0) {
+              changes.removed.forEach(id => {
+                messageMap.delete(id);
+                hasChanges = true;
+              });
+            }
+            
+            // Apply modifications
+            if (changes.modified.length > 0) {
+              changes.modified.forEach(msg => {
+                messageMap.set(msg.id, msg);
+                hasChanges = true;
+              });
+            }
+            
+            // Apply additions
+            if (changes.added.length > 0) {
+              changes.added.forEach(msg => {
+                messageMap.set(msg.id, msg);
+                hasChanges = true;
+              });
+            }
+            
+            // Only rebuild the array if there were actual changes
+            if (!hasChanges) {
+              return currentMessages;
+            }
+            
+            // Convert back to array and sort
+            const updatedMessages = Array.from(messageMap.values());
+            updatedMessages.sort((a, b) => {
+              const timeA = a.createdAt instanceof Date ? a.createdAt : new Date(0);
+              const timeB = b.createdAt instanceof Date ? b.createdAt : new Date(0);
+              return timeA.getTime() - timeB.getTime();
+            });
+            
+            logger.chat(`Applied incremental updates: ${changes.added.length} added, ${changes.modified.length} modified, ${changes.removed.length} removed`);
+            return updatedMessages;
+          });
+        }
+        
+        // Count unread messages
+        const unread = newMessages.filter(msg => 
+          !msg.read.includes(profile.uid) && msg.senderId !== profile.uid
+        );
+        setUnreadCount(unread.length);
+      }
+    );
     
     // Cleanup subscription
     return () => {

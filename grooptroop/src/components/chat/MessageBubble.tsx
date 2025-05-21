@@ -177,7 +177,11 @@ function MessageBubble({
   };
   
   // Special handling for encrypted messages that couldn't be decrypted
-  if (message.isEncrypted && message.text === "[Cannot decrypt - missing key]") {
+  if (message.isEncrypted && 
+      (!message.isDecrypted || 
+       message.text === "[Encrypted]" || 
+       message.text === "[Decrypting...]" ||
+       message.text === "[Cannot decrypt - missing key]")) {
     return (
       <View style={tw`bg-amber-100 p-3 rounded-lg mb-3 ${isFromCurrentUser ? 'self-end' : 'self-start'} max-w-[80%]`}>
         <View style={tw`flex-row items-center`}>
