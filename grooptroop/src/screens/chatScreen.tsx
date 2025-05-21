@@ -37,6 +37,7 @@ import { ChatItemType } from '../models/chat';
 import GroopHeader from '../components/common/GroopHeader';
 import { SentryService, usePerformance, SentrySpan } from '../utils/sentryService';
 import ChatPerformanceMonitor from '../utils/chatPerformanceMonitor';
+import logger from '../utils/logger';
 
 type ChatScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type ChatScreenRouteProp = RouteProp<RootStackParamList, 'Chat'>; // Or whatever the route name is in your stack
@@ -136,7 +137,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
 
   // Debug log
   useEffect(() => {
-    console.log(`[CHAT_DEBUG] Current groop ID: ${currentGroop?.id}`);
+    logger.chat(`Current groop ID: ${currentGroop?.id}`);
   }, [currentGroop]);
 
   useEffect(() => {
@@ -144,24 +145,24 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
       setEncryptionLoading(true);
       try {
         if (profile && currentGroop) {
-          console.log('[CHAT] Checking encryption status for group:', currentGroop.id);
+          logger.chat('Checking encryption status for group:', currentGroop.id);
           
           // Create groopRef here when you know currentGroop exists
           const groopRef = doc(db, 'groops', currentGroop.id);
           const groopSnap = await getDoc(groopRef);
           
           if (!groopSnap.data()?.encryptionEnabled) {
-            console.log('[CHAT] Setting up encryption for group');
+            logger.chat('Setting up encryption for group');
             // Set up encryption for this group
             await KeyExchangeService.setupGroopEncryption(currentGroop.id, profile.uid);
-            console.log('[CHAT] Encryption setup complete');
+            logger.chat('Encryption setup complete');
           } else {
-            console.log('[CHAT] Encryption already set up for this group');
+            logger.chat('Encryption already set up for this group');
             
             // Check if we have the key locally - THIS IS THE CRITICAL PART
             const hasKey = await EncryptionService.hasGroopKey(currentGroop.id);
             if (!hasKey) {
-              console.log('[CHAT] Group key not found locally, generating new key');
+              logger.chat('Group key not found locally, generating new key');
               await EncryptionService.generateGroopKey(currentGroop.id);
             }
           }
@@ -195,7 +196,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
 
   useEffect(() => {
     if (currentGroop) {
-      console.log('[CHAT_DEBUG] Current groop details:', {
+      logger.chat('Current groop details:', {
         id: currentGroop.id,
         name: currentGroop.name,
         membersCount: currentGroop.members?.length || 0,
@@ -207,7 +208,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
   // Reset notifications when screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
-      console.log('[CHAT] Chat screen focused, refreshing unread count');
+      logger.chat('Chat screen focused, refreshing unread count');
       if (profile?.uid) {
         refreshUnreadCount();
       }
@@ -219,7 +220,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
   useEffect(() => {
     if (!profile || !currentGroop) return;
     
-    console.log(`[CHAT] Subscribing to messages for groop: ${currentGroop.name} (${currentGroop.id})`);
+    logger.chat(`Subscribing to messages for groop: ${currentGroop.name} (${currentGroop.id})`);
     
     // Subscribe to messages
     const unsubscribe = ChatService.subscribeToMessages(currentGroop.id, (newMessages) => {
@@ -236,7 +237,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
     
     // Cleanup subscription
     return () => {
-      console.log(`[CHAT] Unsubscribing from messages for groop: ${currentGroop?.id || 'unknown'}`);
+      logger.chat(`Unsubscribing from messages for groop: ${currentGroop?.id || 'unknown'}`);
       unsubscribe();
       setHasScrolledToUnread(false); // Reset for next time
     };
@@ -246,7 +247,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
   useEffect(() => {
     // Only run scroll logic when we have messages and haven't scrolled yet
     if (messages.length > 0 && !hasScrolledToUnread && !loading) {
-      console.log('[CHAT] Attempting to scroll to first unread message');
+      logger.chat('Attempting to scroll to first unread message');
       
       // Process messages first to ensure reliable indexes
       const processedItems = processMessagesWithDateSeparators();
@@ -265,7 +266,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
           );
           
           if (unreadIndex !== -1) {
-            console.log(`[CHAT] Scrolling to first unread message at index ${unreadIndex}`);
+            logger.chat(`Scrolling to first unread message at index ${unreadIndex}`);
             
             // Use scrollToIndex with viewOffset and viewPosition for better positioning
             flashListRef.current?.scrollToIndex({ 
@@ -277,7 +278,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
           }
         } else {
           // No unread messages, scroll to bottom
-          console.log('[CHAT] No unread messages, scrolling to latest message');
+          logger.chat('No unread messages, scrolling to latest message');
           flashListRef.current?.scrollToEnd({ animated: false });
         }
         
@@ -290,7 +291,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
             .map(msg => msg.id);
           
           if (unreadIds.length > 0) {
-            console.log(`[CHAT] Marking ${unreadIds.length} messages as read`);
+            logger.chat(`Marking ${unreadIds.length} messages as read`);
             ChatService.markAsRead(currentGroop?.id || '', unreadIds, profile.uid);
           }
         }
@@ -301,7 +302,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
   // 5. Send message functionality
   const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
     if (!profile || !currentGroop) {
-      console.log('[CHAT] Cannot send message: No profile or groop selected');
+      logger.chat('Cannot send message: No profile or groop selected');
       return;
     }
     
@@ -311,14 +312,14 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
     try {
       // Always use direct try/catch blocks for better error handling
       try {
-        console.log('[CHAT] Starting performance tracking for message', messageId);
+        logger.chat('Starting performance tracking for message', messageId);
         ChatPerformanceMonitor.trackMessageSendStart(messageId, text.length);
       } catch (e) {
-        console.log('[CHAT] Error starting performance tracking:', e);
+        logger.error('Error starting performance tracking:', e);
       }
       
-      console.log(`[CHAT] Sending message to groop: ${currentGroop.id}`);
-      console.log('[CHAT] Current user profile:', JSON.stringify({
+      logger.chat(`Sending message to groop: ${currentGroop.id}`);
+      logger.chat('Current user profile:', JSON.stringify({
         displayName: profile.displayName,
         hasAvatar: !!profile.avatar,
         avatarType: profile.avatar?.type
@@ -349,21 +350,21 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
       
       // Track successful send - in its own try/catch
       try {
-        console.log('[CHAT] Completing performance tracking for message', messageId);
+        logger.chat('Completing performance tracking for message', messageId);
         ChatPerformanceMonitor.trackMessageSendComplete(messageId, true);
       } catch (e) {
-        console.log('[CHAT] Error completing performance tracking:', e);
+        logger.error('Error completing performance tracking:', e);
       }
       
     } catch (error) {
-      console.error('[CHAT] Error sending message:', error);
+      logger.error('Error sending message:', error);
       
       // Track failed send - in its own try/catch
       try {
-        console.log('[CHAT] Tracking failed message send', messageId);
+        logger.chat('Tracking failed message send', messageId);
         ChatPerformanceMonitor.trackMessageSendComplete(messageId, false);
       } catch (e) {
-        console.log('[CHAT] Error tracking message failure:', e);
+        logger.error('Error tracking message failure:', e);
       }
       
       // Log error
@@ -378,7 +379,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
   const handleReaction = useCallback((messageId: string, emoji: string) => {
     if (!profile || !currentGroop) return;
     
-    console.log(`[CHAT] Adding reaction ${emoji} to message ${messageId}`);
+    logger.chat(`Adding reaction ${emoji} to message ${messageId}`);
     
     // Set flag to prevent auto-scroll
     hasRecentReaction.current = true;
@@ -391,10 +392,10 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
       profile.uid
     )
     .then(() => {
-      console.log(`[CHAT] Successfully added reaction ${emoji}`);
+      logger.chat(`Successfully added reaction ${emoji}`);
     })
     .catch(err => {
-      console.error('[CHAT] Error adding reaction:', err);
+      logger.error('Error adding reaction:', err);
       // Show an error toast
       Alert.alert('Error', 'Failed to add reaction');
     });
@@ -459,7 +460,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
     // Ensure message has all required fields for the avatar
     if (__DEV__ && message.senderId === profile?.uid) {
       // Only log for current user's messages to reduce noise
-      console.log('[CHAT] Sending message with avatar:', 
+      logger.chat('Sending message with avatar:', 
         message.senderAvatar ? 
         `type: ${message.senderAvatar.type}` : 
         'undefined avatar');
@@ -483,7 +484,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
   
   // Start monitoring when component mounts
   useEffect(() => {
-    console.log('[CHAT] Setting up performance monitoring for', chatId);
+    logger.chat('Setting up performance monitoring for', chatId);
     
     try {
       // Start chat performance monitoring
@@ -538,7 +539,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
         }
       };
     } catch (e) {
-      console.error('[CHAT] Error initializing performance monitoring:', e);
+      logger.error('Error initializing performance monitoring:', e);
     }
   }, [chatId, currentGroop?.id, currentGroop?.name, profile?.uid]);
 
@@ -634,148 +635,6 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
     }, 100);
   };
   
-  // The issue is likely with the callback handlers and the render functions
-
-// FIX 1: Move useCallback hooks to the top, ensuring consistent order
-
-// ===== Effects =====
-  
-  // Now implement your useEffects, ensuring they also have consistent ordering
-  // (The order of these doesn't matter as much as the callbacks above)
-  useEffect(() => {
-    // Debug log
-    // ...
-  }, [currentGroop]);
-
-  useEffect(() => {
-    // Encryption initialization
-    // ...
-  }, [profile, currentGroop]);
-
-  useEffect(() => {
-    // Process key exchanges whenever the screen is focused
-    const checkForKeyExchanges = async () => {
-      if (profile && currentGroop) {
-        await KeyExchangeService.processPendingKeyExchanges(profile.uid);
-      }
-    };
-    
-    // Run on mount
-    checkForKeyExchanges();
-    
-    // Set up an interval to check periodically
-    const interval = setInterval(checkForKeyExchanges, 60000); // Check every minute
-    
-    return () => {
-      clearInterval(interval);
-    };
-  }, [profile, currentGroop]);
-
-  useEffect(() => {
-    if (currentGroop) {
-      console.log('[CHAT_DEBUG] Current groop details:', {
-        id: currentGroop.id,
-        name: currentGroop.name,
-        membersCount: currentGroop.members?.length || 0,
-        isMember: currentGroop.members?.includes(profile?.uid || '') || false,
-      });
-    }
-  }, [currentGroop, profile]);
-  
-  // Reset notifications when screen comes into focus
-  useFocusEffect(
-    React.useCallback(() => {
-      console.log('[CHAT] Chat screen focused, refreshing unread count');
-      if (profile?.uid) {
-        refreshUnreadCount();
-      }
-      return () => {};
-    }, [refreshUnreadCount, profile])
-  );
-
-  // Load messages
-  useEffect(() => {
-    if (!profile || !currentGroop) return;
-    
-    console.log(`[CHAT] Subscribing to messages for groop: ${currentGroop.name} (${currentGroop.id})`);
-    
-    // Subscribe to messages
-    const unsubscribe = ChatService.subscribeToMessages(currentGroop.id, (newMessages) => {
-      setMessages(newMessages);
-      setLoading(false);
-      setRefreshing(false);
-      
-      // Count unread messages
-      const unread = newMessages.filter(msg => 
-        !msg.read.includes(profile.uid) && msg.senderId !== profile.uid
-      );
-      setUnreadCount(unread.length);
-    });
-    
-    // Cleanup subscription
-    return () => {
-      console.log(`[CHAT] Unsubscribing from messages for groop: ${currentGroop?.id || 'unknown'}`);
-      unsubscribe();
-      setHasScrolledToUnread(false); // Reset for next time
-    };
-  }, [profile, currentGroop]);
-
-  // Add a separate useEffect specifically for scrolling logic
-  useEffect(() => {
-    // Only run scroll logic when we have messages and haven't scrolled yet
-    if (messages.length > 0 && !hasScrolledToUnread && !loading) {
-      console.log('[CHAT] Attempting to scroll to first unread message');
-      
-      // Process messages first to ensure reliable indexes
-      const processedItems = processMessagesWithDateSeparators();
-      
-      // Find the first unread message
-      const firstUnreadMsg = messages.find(msg => 
-        !msg.read.includes(profile?.uid || '') && msg.senderId !== profile?.uid
-      );
-      
-      // Use a shorter timeout - FlashList initializes faster
-      setTimeout(() => {
-        if (firstUnreadMsg) {
-          // Find unread message in processed items
-          const unreadIndex = processedItems.findIndex(item => 
-            'id' in item && item.id === firstUnreadMsg.id
-          );
-          
-          if (unreadIndex !== -1) {
-            console.log(`[CHAT] Scrolling to first unread message at index ${unreadIndex}`);
-            
-            // Use scrollToIndex with viewOffset and viewPosition for better positioning
-            flashListRef.current?.scrollToIndex({ 
-              index: unreadIndex, 
-              animated: true,
-              viewOffset: 20, // Extra space at the top
-              viewPosition: 0.3 // Position the item 30% from the top
-            });
-          }
-        } else {
-          // No unread messages, scroll to bottom
-          console.log('[CHAT] No unread messages, scrolling to latest message');
-          flashListRef.current?.scrollToEnd({ animated: false });
-        }
-        
-        setHasScrolledToUnread(true);
-        
-        // Mark messages as read after scrolling
-        if (messages.length > 0 && profile?.uid) {
-          const unreadIds = messages
-            .filter(msg => !msg.read.includes(profile.uid) && msg.senderId !== profile.uid)
-            .map(msg => msg.id);
-          
-          if (unreadIds.length > 0) {
-            console.log(`[CHAT] Marking ${unreadIds.length} messages as read`);
-            ChatService.markAsRead(currentGroop?.id || '', unreadIds, profile.uid);
-          }
-        }
-      }, 150); // Reduced timeout
-    }
-  }, [messages, hasScrolledToUnread, loading, profile?.uid, processMessagesWithDateSeparators]);
-
   // Add this new useEffect to manage keyboard behavior
   useEffect(() => {
     // Function to handle keyboard showing
@@ -785,7 +644,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
         // Get keyboard height
         const keyboardHeight = event.endCoordinates.height;
         
-        console.log(`[CHAT] Keyboard shown with height: ${keyboardHeight}`);
+        logger.chat(`Keyboard shown with height: ${keyboardHeight}`);
         
         // Slight delay to let the layout adjust
         setTimeout(() => {
@@ -908,6 +767,7 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
         onInputFocus={() => {
           // Only scroll to end if we're already near the bottom
           // This prevents excess scrolling that invalidates recycler positions
+          logger.chat('MessageInput focused, scrolling to end');
           if (showScrollButton === false) { // If we're already near the bottom
             setTimeout(() => {
               flashListRef.current?.scrollToEnd({ animated: true });
