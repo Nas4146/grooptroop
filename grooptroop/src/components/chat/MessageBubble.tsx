@@ -30,7 +30,6 @@ function MessageBubble({
   onReplyPress
 }: MessageBubbleProps) {
   const [showReactions, setShowReactions] = useState(false);
-  // Replace pendingReactions array with a simple feedback key
   const [feedbackKey, setFeedbackKey] = useState(0);
   const [recentReactionEmoji, setRecentReactionEmoji] = useState<string | null>(null);
   
@@ -97,43 +96,6 @@ function MessageBubble({
     return Object.keys(reactionCounts).length > 0;
   }, [reactionCounts]);
 
-  // Handle when user selects a reaction - this is the key fix
-  const handleReactionSelect = useCallback((emoji: string) => {
-    // Close reaction panel
-    setShowReactions(false);
-    
-    // Add to pending reactions for immediate feedback
-    // Call the actual reaction handler
-    onReactionPress(message.id, emoji);
-  }, [message.id, onReactionPress]);
-  
-  // Memoize the hasReactions calculation
-  const hasReactionsMemo = useMemo(() => {
-    return Object.keys(reactionCounts).length > 0;
-  }, [reactionCounts]);
-
-  // Optimize other expensive calculations
-  const formatTime = useCallback((timestamp: any) => {
-    if (!timestamp) return '';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }, []);
-  
-  // Replace the console.log with logger
-  useEffect(() => {
-    // This is now optimized - in production it's a no-op
-    logger.avatar('Avatar details:', {
-      exists: !!message.senderAvatar,
-      type: message.senderAvatar?.type,
-      valuePreview: message.senderAvatar?.value ? 
-        (typeof message.senderAvatar.value === 'string' ? 
-          message.senderAvatar.value.substring(0, 30) + '...' : 
-          'non-string value') : 
-        'no value',
-      isFromCurrentUser
-    });
-  }, [message.senderAvatar, isFromCurrentUser]);
-
   // Check if current user has reacted with this emoji
   const hasUserReacted = useCallback((emoji: string) => {
     return message.reactions && 
@@ -141,6 +103,47 @@ function MessageBubble({
            Array.isArray(message.reactions[emoji]) && 
            message.reactions[emoji].includes(message.senderId);
   }, [message.reactions, message.senderId]);
+  
+  // Memoize styles to prevent unnecessary re-renders
+  const reactionCountsContainerStyle = useMemo(() => {
+    return tw`flex-row mt-1 ${isFromCurrentUser ? 'mr-2' : 'ml-10'}`;
+  }, [isFromCurrentUser]);
+  
+  const reactionSelectorStyle = useMemo(() => {
+    return [
+      tw`flex-row bg-white rounded-full p-1 border border-gray-100 mt-2`,
+      isFromCurrentUser ? tw`mr-2` : tw`ml-10`
+    ];
+  }, [isFromCurrentUser]);
+  
+  // Create memoized styles for each common reaction emoji
+  const reactionButtonStyles = useMemo(() => {
+    const styles: Record<string, any> = {};
+    COMMON_REACTIONS.forEach(emoji => {
+      const isReacted = hasUserReacted(emoji);
+      styles[emoji] = tw`p-1.5 ${isReacted ? 'bg-gray-100 rounded-full' : ''}`;
+    });
+    return styles;
+  }, [hasUserReacted]);
+  
+  // Create a memoized component for reaction count buttons
+  const ReactionCountButton = useCallback(({emoji, count}: {emoji: string, count: number}) => (
+    <TouchableOpacity
+      key={emoji}
+      style={tw`bg-white border border-gray-200 rounded-full px-2 py-0.5 mr-1 flex-row items-center`}
+      onPress={() => onReactionPress(message.id, emoji)}
+    >
+      <Text style={tw`mr-1`}>{emoji}</Text>
+      <Text style={tw`text-xs text-gray-600`}>{count}</Text>
+    </TouchableOpacity>
+  ), [message.id, onReactionPress]);
+
+  // Optimize other expensive calculations
+  const formatTime = useCallback((timestamp: any) => {
+    if (!timestamp) return '';
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }, []);
   
   // Render encryption indicator based on message status
   const renderEncryptionIndicator = () => {
@@ -168,9 +171,9 @@ function MessageBubble({
       return (
         <Ionicons 
           name="lock-open" 
-            size={14} 
-            color={isFromCurrentUser ? "#e6e6e6" : "#9ca3af"} 
-            style={tw`mr-1 opacity-50`} 
+          size={14} 
+          color={isFromCurrentUser ? "#e6e6e6" : "#9ca3af"} 
+          style={tw`mr-1 opacity-50`} 
         />
       );
     }
@@ -197,30 +200,6 @@ function MessageBubble({
     );
   }
   
-  // This log is now optimized in production
-  useEffect(() => {
-    logger.chat(`Rendering message from ${message.senderName}, avatar:`, 
-      message.senderAvatar ? `${message.senderAvatar.type} avatar` : 'no avatar');
-  }, [message.senderName, message.senderAvatar]);
-    
-  // For debugging reactions - replace with optimized logger
-  useEffect(() => {
-    // This is now completely skipped in production
-    logger.chatReactions(
-      message.id,
-      message.reactions ? 
-        `Has ${Object.keys(message.reactions).length} reaction types` :
-        'No reactions'
-    );
-  }, [message.id, message.reactions]);
-  
-  // Add this function to handle reaction taps with local feedback
-  const handleReactionPressDebug = (emoji: string) => {
-    // Add to pending reactions for immediate visual feedback
-    // Call the actual handler
-    onReactionPress(message.id, emoji);
-  };
-
   // Update the avatar rendering in MessageBubble
   const renderAvatar = useCallback(() => {
     // If there's no sender name, provide a fallback
@@ -236,9 +215,7 @@ function MessageBubble({
       >
         <View style={[
           tw`rounded-full overflow-hidden`,
-          { 
-            backgroundColor: 'white'
-          }
+          { backgroundColor: 'white' }
         ]}>
           <View style={{width: 32, height: 32, borderRadius: 16, overflow: 'hidden'}}>
             <Avatar 
@@ -252,6 +229,32 @@ function MessageBubble({
     );
   }, [message.senderAvatar, message.senderName, isFromCurrentUser]);
 
+  // Memoize the animation styles for reaction feedback
+  const animationStyle = useMemo(() => {
+    return {
+      position: 'absolute',
+      right: isFromCurrentUser ? 0 : 'auto',
+      left: isFromCurrentUser ? 'auto' : 40,
+      top: 10,
+      backgroundColor: 'rgba(124, 58, 237, 0.1)',
+      borderRadius: 20,
+      padding: 8,
+      transform: [
+        { scale: reactionAnimRef.interpolate({
+            inputRange: [0, 0.5, 1],
+            outputRange: [0.5, 1.2, 1]
+          })
+        },
+        { translateY: reactionAnimRef.interpolate({
+            inputRange: [0, 1],
+            outputRange: [10, -20]
+          })
+        }
+      ],
+      opacity: reactionAnimRef
+    };
+  }, [isFromCurrentUser, reactionAnimRef]);
+
   // Add this to render the reaction feedback animation
   const renderReactionFeedback = () => {
     if (!recentReactionEmoji) return null;
@@ -259,33 +262,20 @@ function MessageBubble({
     return (
       <Animated.View 
         key={feedbackKey} // This forces the animation to restart on every tap
-        style={{
-          position: 'absolute',
-          right: isFromCurrentUser ? 0 : 'auto',
-          left: isFromCurrentUser ? 'auto' : 40,
-          top: 10,
-          backgroundColor: 'rgba(124, 58, 237, 0.1)',
-          borderRadius: 20,
-          padding: 8,
-          transform: [
-            { scale: reactionAnimRef.interpolate({
-                inputRange: [0, 0.5, 1],
-                outputRange: [0.5, 1.2, 1]
-              })
-            },
-            { translateY: reactionAnimRef.interpolate({
-                inputRange: [0, 1],
-                outputRange: [10, -20]
-              })
-            }
-          ],
-          opacity: reactionAnimRef
-        }}
+        style={animationStyle}
       >
         <Text style={{ fontSize: 24 }}>{recentReactionEmoji}</Text>
       </Animated.View>
     );
   };
+
+  // Memoize message bubble style
+  const messageBubbleStyle = useMemo(() => {
+    return [
+      tw`rounded-2xl p-3 ${isFromCurrentUser ? 'bg-primary rounded-tr-none' : 'bg-gray-200 rounded-tl-none ml-10'}`,
+      { maxWidth: '80%' }
+    ];
+  }, [isFromCurrentUser]);
 
   return (
     <View style={tw`mb-3 ${isFromCurrentUser ? 'items-end' : 'items-start'}`}>
@@ -298,12 +288,9 @@ function MessageBubble({
         {/* Avatar for other users' messages only */}
         {!isFromCurrentUser && renderAvatar()}
         
-        {/* Message bubble with proper margin for avatar - ADD LONG PRESS HERE */}
+        {/* Message bubble with proper margin for avatar */}
         <TouchableOpacity
-          style={[
-            tw`rounded-2xl p-3 ${isFromCurrentUser ? 'bg-primary rounded-tr-none' : 'bg-gray-200 rounded-tl-none ml-10'}`,
-            { maxWidth: '80%' }
-          ]}
+          style={messageBubbleStyle}
           onLongPress={() => {
             // Add haptic feedback
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -354,32 +341,26 @@ function MessageBubble({
       
       {/* Reactions display */}
       {hasReactions && (
-        <View style={tw`flex-row mt-1 ${isFromCurrentUser ? 'mr-2' : 'ml-10'}`}>
+        <View style={reactionCountsContainerStyle}>
           {Object.entries(reactionCounts).map(([emoji, count]) => (
-            <TouchableOpacity
-              key={emoji}
-              style={tw`bg-white border border-gray-200 rounded-full px-2 py-0.5 mr-1 flex-row items-center`}
-              onPress={() => onReactionPress(message.id, emoji)}
-            >
-              <Text style={tw`mr-1`}>{emoji}</Text>
-              <Text style={tw`text-xs text-gray-600`}>{count}</Text>
-            </TouchableOpacity>
+            <ReactionCountButton 
+              key={emoji} 
+              emoji={emoji} 
+              count={count} 
+            />
           ))}
         </View>
       )}
       
       {/* Reaction selector */}
       {showReactions && (
-        <View style={[
-          tw`flex-row bg-white rounded-full p-1 border border-gray-100 mt-2`,
-          isFromCurrentUser ? tw`mr-2` : tw`ml-10`
-        ]}>
+        <View style={reactionSelectorStyle}>
           {/* Emoji reactions */}
           <View style={tw`flex-row`}>
             {COMMON_REACTIONS.map(emoji => (
               <TouchableOpacity
                 key={emoji}
-                style={tw`p-1.5 ${hasUserReacted(emoji) ? 'bg-gray-100 rounded-full' : ''}`}
+                style={reactionButtonStyles[emoji]}
                 onPress={() => handleReactionPress(emoji)}
               >
                 <Text style={tw`text-lg`}>{emoji}</Text>
