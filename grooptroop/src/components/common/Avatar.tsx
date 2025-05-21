@@ -1,11 +1,33 @@
-import React, { useState, memo } from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import React, { useState, memo, useEffect } from 'react';
+import { View, Text, StyleSheet, Image, Platform } from 'react-native';
+// Import FastImage but don't use it directly yet
 import FastImage from 'react-native-fast-image';
 import { UserAvatar } from '../../contexts/AuthProvider';
 import { AvatarService } from '../../services/AvatarService';
 
-// Add this flag to control FastImage usage
-const USE_FAST_IMAGE = false; // Set to false to use regular Image component
+// Create an image URI cache at module level
+const IMAGE_CACHE = new Map<string, string>();
+
+// Set to false to avoid FastImage issues
+const USE_FAST_IMAGE = false;
+
+// Add a function to preload images for better performance
+const preloadImage = (uri: string) => {
+  if (uri && !IMAGE_CACHE.has(uri)) {
+    // Cache the URI
+    IMAGE_CACHE.set(uri, uri);
+    
+    // Try to preload with FastImage (fallback silently if it fails)
+    if (USE_FAST_IMAGE) {
+      try {
+        FastImage.preload([{ uri }]);
+      } catch (e) {
+        // Silently fail if FastImage is not available
+        console.warn('[AVATAR] FastImage preload failed', e);
+      }
+    }
+  }
+};
 
 const generateColorFromName = (name: string): string => {
   if (!name) return '#7C3AED'; // Default purple
@@ -47,12 +69,12 @@ const Avatar: React.FC<AvatarProps> = ({
   textStyle,
   imageStyle
 }) => {
-  // Debug log to see what props are being passed - only in development and explicitly enabled
+  // Debug log to see what props are being passed - only in development
   if (__DEV__ && false) {
     console.log(`[AVATAR_COMP] Rendering avatar for ${displayName || 'unknown'}, type: ${avatar?.type || 'none'}`);
   }
   
-  // Add this state to track image loading errors
+  // Add state for tracking image loading errors
   const [hasImageError, setHasImageError] = useState(false);
   
   // Convert size to number if it's a string like 'sm', 'md', etc.
@@ -65,6 +87,13 @@ const Avatar: React.FC<AvatarProps> = ({
   
   // If no display name is provided, use a safer fallback
   const safeDisplayName = displayName || 'User';
+
+  // Preload image when avatar changes
+  useEffect(() => {
+    if (avatar?.type && (avatar.type === 'url' || avatar.type === 'dicebear') && avatar.value) {
+      preloadImage(avatar.value);
+    }
+  }, [avatar?.type, avatar?.value]);
   
   // If image fails to load or no avatar is provided, fall back to initials
   if (hasImageError || !avatar || !avatar.type) {
@@ -103,7 +132,7 @@ const Avatar: React.FC<AvatarProps> = ({
     );
   }
   
-  // Handle DiceBear avatars
+  // Handle DiceBear avatars - always use Image for now
   if (avatar.type === 'dicebear' && avatar.value) {
     return (
       <View
@@ -118,41 +147,23 @@ const Avatar: React.FC<AvatarProps> = ({
           style
         ]}
       >
-        {USE_FAST_IMAGE ? (
-          <FastImage
-            source={{ uri: avatar.value }}
-            style={[
-              { 
-                width: '100%', 
-                height: '100%',
-                backgroundColor: 'white'
-              },
-              imageStyle
-            ]}
-            onError={() => setHasImageError(true)}
-            priority={FastImage.priority.low}
-            resizeMode={FastImage.resizeMode.cover}
-            cacheControl={FastImage.cacheControl.immutable}
-          />
-        ) : (
-          <Image
-            source={{ uri: avatar.value }}
-            style={[
-              { 
-                width: '100%', 
-                height: '100%',
-                backgroundColor: 'white'
-              },
-              imageStyle
-            ]}
-            onError={() => setHasImageError(true)}
-          />
-        )}
+        <Image
+          source={{ uri: avatar.value, cache: 'force-cache' }}
+          style={[
+            { 
+              width: '100%', 
+              height: '100%',
+              backgroundColor: 'white'
+            },
+            imageStyle
+          ]}
+          onError={() => setHasImageError(true)}
+        />
       </View>
     );
   }
   
-  // Handle URL avatars
+  // Handle URL avatars - always use Image for now
   if (avatar.type === 'url' && avatar.value) {
     return (
       <View
@@ -167,36 +178,18 @@ const Avatar: React.FC<AvatarProps> = ({
           style
         ]}
       >
-        {USE_FAST_IMAGE ? (
-          <FastImage
-            source={{ uri: avatar.value }}
-            style={[
-              { 
-                width: '100%', 
-                height: '100%',
-                backgroundColor: 'white'
-              },
-              imageStyle
-            ]}
-            onError={() => setHasImageError(true)}
-            priority={FastImage.priority.low}
-            resizeMode={FastImage.resizeMode.cover}
-            cacheControl={FastImage.cacheControl.immutable}
-          />
-        ) : (
-          <Image
-            source={{ uri: avatar.value }}
-            style={[
-              { 
-                width: '100%', 
-                height: '100%',
-                backgroundColor: 'white'
-              },
-              imageStyle
-            ]}
-            onError={() => setHasImageError(true)}
-          />
-        )}
+        <Image
+          source={{ uri: avatar.value, cache: 'force-cache' }}
+          style={[
+            { 
+              width: '100%', 
+              height: '100%',
+              backgroundColor: 'white'
+            },
+            imageStyle
+          ]}
+          onError={() => setHasImageError(true)}
+        />
       </View>
     );
   }
@@ -268,7 +261,7 @@ const Avatar: React.FC<AvatarProps> = ({
 };
 
 export default memo(Avatar, (prevProps, nextProps) => {
-  // Memoization check remains the same
+  // Memoization check - this is important for performance
   const prevAvatarValue = prevProps.avatar?.value;
   const nextAvatarValue = nextProps.avatar?.value;
   

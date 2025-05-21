@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import FastImage from 'react-native-fast-image';
 import { Ionicons } from '@expo/vector-icons';
 import { ChatMessage } from '../../models/chat';
 import tw from '../../utils/tw';
@@ -264,11 +265,15 @@ function MessageBubble({
           
           {/* Image if exists */}
           {message.imageUrl && (
-            <Image 
-              source={{ uri: message.imageUrl }} 
-              style={tw`w-full h-40 mt-2 rounded-lg`}
-              resizeMode="cover"
-            />
+            <View style={tw`mt-1 mb-1 overflow-hidden rounded-lg`}>
+              <FastImage
+                source={{ uri: message.imageUrl }}
+                style={tw`w-full h-48 rounded-lg`}
+                resizeMode={FastImage.resizeMode.cover}
+                priority={FastImage.priority.low}
+                cacheControl={FastImage.cacheControl.immutable}
+              />
+            </View>
           )}
           
           {/* Timestamp */}
