@@ -339,10 +339,13 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
       // Clear reply state
       if (replyingTo) setReplyingTo(null);
       
-      // Scroll to the bottom after sending
-      setTimeout(() => {
-        flashListRef.current?.scrollToEnd();
-      }, 200);
+      // Scroll to the bottom after sending only once
+      // Use requestAnimationFrame for better performance
+      requestAnimationFrame(() => {
+        flashListRef.current?.scrollToEnd({
+          animated: true
+        });
+      });
       
       // Track successful send - in its own try/catch
       try {
@@ -869,22 +872,23 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
         data={processMessagesWithDateSeparators()}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
-        estimatedItemSize={120} // Slightly increased from 100 to better account for average message size
+        estimatedItemSize={120}
         contentContainerStyle={tw`px-4 pt-4 pb-2`}
         onRefresh={handleRefresh}
         refreshing={refreshing}
         ListEmptyComponent={<EmptyChat />}
         onScroll={handleScroll}
-        scrollEventThrottle={16}
-        onEndReachedThreshold={0.1}
-        onEndReached={() => {
-          // Optional: Load older messages if you implement pagination
-        }}
+        scrollEventThrottle={16} // Good value
         initialScrollIndex={0}
         maintainVisibleContentPosition={{
           minIndexForVisible: 0,
         }}
         drawDistance={300}
+        // Add these optimizations:
+        removeClippedSubviews={true} // Offscreen views are detached
+        disableAutoLayout={Platform.OS === 'ios' ? false : true} // Optimize layout on Android
+        optimizeItemLayout={true} // Enable layout optimization
+        keyboardDismissMode="on-drag" // Dismiss keyboard when scrolling
       />
 
       {showScrollButton && (
@@ -901,10 +905,13 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
         replyingTo={replyingTo}
         onCancelReply={() => setReplyingTo(null)}
         onInputFocus={() => {
-          // Scroll to end when input is focused
-          setTimeout(() => {
-            flashListRef.current?.scrollToEnd({ animated: true });
-          }, 50);
+          // Only scroll to end if we're already near the bottom
+          // This prevents excess scrolling that invalidates recycler positions
+          if (showScrollButton === false) { // If we're already near the bottom
+            setTimeout(() => {
+              flashListRef.current?.scrollToEnd({ animated: true });
+            }, 50);
+          }
         }}
       />
     </KeyboardAvoidingView>
