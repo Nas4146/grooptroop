@@ -279,32 +279,49 @@ const refreshProfile = async () => {
     }
   };
 
+  // Update the registerPushToken method to handle errors gracefully
+  const registerPushToken = async (userId: string) => {
+    try {
+      console.log(`[AUTH] Registering push token for user: ${userId}`);
+      
+      let token;
+      
+      // Get push token
+      if (NotificationService && typeof NotificationService.registerForPushNotifications === 'function') {
+        token = await NotificationService.registerForPushNotifications();
+      } else {
+        // Fallback if NotificationService is unavailable
+        console.log('[AUTH] NotificationService not available, using development token');
+        token = 'DEVELOPMENT-TOKEN';
+      }
+      
+      if (!token) {
+        console.log('[AUTH] No push token available');
+        return;
+      }
+      
+      console.log('[AUTH] Storing push token in user profile');
+      // Update user profile with token
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
+        pushToken: token,
+        tokenUpdatedAt: serverTimestamp()
+      });
+      
+    } catch (error) {
+      console.error('[AUTH] Error registering push token:', error);
+      // Don't throw the error, just log it to avoid app crashes
+    }
+  };
+
   useEffect(() => {
-    const registerPushToken = async () => {
+    const setupPushToken = async () => {
       if (profile?.uid) {
-        console.log('[AUTH] Registering push token for user:', profile.uid);
-        
-        try {
-          // Get token
-          const token = await NotificationService.getExpoPushToken();
-          
-          if (token) {
-            console.log('[AUTH] Storing push token in user profile');
-            
-            // Store in user document
-            const userRef = doc(db, 'users', profile.uid);
-            await updateDoc(userRef, {
-              pushTokens: arrayUnion(token),
-              pushTokenUpdated: serverTimestamp()
-            });
-          }
-        } catch (error) {
-          console.error('[AUTH] Error registering push token:', error);
-        }
+        await registerPushToken(profile.uid);
       }
     };
     
-    registerPushToken();
+    setupPushToken();
   }, [profile?.uid]);
   
   // Password reset

@@ -1,49 +1,47 @@
 import { Timestamp } from 'firebase/firestore';
 import { UserAvatar } from '../contexts/AuthProvider';
 
-export interface ChatGroup {
-  id: string;
-  name: string;
-  description?: string;
-  createdAt: Timestamp;
-  createdBy: string;
-  members: string[];
-  photoUrl?: string;
-}
-
+// Core message type
 export interface ChatMessage {
   id: string;
-  type?: 'message'; // Add this discriminator field
   text: string;
   senderId: string;
   senderName: string;
-  senderAvatar?: UserAvatar;  
-  createdAt: Timestamp;
-  reactions: { [key: string]: string[] };
-  replyTo?: string;
-  replyToText?: string; // Added field for the text of the replied message
-  replyToSenderName?: string; // Added field for the name of the replied message sender
-  imageUrl?: string;
+  senderAvatar?: UserAvatar;
+  createdAt: Date | Timestamp;
+  reactions: Record<string, string[]>;
   read: string[];
+  replyTo?: string;
+  replyToText?: string;
+  replyToSenderName?: string;
+  imageUrl?: string;
   isEncrypted?: boolean;
-  isDecrypted?: boolean | null;
-  attachments?: {
-    type: 'image' | 'video' | 'file';
-    url: string;
-    thumbnailUrl?: string;
-  }[];
+  isDecrypted?: boolean;
 }
 
-export type DateSeparator = {
+// Date separator for message grouping
+export interface DateSeparator {
   id: string;
   type: 'dateSeparator';
   date: Date;
-};
+}
 
-export type ChatItemType = ChatMessage | DateSeparator;
+// Union type for items in the message list
+export type ChatItem = ChatMessage | DateSeparator;
 
-export interface ReplyingToMessage {
+// Reply context interface
+export interface ReplyContext {
   id: string;
   text: string;
   senderName: string;
+}
+
+// Types for message operations
+export type MessageSendStatus = 'sending' | 'sent' | 'failed';
+
+export interface MessageOperation {
+  id: string;
+  status: MessageSendStatus;
+  timestamp: number;
+  retryCount?: number;
 }

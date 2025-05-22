@@ -1,122 +1,152 @@
-import React from 'react';
-import { Modal, View, Text, TouchableOpacity } from 'react-native';
-import logger from '../../utils/logger';
+import React, { memo, useState, useEffect } from 'react';
+import { Modal, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { EncryptionService } from '../../services/EncryptionService';
 import tw from '../../utils/tw';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+import logger from '../../utils/logger';
 
 interface EncryptionInfoModalProps {
-  visible: boolean; // Changed from isVisible to visible
+  visible: boolean;
   onClose: () => void;
-  groopId?: string; // Make groopId optional since it was in the chatScreen call
-  tw?: any; // Add tw as optional since it was passed from chatScreen
+  groopId?: string;
 }
 
-const EncryptionInfoModal: React.FC<EncryptionInfoModalProps> = ({ 
-  visible, // Changed from isVisible to visible 
-  onClose,
-  groopId
-}) => {
-  // Make sure we log when modal is rendered
-  logger.chat(`EncryptionInfoModal rendered with visible=${visible}`);
+const EncryptionInfoModal = memo(({ visible, onClose, groopId }: EncryptionInfoModalProps) => {
+  const [hasKey, setHasKey] = useState<boolean | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [keygenProgress, setKeygenProgress] = useState(0);
   
-  const handleClose = () => {
-    // Add logging
-    logger.chat('EncryptionInfoModal close button pressed');
-    onClose();
+  useEffect(() => {
+    // Only check when modal becomes visible
+    if (visible && groopId) {
+      setLoading(true);
+      
+      const checkEncryption = async () => {
+        try {
+          const hasGroupKey = await EncryptionService.hasGroupKey(groopId);
+          logger.chat(`Group ${groopId} encryption key status: ${hasGroupKey ? 'exists' : 'missing'}`);
+          setHasKey(hasGroupKey);
+        } catch (error) {
+          logger.error('Error checking encryption keys:', error);
+          setHasKey(false);
+        } finally {
+          setLoading(false);
+        }
+      };
+      
+      checkEncryption();
+    }
+  }, [visible, groopId]);
+  
+  // Generate a new encryption key for the group
+  const handleGenerateKey = async () => {
+    if (!groopId) return;
+    
+    try {
+      setKeygenProgress(0);
+      
+      // Start key generation with progress reporting
+      await EncryptionService.generateAndShareGroupKey(
+        groopId, 
+        (progress: number) => setKeygenProgress(Math.round(progress * 100))
+      );
+      
+      // Update status
+      setHasKey(true);
+      setKeygenProgress(100);
+    } catch (error) {
+      logger.error('Error generating encryption key:', error);
+      setKeygenProgress(0);
+    }
   };
-
+  
   return (
     <Modal
+      visible={visible}
       transparent={true}
-      visible={visible} // Changed from isVisible to visible
-      animationType="slide"
-      onRequestClose={handleClose}
+      animationType="fade"
+      onRequestClose={onClose}
     >
-      <TouchableOpacity
-        style={tw`flex-1 bg-black bg-opacity-50 justify-center items-center`}
-        activeOpacity={1}
-        onPress={handleClose}
-      >
-        <View 
-          style={tw`bg-white p-5 rounded-xl w-5/6 max-w-md`}
-          onStartShouldSetResponder={() => true}
-          onTouchEnd={e => e.stopPropagation()}
-        >
-          {/* Drag indicator */}
-          <View style={tw`w-16 h-1 bg-gray-300 rounded-full mx-auto mb-6`} />
-          
-          {/* Header with lock icon */}
-          <View style={tw`flex-row items-center justify-center mb-6`}>
-            <View style={tw`h-14 w-14 rounded-full bg-primary bg-opacity-20 items-center justify-center`}>
-              <Ionicons name="lock-closed" size={32} color="#7C3AED" />
+      <View style={tw`flex-1 justify-center items-center bg-black bg-opacity-50`}>
+        <View style={tw`bg-white rounded-xl p-6 w-[90%] max-w-md`}>
+          <View style={tw`flex-row justify-between items-center mb-4`}>
+            <View style={tw`flex-row items-center`}>
+              <Ionicons name="lock-closed" size={24} color="#7C3AED" />
+              <Text style={tw`text-xl font-bold ml-2`}>End-to-End Encryption</Text>
             </View>
+            <TouchableOpacity onPress={onClose}>
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
           </View>
           
-          <Text style={tw`text-center text-2xl font-bold mb-3 text-neutral`}>
-            Secure Chat 🔒✨
-          </Text>
-          
-          {/* Explanation sections */}
-          <View style={tw`mb-6`}>
-            <View style={tw`bg-purple-50 p-4 rounded-xl mb-4`}>
-              <View style={tw`flex-row items-start mb-2`}>
-                <Ionicons name="shield-checkmark" size={20} color="#7C3AED" style={tw`mt-0.5 mr-3`} />
-                <Text style={tw`flex-1 font-bold text-base text-neutral`}>
-                  Private AF
-                </Text>
-              </View>
-              <Text style={tw`text-gray-700 pl-8`}>
-                Your messages stay between you and the chat members. Not even our servers can see what you're saying.
-              </Text>
+          {loading ? (
+            <View style={tw`py-4 items-center`}>
+              <ActivityIndicator color="#7C3AED" size="large" />
+              <Text style={tw`mt-2 text-gray-600`}>Checking encryption status...</Text>
             </View>
-            
-            <View style={tw`bg-blue-50 p-4 rounded-xl mb-4`}>
-              <View style={tw`flex-row items-start mb-2`}>
-                <Ionicons name="key" size={20} color="#78c0e1" style={tw`mt-0.5 mr-3`} />
-                <Text style={tw`flex-1 font-bold text-base text-neutral`}>
-                  Encrypted in Transit
-                </Text>
-              </View>
-              <Text style={tw`text-gray-700 pl-8`}>
-                Messages are scrambled before they leave your phone and can only be unscrambled by chat members.
+          ) : (
+            <>
+              <Text style={tw`text-base text-gray-700 mb-4`}>
+                {hasKey ? 
+                  'Your messages in this group are protected with end-to-end encryption. Only you and other group members can read them.' :
+                  'Encryption is currently not set up for this group. Generate a key to enable end-to-end encryption.'}
               </Text>
-            </View>
-            
-            <View style={tw`bg-green-50 p-4 rounded-xl`}>
-              <View style={tw`flex-row items-start mb-2`}>
-                <Ionicons name="eye-off" size={20} color="#10B981" style={tw`mt-0.5 mr-3`} />
-                <Text style={tw`flex-1 font-bold text-base text-neutral`}>
-                  No Snooping
+              
+              <View style={tw`mb-4 p-3 bg-gray-100 rounded-lg`}>
+                <Text style={tw`text-sm font-medium text-gray-800 mb-2`}>Group ID:</Text>
+                <Text style={tw`text-sm font-mono text-gray-600`}>
+                  {groopId || 'Unknown'}
                 </Text>
+                
+                <Text style={tw`text-sm font-medium text-gray-800 mt-3 mb-1`}>Encryption Status:</Text>
+                <View style={tw`flex-row items-center`}>
+                  <Ionicons 
+                    name={hasKey ? "shield-checkmark" : "shield-outline"} 
+                    size={16} 
+                    color={hasKey ? "#22C55E" : "#F59E0B"} 
+                  />
+                  <Text style={tw`ml-2 text-sm ${hasKey ? 'text-green-600' : 'text-amber-600'}`}>
+                    {hasKey ? 'Encryption Active' : 'Not Encrypted'}
+                  </Text>
+                </View>
               </View>
-              <Text style={tw`text-gray-700 pl-8`}>
-                You'll see a lock icon 🔒 on messages that are protected by encryption.
-              </Text>
-            </View>
-          </View>
-          
-          {/* Action buttons */}
-          <TouchableOpacity 
-            style={tw`bg-primary py-3.5 rounded-xl mb-2`}
-            onPress={handleClose}
-          >
-            <Text style={tw`text-white text-center font-bold`}>
-              Got it!
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={tw`py-2`}
-            onPress={handleClose}
-          >
-            <Text style={tw`text-gray-500 text-center text-sm`}>
-              Tap anywhere to dismiss
-            </Text>
-          </TouchableOpacity>
+              
+              {!hasKey && (
+                <TouchableOpacity
+                  style={tw`bg-violet-600 rounded-lg py-3 px-4 mb-2 flex-row items-center justify-center`}
+                  onPress={handleGenerateKey}
+                  disabled={keygenProgress > 0}
+                >
+                  {keygenProgress > 0 ? (
+                    <>
+                      <ActivityIndicator size="small" color="white" style={tw`mr-2`} />
+                      <Text style={tw`text-white font-medium`}>
+                        Generating... {keygenProgress}%
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Ionicons name="key-outline" size={18} color="white" style={tw`mr-2`} />
+                      <Text style={tw`text-white font-medium`}>Generate Encryption Key</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+              
+              <TouchableOpacity
+                style={tw`mt-2 rounded-lg py-3 px-4 self-center`}
+                onPress={onClose}
+              >
+                <Text style={tw`text-gray-700 font-medium text-center`}>Close</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
-      </TouchableOpacity>
+      </View>
     </Modal>
   );
-};
+});
+
+EncryptionInfoModal.displayName = 'EncryptionInfoModal';
 
 export default EncryptionInfoModal;

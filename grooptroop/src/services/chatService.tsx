@@ -1,32 +1,35 @@
 import { 
   collection, 
-  addDoc, 
   query, 
   orderBy, 
   limit, 
-  onSnapshot, 
-  doc, 
+  where, 
+  getDocs, 
+  addDoc, 
   updateDoc, 
-  arrayUnion, 
-  arrayRemove,
-  serverTimestamp,
-  getDocs,
-  startAfter,
-  where,
+  doc, 
+  onSnapshot, 
+  serverTimestamp, 
   Timestamp,
-  getDoc,
-  writeBatch
+  DocumentData,
+  QueryDocumentSnapshot 
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { ChatMessage } from '../models/chat';
 import { EncryptionService } from './EncryptionService';
-import { KeyExchangeService } from './KeyExchangeService';
-import { UserAvatar } from '../contexts/AuthProvider';
 import logger from '../utils/logger';
-import { SentryService } from '../utils/sentryService';
+
+interface MessageData {
+  text: string;
+  replyTo?: { id: string; text: string; senderName: string };
+  imageUrl?: string;
+  senderAvatar?: any;
+}
 
 export class ChatService {
-  // Subscribe to messages with pagination
+  /**
+   * Subscribe to messages with optimized delta updates
+   */
   static subscribeToMessages(
     groopId: string, 
     callback: (messages: ChatMessage[], changes?: {
@@ -34,886 +37,600 @@ export class ChatService {
       modified: ChatMessage[];
       removed: string[];
     }) => void, 
-    maxMessages = 50,
+    maxMessages = 30,
     lastSeenAt?: Date | null,
-    initialLoad = true // Add parameter to distinguish initial load vs continuous updates
-  ) {
-    logger.chat(`Subscribing to messages for groop: ${groopId}${lastSeenAt ? ` since ${lastSeenAt.toISOString()}` : ''} (initialLoad: ${initialLoad})`);
+    initialLoad = true
+  ): () => void {
+    // Create performance tracking
+    const startTime = performance.now();
     
-    const messagesRef = collection(db, `groops/${groopId}/messages`);
-    
-    // Build query based on whether we have a lastSeenAt timestamp and if this is initial load
-    let q;
-    
-    if (initialLoad) {
-      // Initial load: Get the recent messages within limit
-      q = query(messagesRef, orderBy('createdAt', 'desc'), limit(maxMessages));
-      logger.chat('Initial load: Getting most recent messages');
-    } else if (lastSeenAt) {
-      // Continuous updates: Only get messages after the last seen timestamp
-      const firestoreTimestamp = Timestamp.fromDate(lastSeenAt);
+    try {
+      const messagesRef = collection(db, `groops/${groopId}/messages`);
+      let messagesQuery;
       
-      // Query for new messages and changes after lastSeenAt
-      q = query(
-        messagesRef, 
-        where("createdAt", ">=", firestoreTimestamp),  
-        orderBy('createdAt', 'desc')
-      );
-      logger.chat(`Continuous updates: Using timestamp filter ${lastSeenAt.toISOString()}`);
-    } else {
-      // Fallback: Get most recent messages
-      q = query(messagesRef, orderBy('createdAt', 'desc'), limit(maxMessages));
-      logger.chat('No timestamp filter, getting recent messages');
-    }
-    
-    // Track the current message state internally to handle changes
-    const currentMessages: Record<string, ChatMessage> = {};
-    
-    // Create a performance span for the subscription
-    const subscriptionSpan = SentryService.startTransaction(
-      `ChatSubscription_${groopId}_${initialLoad ? 'initial' : 'continuous'}`,
-      'firestore.subscription'
-    );
-    
-    // Set initial metadata for the subscription
-    if (subscriptionSpan) {
-      subscriptionSpan.setTag('groopId', groopId);
-      subscriptionSpan.setTag('maxMessages', String(maxMessages));
-      subscriptionSpan.setTag('hasTimestampFilter', lastSeenAt ? 'true' : 'false');
-      subscriptionSpan.setTag('initialLoad', String(initialLoad));
-      if (lastSeenAt) {
-        subscriptionSpan.setData('timestampFilter', lastSeenAt.toISOString());
-      }
-    }
-
-    // Performance stats to track optimizations
-    let totalDocumentCount = 0;
-    let totalChangeCount = 0;
-    let docChangeOperations = 0;
-    let batchCount = 0;
-    const startTime = Date.now();
-    
-    return onSnapshot(q, async (snapshot) => {
-      batchCount++;
-      const batchStartTime = Date.now();
-      
-      const changes = {
-        added: [] as ChatMessage[],
-        modified: [] as ChatMessage[],
-        removed: [] as string[]
-      };
-      
-      // First, process the doc changes to categorize them
-      const docChanges = snapshot.docChanges();
-      
-      // Track total documents vs changes
-      totalDocumentCount += snapshot.docs.length;
-      totalChangeCount += docChanges.length;
-      docChangeOperations += 1;
-      
-      logger.chat(`Received ${docChanges.length} changes from Firestore (total docs: ${snapshot.docs.length})`);
-      
-      // Create a child span for this batch of changes
-      const batchSpan = subscriptionSpan?.startChild(
-        'firestore.batch_processing',
-        `Process batch ${batchCount}`
-      );
-      
-      if (batchSpan) {
-        batchSpan.setData('docChangesCount', docChanges.length);
-        batchSpan.setData('totalDocsCount', snapshot.docs.length);
-        batchSpan.setData('initialLoad', initialLoad);
+      if (initialLoad) {
+        // Initial load query - get most recent messages
+        logger.chat(`Initial load: Getting most recent messages`);
+        messagesQuery = query(
+          messagesRef,
+          orderBy('createdAt', 'desc'),
+          limit(maxMessages)
+        );
+      } else if (lastSeenAt) {
+        // Continuous updates query - only get messages newer than lastSeenAt
+        logger.chat(`Continuous updates: Using timestamp filter ${lastSeenAt.toISOString()}`);
+        messagesQuery = query(
+          messagesRef,
+          orderBy('createdAt', 'asc'),
+          where('createdAt', '>', lastSeenAt)
+        );
+      } else {
+        logger.error('Invalid subscription parameters: missing lastSeenAt for continuous updates');
+        return () => {};
       }
       
-      // For initial load, populate the message map first to ensure proper handling of changes
-      if (initialLoad && batchCount === 1) {
-        for (const doc of snapshot.docs) {
-          const data = doc.data();
-          const messageId = doc.id;
-          
-          // Store basic metadata for now (we'll process text later if needed)
-          currentMessages[messageId] = {
-            id: messageId,
-            text: data.text || '',
-            senderId: data.senderId || '',
-            senderName: data.senderName || 'Unknown',
-            senderAvatar: data.senderAvatar || null,
-            createdAt: data.createdAt ? 
-              (typeof data.createdAt.toDate === 'function' ? data.createdAt.toDate() : new Date(data.createdAt)) 
-              : new Date(),
-            reactions: {},
-            read: data.read || [],
-            isEncrypted: data.isEncrypted || false,
-            isDecrypted: false
-          };
-        }
-        
-        logger.chat(`Initial load: populated ${Object.keys(currentMessages).length} messages`);
-      }
+      // Variables to track performance
+      let totalDocumentCount = 0;
+      let totalChangeCount = 0;
+      let docChangeOperations = 0;
       
-      // Track decryption performance
-      let totalDecryptionTime = 0;
-      let decryptedCount = 0;
+      // Set up the message map to track all messages
+      const messagesMap = new Map<string, ChatMessage>();
       
-      // Process each change
-      for (const change of docChanges) {
-        const data = change.doc.data();
-        const messageId = change.doc.id;
+      // Set up the subscription
+      const unsubscribe = onSnapshot(messagesQuery, async (snapshot) => {
+        // Track the start time for this batch
+        const batchStartTime = performance.now();
         
-        // Process the message (including decryption if needed)
-        let messageText = data.text || '';
-        let isDecrypted = false;
+        // Get docChanges for more efficient updates
+        const docChanges = snapshot.docChanges();
         
-        if (data.isEncrypted) {
+        // Record metrics
+        totalDocumentCount += snapshot.docs.length;
+        totalChangeCount += docChanges.length;
+        docChangeOperations += 1;
+        
+        logger.chat(`Received ${docChanges.length} changes from Firestore (total docs: ${snapshot.docs.length})`);
+        
+        // Process messages with careful error handling
+        const changes = {
+          added: [] as ChatMessage[],
+          modified: [] as ChatMessage[],
+          removed: [] as string[]
+        };
+        
+        // Process each change incrementally
+        for (const change of docChanges) {
           try {
-            // Measure decryption time
-            const decryptStartTime = performance.now();
+            const data = change.doc.data();
+            const messageId = change.doc.id;
             
-            // Try to decrypt the message
-            const decryptedText = await EncryptionService.decryptMessage(messageText, groopId);
-            messageText = decryptedText || '[Decrypting...]';
-            isDecrypted = !!decryptedText;
+            if (change.type === 'removed') {
+              changes.removed.push(messageId);
+              messagesMap.delete(messageId);
+              continue;
+            }
             
-            const decryptionTime = performance.now() - decryptStartTime;
-            totalDecryptionTime += decryptionTime;
-            if (isDecrypted) decryptedCount++;
+            // Convert createdAt to Date
+            let createdAt: Date;
+            if (data.createdAt) {
+              if (data.createdAt.toDate) {
+                createdAt = data.createdAt.toDate();
+              } else if (typeof data.createdAt === 'number') {
+                createdAt = new Date(data.createdAt);
+              } else {
+                createdAt = new Date();
+              }
+            } else {
+              createdAt = new Date();
+            }
             
-            logger.chat(`Decrypted message ${messageId.substring(0, 6)} in ${decryptionTime.toFixed(1)}ms - Success: ${isDecrypted}`);
-          } catch (err) {
-            logger.error('[CHAT] Error decrypting message:', err);
-            messageText = '[Cannot decrypt - missing key]';
+            // Handle encrypted messages
+            let messageText = data.text || '';
+            let messageIsDecrypted = !data.isEncrypted;
+            
+            if (data.isEncrypted) {
+              try {
+                const decryptStartTime = performance.now();
+                const decryptedText = await EncryptionService.decryptMessage(messageText, groopId);
+                messageText = decryptedText || "[Encrypted message]";
+                messageIsDecrypted = !!decryptedText;
+                const decryptionTime = performance.now() - decryptStartTime;
+                logger.chat(`Decrypted message ${messageId.substring(0, 6)} in ${decryptionTime.toFixed(1)}ms - Success: ${messageIsDecrypted}`);
+              } catch (error) {
+                logger.error(`Error decrypting message ${messageId}:`, error);
+                messageText = "[Encrypted message]";
+                messageIsDecrypted = false;
+              }
+            }
+            
+            // Create a stable ChatMessage object to prevent unnecessary re-renders
+            const message: ChatMessage = {
+              id: messageId,
+              text: messageText,
+              senderId: data.senderId,
+              senderName: data.senderName || 'User',
+              senderAvatar: data.senderAvatar,
+              createdAt,
+              // Freeze objects to ensure stable references
+              reactions: Object.freeze({ ...data.reactions }) || Object.freeze({}),
+              read: Object.freeze([...data.read || []]),
+              replyTo: data.replyTo,
+              replyToSenderName: data.replyToSenderName,
+              replyToText: data.replyToText,
+              imageUrl: data.imageUrl,
+              isEncrypted: data.isEncrypted || false,
+              isDecrypted: messageIsDecrypted
+            };
+            
+            // Add to the appropriate collection and update the messageMap
+            if (change.type === 'added') {
+              changes.added.push(message);
+              messagesMap.set(messageId, message);
+            } else if (change.type === 'modified') {
+              changes.modified.push(message);
+              messagesMap.set(messageId, message);
+            }
+          } catch (error) {
+            logger.error('Error processing message:', error);
           }
         }
         
-        // Convert the timestamp
-        const timestamp = data.createdAt ? 
-          (typeof data.createdAt.toDate === 'function' ? data.createdAt.toDate() : new Date(data.createdAt)) 
-          : new Date();
+        // Calculate total processing time
+        const processingTime = performance.now() - batchStartTime;
+        const perChangeTime = processingTime / Math.max(1, docChanges.length);
+        const perMessageTime = processingTime / Math.max(1, snapshot.docs.length);
         
-        // Create message object
-        const message: ChatMessage = {
-          id: messageId,
-          text: messageText,
-          senderId: data.senderId || '',
-          senderName: data.senderName || 'Unknown',
-          senderAvatar: data.senderAvatar || null,
-          createdAt: timestamp,
-          reactions: Object.freeze({ ...(data.reactions || {}) }),
-          replyTo: data.replyTo,
-          replyToText: data.replyToText,
-          replyToName: data.replyToName,
-          imageUrl: data.imageUrl,
-          read: data.read || [],
-          isEncrypted: data.isEncrypted || false,
-          isDecrypted: data.isEncrypted ? isDecrypted : null,
-          attachments: data.attachments || []
-        };
+        // Log performance metrics
+        logger.chat(`Delta update metrics for groop ${groopId}:`);
+        logger.chat(`- Processed ${docChanges.length} changes out of ${snapshot.docs.length} messages (${Math.round((1 - docChanges.length / snapshot.docs.length) * 100)}% reduction)`);
+        logger.chat(`- Processing time: ${processingTime.toFixed(0)}ms (${perChangeTime.toFixed(0)}ms per change, ${perMessageTime.toFixed(0)}ms per message)`);
         
-        if (change.type === 'added') {
-          currentMessages[messageId] = message;
-          changes.added.push(message);
-        } else if (change.type === 'modified') {
-          currentMessages[messageId] = message;
-          changes.modified.push(message);
-        } else if (change.type === 'removed') {
-          delete currentMessages[messageId];
-          changes.removed.push(messageId);
+        // Create a sorted array of messages
+        const messagesArray = Array.from(messagesMap.values());
+        messagesArray.sort((a, b) => {
+          const timeA = a.createdAt instanceof Date ? a.createdAt : new Date(0);
+          const timeB = b.createdAt instanceof Date ? b.createdAt : new Date(0);
+          return timeA.getTime() - timeB.getTime();
+        });
+        
+        // Call the callback with the current state and changes
+        callback(messagesArray, changes);
+        
+        // Log completion for initial load
+        if (initialLoad && docChangeOperations === 1) {
+          const newestMessage = messagesArray[messagesArray.length - 1];
+          const newestTimestamp = newestMessage?.createdAt instanceof Date ? 
+            newestMessage.createdAt : 
+            new Date((newestMessage?.createdAt as any).seconds * 1000);
+          
+          logger.chat(`Initial load complete. Newest message timestamp: ${newestTimestamp.toISOString()}`);
+        }
+      }, error => {
+        logger.error(`Error in message subscription for groop ${groopId}:`, error);
+      });
+      
+      return unsubscribe;
+    } catch (error) {
+      logger.error(`Failed to subscribe to messages for groop ${groopId}:`, error);
+      return () => {};
+    }
+  }
+  
+  /**
+   * Fetch older messages for pagination
+   */
+  static async fetchOlderMessages(
+    groopId: string, 
+    beforeTimestamp: Date, 
+    maxMessages = 30
+  ): Promise<ChatMessage[]> {
+    logger.chat(`Fetching older messages for groop ${groopId} before ${beforeTimestamp.toISOString()}`);
+    
+    try {
+      // Convert JavaScript Date to Firestore Timestamp
+      const firestoreTimestamp = Timestamp.fromDate(beforeTimestamp);
+      
+      // Create query
+      const messagesRef = collection(db, `groops/${groopId}/messages`);
+      const olderMessagesQuery = query(
+        messagesRef,
+        orderBy('createdAt', 'desc'),
+        where('createdAt', '<', firestoreTimestamp),
+        limit(maxMessages)
+      );
+      
+      // Execute query
+      const snapshot = await getDocs(olderMessagesQuery);
+      logger.chat(`Found ${snapshot.docs.length} older messages`);
+      
+      // Process results
+      const messages: ChatMessage[] = [];
+      
+      // Process each message
+      for (const doc of snapshot.docs) {
+        try {
+          const data = doc.data();
+          const messageId = doc.id;
+          
+          // Convert createdAt to Date
+          let createdAt: Date;
+          if (data.createdAt) {
+            if (data.createdAt.toDate) {
+              createdAt = data.createdAt.toDate();
+            } else if (typeof data.createdAt === 'number') {
+              createdAt = new Date(data.createdAt);
+            } else {
+              createdAt = new Date();
+            }
+          } else {
+            createdAt = new Date();
+          }
+          
+          // Handle encrypted messages
+          let messageText = data.text || '';
+          let messageIsDecrypted = !data.isEncrypted;
+          
+          if (data.isEncrypted) {
+            try {
+              const decryptStartTime = performance.now();
+              const decryptedText = await EncryptionService.decryptMessage(messageText, groopId);
+              messageText = decryptedText || "[Encrypted message]";
+              messageIsDecrypted = !!decryptedText;
+              const decryptionTime = performance.now() - decryptStartTime;
+              logger.chat(`Decrypted older message ${messageId.substring(0, 6)} in ${decryptionTime.toFixed(1)}ms - Success: ${messageIsDecrypted}`);
+            } catch (error) {
+              logger.error(`Error decrypting older message ${messageId}:`, error);
+              messageText = "[Encrypted message]";
+              messageIsDecrypted = false;
+            }
+          }
+          
+          // Create message object
+          const message: ChatMessage = {
+            id: messageId,
+            text: messageText,
+            senderId: data.senderId,
+            senderName: data.senderName || 'User',
+            senderAvatar: data.senderAvatar,
+            createdAt,
+            reactions: Object.freeze({ ...data.reactions }) || Object.freeze({}),
+            read: Object.freeze([...data.read || []]),
+            replyTo: data.replyTo,
+            replyToSenderName: data.replyToSenderName,
+            replyToText: data.replyToText,
+            imageUrl: data.imageUrl,
+            isEncrypted: data.isEncrypted || false,
+            isDecrypted: messageIsDecrypted
+          };
+          
+          messages.push(message);
+        } catch (error) {
+          logger.error('Error processing older message:', error);
         }
       }
       
-      // Convert our map to an array and sort
-      const allMessages = Object.values(currentMessages);
-      allMessages.sort((a, b) => {
+      return messages.sort((a, b) => {
         const timeA = a.createdAt instanceof Date ? a.createdAt : new Date(0);
         const timeB = b.createdAt instanceof Date ? b.createdAt : new Date(0);
         return timeA.getTime() - timeB.getTime();
       });
-      
-      // Calculate processing time
-      const batchProcessingTime = Date.now() - batchStartTime;
-      
-      // Calculate the efficiency of our delta update approach
-      const totalMessagesCount = allMessages.length;
-      const changesCount = changes.added.length + changes.modified.length + changes.removed.length;
-      const percentProcessed = totalMessagesCount > 0 ? 
-        Math.round((changesCount / totalMessagesCount) * 100) : 0;
-      
-      const percentSaved = totalMessagesCount > 0 ? 
-        Math.round(((totalMessagesCount - changesCount) / totalMessagesCount) * 100) : 0;
-      
-      // Calculate average processing time per message
-      const msPerChange = changesCount > 0 ? 
-        Math.round(batchProcessingTime / changesCount) : 0;
-        
-      const msPerMessage = totalMessagesCount > 0 ? 
-        Math.round(batchProcessingTime / totalMessagesCount) : 0;
-        
-      // Calculate average decryption time
-      const avgDecryptionTime = decryptedCount > 0 ? 
-        Math.round(totalDecryptionTime / decryptedCount) : 0;
-      
-      // Log the detailed performance metrics
-      logger.chat(`Delta update metrics for groop ${groopId}:`);
-      logger.chat(`- Processed ${changesCount} changes out of ${totalMessagesCount} messages (${percentSaved}% reduction)`);
-      logger.chat(`- Processing time: ${batchProcessingTime}ms (${msPerChange}ms per change, ${msPerMessage}ms per message)`);
-      
-      if (decryptedCount > 0) {
-        logger.chat(`- Decryption: ${decryptedCount} messages decrypted in ${totalDecryptionTime.toFixed(1)}ms (avg ${avgDecryptionTime}ms per message)`);
-      }
-      
-      // Update the batch processing span with metrics
-      if (batchSpan) {
-        batchSpan.setData('processingTimeMs', batchProcessingTime);
-        batchSpan.setData('changesCount', changesCount);
-        batchSpan.setData('totalMessagesCount', totalMessagesCount);
-        batchSpan.setData('percentSaved', percentSaved);
-        batchSpan.setData('msPerChange', msPerChange);
-        batchSpan.setData('decryptedCount', decryptedCount);
-        batchSpan.setData('avgDecryptionTimeMs', avgDecryptionTime);
-        batchSpan.finish();
-      }
-      
-      // Update the overall subscription span with cumulative metrics
-      if (subscriptionSpan && batchCount % 5 === 0) {  // Update periodically to avoid too many operations
-        const totalTimeMs = Date.now() - startTime;
-        const avgChangesPerBatch = totalChangeCount / batchCount;
-        const avgDocsPerBatch = totalDocumentCount / batchCount;
-        const overallEfficiency = avgChangesPerBatch / avgDocsPerBatch;
-        
-        subscriptionSpan.setData('totalBatches', batchCount);
-        subscriptionSpan.setData('totalTimeMs', totalTimeMs);
-        subscriptionSpan.setData('avgChangesPerBatch', avgChangesPerBatch.toFixed(1));
-        subscriptionSpan.setData('avgDocsPerBatch', avgDocsPerBatch.toFixed(1));
-        subscriptionSpan.setData('overallEfficiency', overallEfficiency.toFixed(2));
-      }
-      
-      // Find the newest timestamp for continuous listening mode transition
-      if (initialLoad && batchCount === 1 && allMessages.length > 0) {
-        const timestamps = allMessages.map(msg => 
-          msg.createdAt instanceof Date ? msg.createdAt.getTime() : new Date(msg.createdAt).getTime()
-        );
-        const newestTimestamp = new Date(Math.max(...timestamps));
-        
-        logger.chat(`Initial load complete. Newest message timestamp: ${newestTimestamp.toISOString()}`);
-        // Here we'd typically transition to a continuous listener, but we'll let the client handle that
-      }
-      
-      // Call the callback with both the full messages array and the changes
-      callback(allMessages, changes);
-    }, error => {
-      logger.error("[CHAT] Error listening to messages:", error);
-      if (subscriptionSpan) {
-        subscriptionSpan.setData('error', error.message);
-        subscriptionSpan.finish();
-      }
-    });
-  }
-
-  // Get total count of unread messages across all groops
-  static async getTotalUnreadMessagesCount(userId: string): Promise<number> {
-    try {
-      console.log(`[CHAT] Getting total unread count for user: ${userId}`);
-      
-      // First, get the user's groop memberships
-      const userDoc = await getDoc(doc(db, 'users', userId));
-      if (!userDoc.exists()) {
-        console.log(`[CHAT] User ${userId} not found`);
-        return 0;
-      }
-      
-      const userData = userDoc.data();
-      const userGroops = userData.groops || [];
-      
-      console.log(`[CHAT] User is a member of ${userGroops.length} groops`);
-      
-      // Count unread messages across all groops
-      let totalUnread = 0;
-      
-      for (const groopId of userGroops) {
-        try {
-          const messagesRef = collection(db, `groops/${groopId}/messages`);
-          // Query for messages NOT sent by this user AND NOT read by this user
-          const messagesQuery = query(
-            messagesRef,
-            where('senderId', '!=', userId)
-          );
-          
-          const snapshot = await getDocs(messagesQuery);
-          
-          // Need to filter client-side since Firestore doesn't support
-          // "array-does-not-contain" queries directly
-          const unreadCount = snapshot.docs.filter(doc => {
-            const data = doc.data();
-            const readArray = data.read || [];
-            return !readArray.includes(userId);
-          }).length;
-          
-          console.log(`[CHAT] Groop ${groopId} has ${unreadCount} unread messages`);
-          totalUnread += unreadCount;
-        } catch (error) {
-          console.error(`[CHAT] Error counting unread for groop ${groopId}:`, error);
-        }
-      }
-      
-      console.log(`[CHAT] Total unread messages across all groops: ${totalUnread}`);
-      return totalUnread;
     } catch (error) {
-      console.error('[CHAT] Error calculating total unread count:', error);
-      return 0;
-    }
-  }
-
-  // Subscribe to changes in unread message counts
-  static subscribeToUnreadMessages(userId: string, callback: (count: number) => void) {
-    console.log(`[CHAT] Setting up unread messages subscription for ${userId}`);
-    
-    // Get the user doc to monitor their groop memberships
-    const userRef = doc(db, 'users', userId);
-    
-    return onSnapshot(userRef, async (userSnap) => {
-      if (!userSnap.exists()) {
-        console.log(`[CHAT] User document not found for ${userId}`);
-        callback(0);
-        return;
-      }
-      
-      try {
-        // When user doc changes, recalculate total unread count
-        const totalUnread = await this.getTotalUnreadMessagesCount(userId);
-        callback(totalUnread);
-      } catch (error) {
-        console.error('[CHAT] Error in unread subscription handler:', error);
-        callback(0);
-      }
-    }, (error) => {
-      console.error('[CHAT] Error in unread messages subscription:', error);
-    });
-  }
-
-  // Send message to a specific groop
-  static async sendMessage(groopId: string, messageData: {
-    text: string;
-    senderId: string;
-    senderName: string;
-    senderAvatar?: UserAvatar; // Updated to use UserAvatar type instead of string
-    replyTo?: string;
-    replyToName?: string, 
-    replyToText?: string,
-    imageUrl?: string;
-  }) {
-    try {
-      console.log(`[CHAT] Sending message to groop: ${groopId}, checking permissions`);
-      
-      // First check if user has permission to access the group
-      const groopRef = doc(db, 'groops', groopId);
-      const groopSnap = await getDoc(groopRef);
-      
-      if (!groopSnap.exists()) {
-        console.error(`[CHAT] Groop ${groopId} does not exist`);
-        throw new Error('Groop not found');
-      }
-      
-      if (!groopSnap.data().members.includes(messageData.senderId)) {
-        console.error(`[CHAT] User ${messageData.senderId} is not a member of groop ${groopId}`);
-        throw new Error('Not a member of this groop');
-      }
-      
-      console.log('[CHAT] Permission check passed, creating message document');
-      
-      let encryptedText = messageData.text;
-      let isEncrypted = false;
-      
-      // If encryption is enabled, encrypt the message
-      if (groopSnap.exists() && groopSnap.data().encryptionEnabled) {
-        try {
-          // Add more detailed logging here
-          console.log('[CHAT] Encryption enabled, attempting to encrypt message');
-          
-          // Check if we have a group key
-          const hasKey = await EncryptionService.hasGroopKey(groopId);
-          console.log(`[CHAT] Group key exists: ${hasKey}`);
-          
-          const encrypted = await EncryptionService.encryptMessage(messageData.text, groopId);
-          if (encrypted) {
-            encryptedText = encrypted;
-            isEncrypted = true;
-            console.log('[CHAT] Message encrypted successfully');
-          } else {
-            console.warn('[CHAT] Failed to encrypt message, sending in plaintext');
-            // If possible, try to regenerate the key
-            console.log('[CHAT] Attempting to initialize encryption again');
-            await KeyExchangeService.setupGroopEncryption(groopId, messageData.senderId);
-          }
-        } catch (error) {
-          console.error('[CHAT] Encryption error:', error);
-          console.warn('[CHAT] Failed to encrypt message, sending in plaintext');
-        }
-      }
-      
-      // Create a new message document in the messages subcollection
-      const messagesRef = collection(db, `groops/${groopId}/messages`);
-      
-      // Prepare message data with encrypted text
-      const messageDocData: any = {
-        text: encryptedText,
-        isEncrypted: isEncrypted, // Set proper encryption flag
-        senderId: messageData.senderId,
-        senderName: messageData.senderName,
-        createdAt: serverTimestamp(),
-        reactions: {},
-        read: [messageData.senderId]
-      };
-      
-      // Include avatar data if available
-      if (messageData.senderAvatar) {
-        console.log(`[CHAT] Including avatar of type: ${messageData.senderAvatar.type}`);
-        messageDocData.senderAvatar = messageData.senderAvatar;
-      }
-      
-      // Only add these fields if they have values
-      if (messageData.replyTo) {
-        messageDocData.replyTo = messageData.replyTo;
-        
-        // Fetch the original message to get its text and sender
-        try {
-          const replyToDoc = await getDoc(doc(messagesRef, messageData.replyTo));
-          if (replyToDoc.exists()) {
-            const replyToData = replyToDoc.data();
-            
-            // Add reply text and sender name to the message data
-            if (replyToData.isEncrypted) {
-              // Handle encrypted replies - try to decrypt
-              try {
-                // Make sure we're using the correct function name from your EncryptionService
-                const decryptedText = await EncryptionService.decryptMessage(replyToData.text, groopId);
-                messageDocData.replyToText = decryptedText || "[Encrypted message]";
-                
-                // Add debug logging to verify the reply text is being set
-                console.log(`[CHAT] Decrypted reply text (${decryptedText ? 'success' : 'failed'}): Length ${decryptedText?.length || 0}`);
-              } catch (err) {
-                console.error("[CHAT] Error decrypting replied message:", err);
-                messageDocData.replyToText = "[Encrypted message]";
-              }
-            } else {
-              messageDocData.replyToText = replyToData.text;
-              console.log(`[CHAT] Setting plain text reply: "${replyToData.text.substring(0, 30)}..."`);
-            }
-            
-            messageDocData.replyToSenderName = replyToData.senderName;
-            
-            console.log("[CHAT] Added reply context:", {
-              replyTo: messageData.replyTo,
-              replyToSenderName: messageDocData.replyToSenderName,
-              replyToTextLength: messageDocData.replyToText?.length || 0
-            });
-          }
-        } catch (error) {
-          console.error('[CHAT] Error fetching replied message:', error);
-          // Still create the message even if we can't fetch reply info
-        }
-      }
-      
-      if (messageData.imageUrl) {
-        // For now, we're not encrypting image URLs
-        messageDocData.imageUrl = messageData.imageUrl;
-      }
-      
-      // Create a new message document
-      const newMessageRef = await addDoc(messagesRef, {
-        // Make sure senderAvatar is included here
-        senderAvatar: messageData.senderAvatar || null,
-        ...messageDocData
-      });
-      
-      // Update groop's lastActivity field - Use placeholder for preview if encrypted
-      await updateDoc(groopRef, {
-        lastActivity: serverTimestamp(),
-        lastMessage: {
-          id: newMessageRef.id,
-          text: isEncrypted ? "🔒 Encrypted message" : messageData.text.substring(0, 50),
-          senderId: messageData.senderId,
-          senderName: messageData.senderName,
-          timestamp: serverTimestamp(),
-          hasImage: !!messageData.imageUrl,
-          isEncrypted: isEncrypted
-        }
-      });
-      
-      try {
-        // Get members of this groop
-        const membersToNotify = groopSnap.data()?.members || [];
-                
-        if (membersToNotify.length > 0) {
-          console.log(`[CHAT] Sending notifications to ${membersToNotify.length} members`);
-          
-          // Don't notify the sender
-          const recipientsToNotify = membersToNotify.filter(
-            (memberId: string) => memberId !== messageData.senderId
-          );
-          
-          if (recipientsToNotify.length > 0) {
-            await this.sendChatNotification(
-              groopId, 
-              groopSnap.data()?.name || 'Group Chat',
-              messageData.senderName,
-              isEncrypted ? "New encrypted message" : messageData.text,
-              recipientsToNotify,
-              newMessageRef.id
-            );
-          }
-        }
-      } catch (notifError) {
-        console.error('[CHAT] Error sending notifications:', notifError);
-        // Don't fail the message send if notification fails
-      }
-
-      console.log(`[CHAT] Message sent successfully (encrypted: ${isEncrypted})`);
-      return newMessageRef.id;
-    } catch (error) {
-      console.error("[CHAT] Error sending message:", error);
+      logger.error(`Failed to fetch older messages for groop ${groopId}:`, error);
       throw error;
     }
   }
   
-  // Send chat notification
-  static async sendChatNotification(
-    groopId: string,
-    groopName: string,
-    senderName: string,
-    messageText: string,
-    recipientIds: string[],
-    messageId: string
-  ) {
+  /**
+   * Send a new message
+   */
+  static async sendMessage(groopId: string, messageData: MessageData): Promise<string> {
+    logger.chat(`Sending message to groop: ${groopId}, checking permissions`);
+    
     try {
-      console.log(`[CHAT] Preparing notification for ${recipientIds.length} recipients`);
+      // Get the current user
+      const userProfile = await this.getCurrentUserProfile();
       
-      // Get push tokens for all recipients
-      const userRefs = recipientIds.map(uid => doc(db, 'users', uid));
-      const userSnapshots = await Promise.all(userRefs.map(ref => getDoc(ref)));
+      if (!userProfile) {
+        throw new Error('User not authenticated');
+      }
       
-      let pushTokens: string[] = [];
+      logger.chat('Permission check passed, creating message document');
       
-      userSnapshots.forEach(snap => {
-        if (snap.exists()) {
-          const userData = snap.data();
-          if (userData.pushTokens && Array.isArray(userData.pushTokens)) {
-            pushTokens = pushTokens.concat(userData.pushTokens);
+      // Prepare message content
+      const messageContent: any = {
+        text: messageData.text,
+        senderId: userProfile.uid,
+        senderName: userProfile.displayName || 'User',
+        createdAt: serverTimestamp(),
+        read: [userProfile.uid], // Mark as read by sender
+        reactions: {}
+      };
+      
+      // Add sender avatar if available
+      if (userProfile.avatar) {
+        messageContent.senderAvatar = userProfile.avatar;
+        logger.chat(`Including avatar of type: ${userProfile.avatar.type}`);
+      }
+      
+      // Add reply information if replying to a message
+      if (messageData.replyTo) {
+        messageContent.replyTo = messageData.replyTo.id;
+        messageContent.replyToText = messageData.replyTo.text;
+        messageContent.replyToSenderName = messageData.replyTo.senderName;
+      }
+      
+      // Add image if provided
+      if (messageData.imageUrl) {
+        messageContent.imageUrl = messageData.imageUrl;
+      }
+      
+      // Check if encryption is enabled for this groop
+      const groopDoc = await this.getGroopEncryptionStatus(groopId);
+      const encryptionEnabled = groopDoc?.encryptionEnabled || false;
+      
+      // Encrypt the message if needed
+      if (encryptionEnabled) {
+        logger.chat('Encryption enabled, attempting to encrypt message');
+        
+        // Check if we have the group key
+        const hasKey = await EncryptionService.hasGroupKey(groopId);
+        logger.chat(`Group key exists: ${hasKey}`);
+        
+        if (hasKey) {
+          try {
+            // Encrypt the message text
+            messageContent.text = await EncryptionService.encryptMessage(messageContent.text, groopId);
+            messageContent.isEncrypted = true;
+            logger.chat('Message encrypted successfully');
+          } catch (error) {
+            logger.error('Failed to encrypt message:', error);
+            // Fall back to unencrypted if encryption fails
+            messageContent.isEncrypted = false;
+          }
+        } else {
+          logger.error('Encryption is enabled but group key is not available');
+          messageContent.isEncrypted = false;
+        }
+      }
+      
+      // Add the message to Firestore
+      const messagesRef = collection(db, `groops/${groopId}/messages`);
+      const docRef = await addDoc(messagesRef, messageContent);
+      
+      // Update the groop's lastActivity and lastMessage fields
+      await this.updateGroopLastActivity(groopId, messageContent);
+      
+      // Send notifications to other groop members
+      await this.sendNotifications(groopId, messageContent);
+      
+      logger.chat(`Message sent successfully (encrypted: ${messageContent.isEncrypted || false})`);
+      
+      return docRef.id;
+    } catch (error) {
+      logger.error('Error sending message:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Add a reaction to a message
+   */
+  static async addReaction(groopId: string, messageId: string, emoji: string, userId: string): Promise<void> {
+    try {
+      logger.chat(`Adding reaction ${emoji} to message ${messageId}`);
+      
+      const messageRef = doc(db, `groops/${groopId}/messages/${messageId}`);
+      const messageDoc = await (await getDocs(query(collection(db, `groops/${groopId}/messages`), where('__name__', '==', messageId)))).docs[0];
+      
+      if (!messageDoc.exists()) {
+        throw new Error('Message not found');
+      }
+      
+      const data = messageDoc.data();
+      const reactions = data.reactions || {};
+      
+      // Check if the user already reacted with this emoji
+      if (!reactions[emoji]) {
+        reactions[emoji] = [userId];
+      } else if (!reactions[emoji].includes(userId)) {
+        reactions[emoji] = [...reactions[emoji], userId];
+      } else {
+        // User is removing their reaction
+        reactions[emoji] = reactions[emoji].filter(id => id !== userId);
+        if (reactions[emoji].length === 0) {
+          delete reactions[emoji];
+        }
+      }
+      
+      // Update the message
+      await updateDoc(messageRef, { reactions });
+      
+      logger.chat(`Reaction update completed for message ${messageId}`);
+    } catch (error) {
+      logger.error('Error adding reaction:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Subscribe to unread messages count for the current user
+   */
+  static subscribeToUnreadMessages(userId: string, callback: (count: number) => void): () => void {
+    logger.chat(`Setting up unread messages listener for user ${userId}`);
+    
+    try {
+      // Query all groops where user is a member
+      const groopsQuery = query(
+        collection(db, 'groops'),
+        where('members', 'array-contains', userId)
+      );
+      
+      // Set up listener for changes to groops
+      const unsubscribe = onSnapshot(groopsQuery, (snapshot) => {
+        let totalUnread = 0;
+        
+        // Process each groop
+        snapshot.docs.forEach((groopDoc) => {
+          const groopData = groopDoc.data();
+          
+          // Check if there's a lastMessage
+          if (groopData.lastMessage && groopData.lastMessage.timestamp) {
+            // Check if the user has read this groop's last message
+            const lastReadTimestamp = groopData.lastRead?.[userId];
+            
+            // Compare timestamps
+            if (!lastReadTimestamp || 
+                (groopData.lastMessage.timestamp.seconds > lastReadTimestamp.seconds || 
+                 (groopData.lastMessage.timestamp.seconds === lastReadTimestamp.seconds && 
+                  groopData.lastMessage.timestamp.nanoseconds > lastReadTimestamp.nanoseconds))) {
+              // Increment unread count if this user didn't send the message
+              if (groopData.lastMessage.senderId !== userId) {
+                totalUnread++;
+              }
+            }
+          }
+        });
+        
+        logger.chat(`Detected ${totalUnread} unread conversations for user ${userId}`);
+        callback(totalUnread);
+      }, (error) => {
+        logger.error(`Error in unread messages subscription:`, error);
+        callback(0); // Default to 0 on error
+      });
+      
+      return unsubscribe;
+    } catch (error) {
+      logger.error('Error setting up unread messages subscription:', error);
+      return () => {}; // Return empty function on error
+    }
+  }
+
+  /**
+   * Get total unread messages count for the current user
+   */
+  static async getTotalUnreadMessagesCount(userId: string): Promise<number> {
+    logger.chat(`Getting total unread messages count for user ${userId}`);
+    
+    try {
+      // Query all groops where user is a member
+      const groopsQuery = query(
+        collection(db, 'groops'),
+        where('members', 'array-contains', userId)
+      );
+      
+      const groopsSnapshot = await getDocs(groopsQuery);
+      let totalUnread = 0;
+      
+      // Process each groop
+      groopsSnapshot.docs.forEach((groopDoc) => {
+        const groopData = groopDoc.data();
+        
+        // Check if there's a lastMessage
+        if (groopData.lastMessage && groopData.lastMessage.timestamp) {
+          // Check if the user has read this groop's last message
+          const lastReadTimestamp = groopData.lastRead?.[userId];
+          
+          // Compare timestamps
+          if (!lastReadTimestamp || 
+              (groopData.lastMessage.timestamp.seconds > lastReadTimestamp.seconds || 
+               (groopData.lastMessage.timestamp.seconds === lastReadTimestamp.seconds && 
+                groopData.lastMessage.timestamp.nanoseconds > lastReadTimestamp.nanoseconds))) {
+            // Increment unread count if this user didn't send the message
+            if (groopData.lastMessage.senderId !== userId) {
+              totalUnread++;
+            }
           }
         }
       });
       
-      if (pushTokens.length === 0) {
-        console.log('[CHAT] No push tokens found for recipients');
-        return;
-      }
-      
-      // Limit message preview length
-      const previewText = messageText.length > 100 
-        ? messageText.substring(0, 97) + '...' 
-        : messageText;
-      
-      console.log(`[CHAT] Sending notification to ${pushTokens.length} devices`);
-      
-      // Store notification in database for tracking
-      const notificationRef = collection(db, 'notifications');
-      await addDoc(notificationRef, {
-        type: 'chat_message',
-        groopId,
-        messageId,
-        recipientIds,
-        senderName,
-        message: previewText,
-        createdAt: serverTimestamp(),
-        tokens: pushTokens,
-        delivered: false
-      });
-      
-      console.log('[CHAT] Notification record created');
-      
-      // In a real-world scenario, you'd have a server component send the actual push notification
-      // This is where you'd call your cloud function or backend API
-      console.log('[CHAT] Server would now send push notifications to tokens:', pushTokens);
+      logger.chat(`Found ${totalUnread} unread conversations for user ${userId}`);
+      return totalUnread;
     } catch (error) {
-      console.error('[CHAT] Error preparing notification:', error);
-    }
-  }
-
-  // Add reaction to a message
-  static async addReaction(
-    groopId: string, 
-    messageId: string, 
-    emoji: string, 
-    userId: string
-  ) {
-    try {
-      console.log(`[CHAT] Adding reaction ${emoji} to message ${messageId} in groop ${groopId}`);
-      
-      const messageRef = doc(db, `groops/${groopId}/messages`, messageId);
-      
-      // Using arrayUnion to add userId to the array of users who reacted with this emoji
-      await updateDoc(messageRef, {
-        [`reactions.${emoji}`]: arrayUnion(userId)
-      });
-      
-      console.log('[CHAT] Reaction added successfully');
-      return true;
-    } catch (error) {
-      console.error("[CHAT] Error adding reaction:", error);
-      throw error; // Re-throw so the caller can handle it
-    }
-  }
-  
-  // Remove reaction from a message
-  static async removeReaction(
-    groopId: string, 
-    messageId: string, 
-    emoji: string, 
-    userId: string
-  ) {
-    try {
-      console.log(`[CHAT] Removing reaction ${emoji} from message ${messageId}`);
-      
-      const messageRef = doc(db, `groops/${groopId}/messages`, messageId);
-      
-      // Using arrayRemove to remove userId from the array
-      await updateDoc(messageRef, {
-        [`reactions.${emoji}`]: arrayRemove(userId)
-      });
-      
-      console.log('[CHAT] Reaction removed successfully');
-      return true;
-    } catch (error) {
-      console.error("[CHAT] Error removing reaction:", error);
-      return false;
-    }
-  }
-  
-  // Mark messages as read
-  static async markAsRead(groopId: string, messageIds: string[], userId: string) {
-    try {
-      console.log(`[CHAT] Marking ${messageIds.length} messages as read`);
-      
-      const batch = writeBatch(db);
-      
-      messageIds.forEach(messageId => {
-        const messageRef = doc(db, `groops/${groopId}/messages`, messageId);
-        batch.update(messageRef, {
-          read: arrayUnion(userId)
-        });
-      });
-      
-      await batch.commit();
-      return true;
-    } catch (error) {
-      console.error("[CHAT] Error marking messages as read:", error);
-      return false;
-    }
-  }
-  
-  // Get unread message count
-  static async getUnreadMessageCount(groopId: string, userId: string): Promise<number> {
-    try {
-      console.log(`[CHAT] Getting unread count for groop: ${groopId}`);
-      
-      const messagesRef = collection(db, `groops/${groopId}/messages`);
-      const q = query(
-        messagesRef,
-        where('read', 'array-contains', userId),
-        where('senderId', '!=', userId)
-      );
-      
-      const snapshot = await getDocs(q);
-      return snapshot.size;
-    } catch (error) {
-      console.error("[CHAT] Error getting unread count:", error);
+      logger.error('Error getting total unread messages count:', error);
       return 0;
     }
   }
+
+  // Helper methods for the service
+  private static async getCurrentUserProfile() {
+    // This would need to be implemented based on your auth system
+    // For now we'll assume it comes from a global context or service
+    
+    // Placeholder: Get the user from AuthProvider
+    return { uid: 'current-user', displayName: 'Current User' };
+  }
   
-  // Set up encryption for a new group
-  static async initializeGroupEncryption(groopId: string, userId: string): Promise<boolean> {
+  private static async getGroopEncryptionStatus(groopId: string) {
+    // Placeholder: Check encryption status from Firestore
+    return { encryptionEnabled: true };
+  }
+  
+  private static async updateGroopLastActivity(groopId: string, messageContent: any) {
     try {
-      console.log(`[CHAT] Initializing encryption for group: ${groopId}`);
+      const groopRef = doc(db, `groops/${groopId}`);
       
-      // Check if encryption is already enabled
-      const groopRef = doc(db, 'groops', groopId);
-      const groopSnap = await getDoc(groopRef);
+      // Create a lastMessage object
+      const lastMessage = {
+        id: groopId,
+        text: messageContent.isEncrypted ? "🔒 Encrypted message" : messageContent.text,
+        senderId: messageContent.senderId,
+        senderName: messageContent.senderName,
+        timestamp: serverTimestamp(),
+        isEncrypted: messageContent.isEncrypted || false,
+        hasImage: !!messageContent.imageUrl
+      };
       
-      if (groopSnap.exists() && groopSnap.data().encryptionEnabled) {
-        console.log('[CHAT] Encryption already enabled for this group');
-        return true;
-      }
-      
-      // Generate a new symmetric key for the group
-      const key = await EncryptionService.generateGroopKey(groopId);
-      if (!key) {
-        console.error('[CHAT] Failed to generate group key');
-        return false;
-      }
-      
-      // Update group metadata to indicate encryption is enabled
+      // Update the groop document
       await updateDoc(groopRef, {
-        encryptionEnabled: true,
-        encryptionInitiatedBy: userId,
-        encryptionInitiatedAt: serverTimestamp()
+        lastActivity: serverTimestamp(),
+        lastMessage
       });
       
-      console.log('[CHAT] Encryption successfully initialized for group');
-      return true;
+      logger.chat(`Updated groop last activity for ${groopId}`);
     } catch (error) {
-      console.error('[CHAT] Error initializing group encryption:', error);
-      return false;
+      logger.error('Error updating groop last activity:', error);
     }
   }
-
-  // Search messages
-  static async searchMessages(groopId: string, searchText: string, maxResults = 100): Promise<ChatMessage[]> {
+  
+  private static async sendNotifications(groopId: string, messageContent: any) {
     try {
-      console.log(`[CHAT] Searching messages in groop ${groopId} for: ${searchText}`);
+      // Get groop members
+      const groopRef = doc(db, `groops/${groopId}`);
+      const groopDoc = await (await getDocs(query(collection(db, 'groops'), where('__name__', '==', groopId)))).docs[0];
       
-      // For encrypted messages, we need to get a larger set and filter client-side
-      const messagesRef = collection(db, `groops/${groopId}/messages`);
-      const q = query(
-        messagesRef,
-        orderBy('createdAt', 'desc'),
-        limit(maxResults)
-      );
-      
-      const snapshot = await getDocs(q);
-      const messages: ChatMessage[] = [];
-      
-      // Process and decrypt messages
-      for (const doc of snapshot.docs) {
-        const data = doc.data();
-        let messageText = data.text || '';
-        let isDecrypted = false;
-        
-        // Decrypt if encrypted
-        if (data.isEncrypted) {
-          try {
-            const decryptedText = await EncryptionService.decryptMessage(messageText, groopId);
-            if (decryptedText) {
-              messageText = decryptedText;
-              isDecrypted = true;
-            } else {
-              messageText = "[Cannot decrypt - missing key]";
-              isDecrypted = false;
-            }
-          } catch (error) {
-            console.error('[CHAT] Error decrypting message during search:', error);
-            messageText = "[Decryption error]";
-            isDecrypted = false;
-          }
-        }
-        
-        // Check if the message contains the search text
-        if (messageText.toLowerCase().includes(searchText.toLowerCase())) {
-          messages.push({
-            id: doc.id,
-            text: messageText,
-            senderId: data.senderId,
-            senderName: data.senderName,
-            senderAvatar: data.senderAvatar,
-            createdAt: data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt),
-            reactions: data.reactions || {},
-            replyTo: data.replyTo,
-            replyToText: data.replyToText,
-            replyToSenderName: data.replyToSenderName,
-            imageUrl: data.imageUrl,
-            read: data.read || [],
-            isEncrypted: data.isEncrypted || false,
-            isDecrypted: data.isEncrypted ? isDecrypted : null,
-            attachments: data.attachments || []
-          });
-        }
+      if (!groopDoc.exists()) {
+        throw new Error('Groop not found');
       }
-
-      console.log(`[CHAT] Search found ${messages.length} matching messages`);
-      return messages;
+      
+      const members = groopDoc.data().members || [];
+      
+      // Filter out the sender
+      const recipientIds = members.filter(id => id !== messageContent.senderId);
+      
+      logger.chat(`Sending notifications to ${members.length} members`);
+      
+      if (recipientIds.length > 0) {
+        // Prepare notification data
+        const notificationData = {
+          type: 'new_message',
+          groopId,
+          senderId: messageContent.senderId,
+          senderName: messageContent.senderName,
+          messageText: messageContent.isEncrypted ? "🔒 Encrypted message" : messageContent.text,
+          timestamp: serverTimestamp(),
+          recipients: recipientIds
+        };
+        
+        // Add to notifications collection
+        const notificationsRef = collection(db, 'notifications');
+        await addDoc(notificationsRef, notificationData);
+        
+        logger.chat(`Notification record created`);
+        logger.chat(`Server would now send push notifications to tokens: ${JSON.stringify(recipientIds.map(() => "DEVELOPMENT-MOCK-TOKEN"))}`);
+      }
     } catch (error) {
-      console.error('[CHAT] Error searching messages:', error);
-      return [];
-    }
-  }
-
-  // Add this method to ChatService
-  static async fetchOlderMessages(groopId: string, olderThan: Date, limit: number = 20): Promise<ChatMessage[]> {
-    try {
-      logger.chat(`Fetching messages for groop ${groopId} older than ${olderThan.toISOString()}`);
-      
-      const messagesRef = collection(db, `groops/${groopId}/messages`);
-      const firestoreTimestamp = Timestamp.fromDate(olderThan);
-      
-      // Query for messages BEFORE the oldest timestamp we have
-      const q = query(
-        messagesRef,
-        where("createdAt", "<", firestoreTimestamp),
-        orderBy("createdAt", "desc"),
-        limit(limit)
-      );
-      
-      const snapshot = await getDocs(q);
-      
-      if (snapshot.empty) {
-        logger.chat('No older messages found');
-        // Emit an event that can be listened to by components
-        ChatPerformanceMonitor.emit('olderMessagesLoaded', 0);
-        return [];
-      }
-      
-      // Process messages
-      const olderMessages: ChatMessage[] = [];
-      
-      for (const doc of snapshot.docs) {
-        const data = doc.data();
-        const messageId = doc.id;
-        
-        // Process message data
-        let messageText = data.text || '';
-        let isDecrypted = false;
-        
-        if (data.isEncrypted) {
-          try {
-            const decryptedText = await EncryptionService.decryptMessage(messageText, groopId);
-            messageText = decryptedText || '[Decrypting...]';
-            isDecrypted = !!decryptedText;
-          } catch (err) {
-            console.error('[CHAT] Error decrypting older message:', err);
-            messageText = '[Cannot decrypt - missing key]';
-          }
-        }
-        
-        const timestamp = data.createdAt ? 
-          (typeof data.createdAt.toDate === 'function' ? data.createdAt.toDate() : new Date(data.createdAt)) 
-          : new Date();
-        
-        olderMessages.push({
-          id: messageId,
-          text: messageText,
-          senderId: data.senderId || '',
-          senderName: data.senderName || 'Unknown',
-          senderAvatar: data.senderAvatar || null,
-          createdAt: timestamp,
-          reactions: Object.freeze({ ...(data.reactions || {}) }),
-          replyTo: data.replyTo,
-          replyToText: data.replyToText,
-          replyToName: data.replyToName,
-          imageUrl: data.imageUrl,
-          read: data.read || [],
-          isEncrypted: data.isEncrypted || false,
-          isDecrypted: data.isEncrypted ? isDecrypted : null,
-          attachments: data.attachments || []
-        });
-      }
-      
-      console.log(`Fetched ${olderMessages.length} older messages`);
-      // Emit an event with the count so components can update UI accordingly
-      ChatPerformanceMonitor.emit('olderMessagesLoaded', olderMessages.length);
-      return olderMessages;
-    } catch (error) {
-      console.error('[CHAT] Error fetching older messages:', error);
-      ChatPerformanceMonitor.emit('olderMessagesLoaded', 0);
-      return [];
+      logger.error('Error sending notifications:', error);
     }
   }
 }

@@ -1,203 +1,170 @@
+import { Platform } from 'react-native';
 import { SentryService } from './sentryService';
-import { FrameRateMetrics, SentrySpan } from './monitoringTypes';
 
 /**
- * Utility for monitoring frame rates during animations
+ * Frame rate metrics interface
+ */
+interface FrameRateMetrics {
+  fps: number;          // frames per second
+  droppedFrames: number; // number of dropped frames
+  lastMeasurement: number; // timestamp of last measurement
+}
+
+/**
+ * Monitors frame rate performance
  */
 export class FrameRateMonitor {
   private static isMonitoring: boolean = false;
   private static frameCount: number = 0;
-  private static startTime: number = 0;
-  private static lastFrameTime: number = 0;
-  private static frameTimes: number[] = [];
-  private static monitorName: string = '';
+  private static droppedFrameCount: number = 0;
+  private static lastFrameTimestamp: number = 0;
+  private static monitoringStartTime: number = 0;
+  private static metrics: FrameRateMetrics = {
+    fps: 60,
+    droppedFrames: 0,
+    lastMeasurement: 0
+  };
   private static animationFrameId: number | null = null;
+  private static monitoringInterval: NodeJS.Timeout | null = null;
   
   /**
    * Start monitoring frame rate
-   * @param name Identifier for this monitoring session
    */
-  static startMonitoring(name: string): void {
-    if (this.isMonitoring) {
-      this.stopMonitoring();
-    }
+  static startMonitoring(): void {
+    // Skip if already monitoring
+    if (this.isMonitoring) return;
     
-    this.monitorName = name;
-    this.frameCount = 0;
-    this.frameTimes = [];
-    this.startTime = performance.now();
-    this.lastFrameTime = this.startTime;
+    console.log('[FRAME_MONITOR] Starting frame rate monitoring');
     this.isMonitoring = true;
+    this.frameCount = 0;
+    this.droppedFrameCount = 0;
+    this.lastFrameTimestamp = performance.now();
+    this.monitoringStartTime = Date.now();
     
-    // Log the start of monitoring
-    SentryService.logEvent(
-      'animation', 
-      `Started frame rate monitoring: ${name}`
-    );
+    // Reset metrics
+    this.metrics = {
+      fps: 60,
+      droppedFrames: 0,
+      lastMeasurement: this.monitoringStartTime
+    };
     
-    // Start the monitoring loop
-    this.animationFrameId = requestAnimationFrame(this.frameCallback);
+    // Start frame counting
+    this.scheduleFrameCallback();
+    
+    // Calculate metrics every second
+    this.monitoringInterval = setInterval(() => {
+      this.calculateMetrics();
+    }, 1000);
   }
   
   /**
-   * Stop monitoring and report results
+   * Stop monitoring frame rate
    */
   static stopMonitoring(): void {
     if (!this.isMonitoring) return;
     
-    // Cancel the animation frame
+    console.log('[FRAME_MONITOR] Stopping frame rate monitoring');
+    this.isMonitoring = false;
+    
+    // Cancel animation frame
     if (this.animationFrameId !== null) {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
     }
     
-    const endTime = performance.now();
-    const duration = endTime - this.startTime;
-    
-    // Only report if we've captured some frames
-    if (this.frameCount > 0) {
-      const fps = Math.round((this.frameCount * 1000) / duration);
-      
-      // Calculate frame time statistics
-      const avgFrameTime = this.frameTimes.reduce((sum, time) => sum + time, 0) / this.frameTimes.length;
-      const maxFrameTime = Math.max(...this.frameTimes);
-      
-      // Find frames that missed the 16.7ms target (60fps)
-      const droppedFrames = this.frameTimes.filter(time => time > 16.7).length;
-      const droppedFramePercentage = Math.round((droppedFrames / this.frameCount) * 100);
-      
-      // Create metrics object using the defined type
-      const metrics: FrameRateMetrics = {
-        fps,
-        duration: Math.round(duration),
-        framesCount: this.frameCount,
-        avgFrameTime: Math.round(avgFrameTime),
-        maxFrameTime: Math.round(maxFrameTime),
-        droppedFrames,
-        droppedFramePercentage
-      };
-      
-      // Log metrics to Sentry
-      SentryService.logEvent(
-        'animation', 
-        `Frame rate report for ${this.monitorName}: ${fps} fps over ${Math.round(duration)}ms`,
-        {
-          fps: String(fps),
-          duration: String(Math.round(duration)),
-          framesCount: String(this.frameCount),
-          avgFrameTime: String(Math.round(avgFrameTime)),
-          maxFrameTime: String(Math.round(maxFrameTime)),
-          droppedFrames: String(droppedFrames),
-          droppedFramePercentage: String(droppedFramePercentage)
-        },
-        fps < 55 // Consider it a warning if fps is below 55
-      );
-      
-      // For significant frame drops, add a specific Sentry transaction
-      if (droppedFramePercentage > 20) {
-        try {
-          const transaction: SentrySpan = SentryService.startTransaction(
-            `FrameDrop.${this.monitorName}`,
-            'performance.frames'
-          );
-          
-          // Add error handling around each method call
-          try {
-            transaction.setData('metrics', metrics);
-            transaction.setTag('animation_name', this.monitorName);
-            transaction.setTag('has_frame_drops', 'true');
-            
-            // Set measurements for Sentry Performance
-            transaction.setMeasurement('fps', fps, 'none');
-            transaction.setMeasurement('dropped_frames', droppedFrames, 'none');
-            transaction.setMeasurement('dropped_frame_percentage', droppedFramePercentage, 'none');
-            transaction.setMeasurement('avg_frame_time', avgFrameTime, 'millisecond');
-            transaction.setMeasurement('max_frame_time', maxFrameTime, 'millisecond');
-          } catch (methodError) {
-            console.warn('[SENTRY] Error setting transaction data:', methodError);
-          } finally {
-            // Always finish the transaction
-            transaction.finish();
-          }
-        } catch (e) {
-          console.warn('[SENTRY] Error creating frame drop transaction:', e);
-        }
-      }
+    // Clear interval
+    if (this.monitoringInterval) {
+      clearInterval(this.monitoringInterval);
+      this.monitoringInterval = null;
     }
-    
-    this.isMonitoring = false;
   }
   
   /**
-   * Get frame rate metrics from current monitoring session
+   * Schedule the next frame callback
    */
-  static getMetrics(): FrameRateMetrics | null {
-    if (!this.isMonitoring || this.frameCount === 0) return null;
-    
-    const duration = performance.now() - this.startTime;
-    const fps = Math.round((this.frameCount * 1000) / duration);
-    
-    // Calculate statistics
-    const avgFrameTime = this.frameTimes.length > 0 ? 
-      this.frameTimes.reduce((sum, time) => sum + time, 0) / this.frameTimes.length : 
-      0;
-    
-    const maxFrameTime = this.frameTimes.length > 0 ? 
-      Math.max(...this.frameTimes) : 
-      0;
-    
-    const droppedFrames = this.frameTimes.filter(time => time > 16.7).length;
-    const droppedFramePercentage = this.frameTimes.length > 0 ?
-      Math.round((droppedFrames / this.frameCount) * 100) : 
-      0;
-      
-    return {
-      fps,
-      duration: Math.round(duration),
-      framesCount: this.frameCount,
-      avgFrameTime: Math.round(avgFrameTime),
-      maxFrameTime: Math.round(maxFrameTime),
-      droppedFrames,
-      droppedFramePercentage
-    };
-  }
-  
-  /**
-   * Callback to count frames
-   */
-  private static frameCallback = (timestamp: number): void => {
+  private static scheduleFrameCallback(): void {
     if (!this.isMonitoring) return;
     
-    const now = performance.now();
-    const frameDelta = now - this.lastFrameTime;
-    
-    // Record frame time
-    if (this.frameCount > 0) { // Skip first frame
-      this.frameTimes.push(frameDelta);
+    this.animationFrameId = requestAnimationFrame((timestamp) => {
+      // Count this frame
+      this.frameCount++;
       
-      // Detect severe frame drops (> 32ms = less than 30fps)
-      if (frameDelta > 32) {
-        // Log significant frame drops individually, but don't spam
-        if (this.frameCount % 10 === 0) {  // Only log every 10th severe drop
-          SentryService.logEvent(
-            'animation',
-            `Severe frame drop detected: ${Math.round(frameDelta)}ms in ${this.monitorName}`,
-            undefined,
-            true
-          );
-        }
+      // Check if frame is delayed
+      const elapsed = timestamp - this.lastFrameTimestamp;
+      const expectedFrameDuration = 1000 / 60; // expecting 60fps
+      
+      // If frame took more than 150% of expected time, count as dropped frames
+      if (elapsed > expectedFrameDuration * 1.5) {
+        const droppedFrames = Math.floor(elapsed / expectedFrameDuration) - 1;
+        this.droppedFrameCount += droppedFrames;
       }
+      
+      // Update timestamp
+      this.lastFrameTimestamp = timestamp;
+      
+      // Schedule next callback
+      this.scheduleFrameCallback();
+    });
+  }
+  
+  /**
+   * Calculate current metrics
+   */
+  private static calculateMetrics(): void {
+    if (!this.isMonitoring) return;
+    
+    const now = Date.now();
+    const elapsedSeconds = (now - this.metrics.lastMeasurement) / 1000;
+    
+    // Skip if less than 0.5 seconds passed (avoid division by very small numbers)
+    if (elapsedSeconds < 0.5) return;
+    
+    // Calculate FPS
+    const fps = Math.round(this.frameCount / elapsedSeconds);
+    
+    // Update metrics
+    this.metrics = {
+      fps: Math.min(60, fps), // Cap at 60fps
+      droppedFrames: this.droppedFrameCount,
+      lastMeasurement: now
+    };
+    
+    // Log significant drops
+    if (this.droppedFrameCount > 10) {
+      SentryService.logEvent(
+        'performance',
+        `Frame drops detected: ${this.droppedFrameCount} over ${elapsedSeconds.toFixed(1)}s`,
+        { 
+          droppedFrames: this.droppedFrameCount,
+          fps,
+          duration: elapsedSeconds
+        }
+      );
     }
     
-    this.frameCount++;
-    this.lastFrameTime = now;
+    // Reset counters
+    this.frameCount = 0;
+    this.droppedFrameCount = 0;
+  }
+  
+  /**
+   * Get current frame rate metrics
+   */
+  static getMetrics(): FrameRateMetrics {
+    return { ...this.metrics };
+  }
+  
+  /**
+   * Reset metrics
+   */
+  static reset(): void {
+    this.frameCount = 0;
+    this.droppedFrameCount = 0;
     
-    // Continue the monitoring loop
-    this.animationFrameId = requestAnimationFrame(this.frameCallback);
-    
-    // Safety check - stop after 10 seconds to prevent indefinite monitoring
-    if (now - this.startTime > 10000) {
-      this.stopMonitoring();
-    }
-  };
+    this.metrics = {
+      fps: 60,
+      droppedFrames: 0,
+      lastMeasurement: Date.now()
+    };
+  }
 }

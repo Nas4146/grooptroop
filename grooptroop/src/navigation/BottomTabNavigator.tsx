@@ -1,105 +1,105 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
+import { View, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import HomeScreen from '../screens/HomeScreen';
-import ProfileScreen from '../screens/profileScreen';
-import ItineraryScreen from '../screens/itineraryScreen';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNotification } from '../contexts/NotificationProvider';
+import NotificationBadge from '../components/common/NotificationBadge';
+import tw from '../utils/tw';
+
+// Import screens
 import ChatScreen from '../screens/chatScreen';
-import MapScreen from '../screens/mapScreen';
-import AdminSettingsScreen from '../screens/AdminSettingsScreen';
+import ItineraryScreen from '../screens/itineraryScreen';
 import PaymentsScreen from '../screens/paymentsScreen';
+import ProfileScreen from '../screens/profileScreen';
 
+// Define tab navigator type
 const Tab = createBottomTabNavigator();
-const HomeStack = createNativeStackNavigator();
 
-// Home stack navigator
-function HomeStackScreen() {
-  return (
-    <HomeStack.Navigator>
-      <HomeStack.Screen 
-        name="Home" 
-        component={ItineraryScreen} 
-        options={{ headerShown: false }}
-      />
-    </HomeStack.Navigator>
-  );
-}
-
-export default function TabNavigator() {
+const TabNavigator = () => {
+  const { unreadCount } = useNotification();
+  const insets = useSafeAreaInsets();
+  
+  // Log component lifecycle for performance tracking
   useEffect(() => {
     console.log('[NAVIGATION] TabNavigator mounted');
-    return () => console.log('[NAVIGATION] TabNavigator unmounted');
+    
+    return () => {
+      console.log('[NAVIGATION] TabNavigator unmounted');
+    };
+  }, []);
+  
+  // Memoized tab bar icon function to prevent unnecessary re-renders
+  const getTabBarIcon = useCallback(({ focused, color, size, name }) => {
+    return <Ionicons name={name} size={size} color={color} />;
   }, []);
   
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
-        tabBarIcon: ({ focused, color, size }) => {
-          let iconName;
-
-          switch (route.name) {
-            case 'HomeTab':
-              iconName = focused ? 'home' : 'home-outline';
-              break;
-            case 'ItineraryTab':
-              iconName = focused ? 'calendar' : 'calendar-outline';
-              break;
-            case 'PaymentsTab':
-              iconName = focused ? 'card' : 'card-outline';
-              break;
-            case 'AdminSettingsTab':
-              iconName = focused ? 'settings' : 'settings-outline';
-              break;  
-            case 'ChatTab':
-              iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
-              break;
-            case 'MapTab':
-              iconName = focused ? 'map' : 'map-outline';
-              break;
-            case 'ProfileTab':
-              iconName = focused ? 'person' : 'person-outline';
-              break;
-            default:
-              iconName = 'help-circle-outline';
-          }
-          
-          return <Ionicons name={iconName} size={size} color={color} />;
+      screenOptions={{
+        tabBarActiveTintColor: '#7C3AED', // violet-600
+        tabBarInactiveTintColor: '#6B7280', // gray-500
+        tabBarStyle: {
+          height: 60 + (Platform.OS === 'ios' ? Math.max(insets.bottom, 10) : 0),
+          paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom - 5, 5) : 10,
+          paddingTop: 10,
+          backgroundColor: '#FFFFFF',
+          borderTopWidth: 1,
+          borderTopColor: '#F3F4F6' // gray-100
         },
-        tabBarActiveTintColor: '#7C3AED',
-        tabBarInactiveTintColor: '#6B7280',
-      })}
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '500'
+        },
+        headerShown: false
+      }}
     >
+      
       <Tab.Screen 
         name="ItineraryTab" 
-        component={ItineraryScreen} 
-        options={{ title: 'Itinerary', headerShown: false }}
+        component={ItineraryScreen}
+        options={{
+          title: 'Itinerary',
+          tabBarIcon: ({ focused, color, size }) => 
+            getTabBarIcon({ focused, color, size, name: focused ? 'calendar' : 'calendar-outline' })
+        }}
       />
+      
       <Tab.Screen 
         name="ChatTab" 
-        component={ChatScreen} 
-        options={{ title: 'Chat', headerShown: false }}
+        component={ChatScreen}
+        options={{
+          title: 'Chat',
+          tabBarIcon: ({ focused, color, size }) => (
+            <View>
+              {getTabBarIcon({ focused, color, size, name: focused ? 'chatbubble' : 'chatbubble-outline' })}
+              <NotificationBadge count={unreadCount} />
+            </View>
+          )
+        }}
       />
+      
       <Tab.Screen 
-        name="MapTab" 
-        component={MapScreen} 
-        options={{ title: 'Map', headerShown: false }}  
+        name="PaymentsTab" 
+        component={PaymentsScreen}
+        options={{
+          title: 'Payments',
+          tabBarIcon: ({ focused, color, size }) => 
+            getTabBarIcon({ focused, color, size, name: focused ? 'wallet' : 'wallet-outline' })
+        }}
       />
+      
       <Tab.Screen 
         name="ProfileTab" 
-        component={ProfileScreen} 
-        options={{ title: 'Profile', headerShown: false }}
+        component={ProfileScreen}
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ focused, color, size }) => 
+            getTabBarIcon({ focused, color, size, name: focused ? 'person' : 'person-outline' })
+        }}
       />
-            <Tab.Screen
-        name="PaymentsTab"
-        component={PaymentsScreen}
-        options={{ title: 'Payments', headerShown: false }}
-        />
-      <Tab.Screen
-        name="AdminSettingsTab"
-        component={AdminSettingsScreen}
-        options={{ title: 'Admin', headerShown: false }}
-        />
     </Tab.Navigator>
   );
-}
+};
+
+export default TabNavigator;

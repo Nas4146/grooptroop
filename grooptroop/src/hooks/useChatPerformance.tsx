@@ -1,56 +1,46 @@
 import { useRef, useEffect, useCallback } from 'react';
-import * as Sentry from '@sentry/react-native';
-import { SentryService } from '../utils/sentryService';
 import ChatPerformanceMonitor from '../utils/chatPerformanceMonitor';
+import { ChatMetrics } from '../utils/chatPerformanceMonitor';
 
-export function useChatPerformance(chatId: string) {
-  const transaction = useRef<any>(null);
-  const messageSpans = useRef<Record<string, any>>({});
+/**
+ * Hook to help track chat performance
+ */
+export function useChatPerformance(chatId: string | undefined) {
+  const renderTimes = useRef<Record<string, number>>({});
   
+  // Start monitoring when component mounts
   useEffect(() => {
-    // Start monitoring when hook is first used
-    ChatPerformanceMonitor.startChatMonitoring(chatId);
-    
-    // Create a transaction for this chat session
-    transaction.current = SentryService.startTransaction(
-      `Chat:${chatId}`, 
-      'chat_session'
-    );
-    
-    // Add relevant tags for filtering
-    transaction.current.setTag('chat_id', chatId);
-    transaction.current.setTag('feature', 'messaging');
-    
-    // Clean up when unmounting
-    return () => {
-      ChatPerformanceMonitor.stopChatMonitoring();
+    if (chatId) {
+      ChatPerformanceMonitor.startChatMonitoring(chatId);
       
-      if (transaction.current) {
-        transaction.current.finish();
+      return () => {
+        ChatPerformanceMonitor.stopChatMonitoring();
+      };
+    }
+  }, [chatId]);
+  
+  // Track render start for a component
+  const trackRenderStart = useCallback((componentName: string) => {
+    renderTimes.current[componentName] = performance.now();
+    
+    // Return a function to call when render is complete
+    return () => {
+      const startTime = renderTimes.current[componentName];
+      if (startTime) {
+        const renderTime = performance.now() - startTime;
+        ChatPerformanceMonitor.trackRenderTime(componentName, renderTime);
+        delete renderTimes.current[componentName];
       }
     };
-  }, [chatId]);
+  }, []);
   
   // Track message sending
   const trackMessageSend = useCallback((messageId: string, size: number) => {
     ChatPerformanceMonitor.trackMessageSendStart(messageId, size);
     
-    // Create child span
-    if (transaction.current) {
-      messageSpans.current[messageId] = transaction.current.startChild(
-        `SendMessage:${messageId.slice(0, 6)}`, 
-        'message.send'
-      );
-    }
-    
-    // Return a function to complete the measurement
+    // Return a function to call when send is complete
     return (success: boolean) => {
       ChatPerformanceMonitor.trackMessageSendComplete(messageId, success);
-      
-      if (messageSpans.current[messageId]) {
-        messageSpans.current[messageId].finish();
-        delete messageSpans.current[messageId];
-      }
     };
   }, []);
   
@@ -59,32 +49,17 @@ export function useChatPerformance(chatId: string) {
     ChatPerformanceMonitor.trackMessageReceived(messageId, size);
   }, []);
   
-  // Track rendering performance
-  const trackRendering = useCallback((component: string, startTime: number) => {
-    return () => {
-      const endTime = performance.now();
-      const duration = endTime - startTime;
-      
-      SentryService.logEvent(
-        'render', 
-        `${component} rendered in ${duration.toFixed(1)}ms`
-      );
-      
-      if (transaction.current) {
-        transaction.current.setData(`render_time_${component}`, duration);
-      }
-    };
-  }, []);
-  
   // Get current metrics
-  const getMetrics = useCallback(() => {
+  const getMetrics = useCallback((): ChatMetrics => {
     return ChatPerformanceMonitor.getChatPerformanceMetrics();
   }, []);
   
   return {
+    trackRenderStart,
     trackMessageSend,
     trackMessageReceived,
-    trackRendering,
-    getMetrics
+    getMetrics,
+    startMonitoring: (id: string) => ChatPerformanceMonitor.startChatMonitoring(id),
+    stopMonitoring: () => ChatPerformanceMonitor.stopChatMonitoring(),
   };
 }
