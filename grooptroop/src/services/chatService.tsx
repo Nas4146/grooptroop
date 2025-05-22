@@ -22,22 +22,81 @@ import { ChatMessage } from '../models/chat';
 import { EncryptionService } from './EncryptionService';
 import { KeyExchangeService } from './KeyExchangeService';
 import { UserAvatar } from '../contexts/AuthProvider';
+import logger from '../utils/logger';
+import { SentryService } from '../utils/sentryService';
 
 export class ChatService {
   // Subscribe to messages with pagination
-  static subscribeToMessages(groopId: string, callback: (messages: ChatMessage[], changes?: {
-    added: ChatMessage[];
-    modified: ChatMessage[];
-    removed: string[];
-  }) => void, maxMessages = 50) {
-    console.log(`[CHAT] Subscribing to messages for groop: ${groopId}`);
+  static subscribeToMessages(
+    groopId: string, 
+    callback: (messages: ChatMessage[], changes?: {
+      added: ChatMessage[];
+      modified: ChatMessage[];
+      removed: string[];
+    }) => void, 
+    maxMessages = 50,
+    lastSeenAt?: Date | null,
+    initialLoad = true // Add parameter to distinguish initial load vs continuous updates
+  ) {
+    logger.chat(`Subscribing to messages for groop: ${groopId}${lastSeenAt ? ` since ${lastSeenAt.toISOString()}` : ''} (initialLoad: ${initialLoad})`);
+    
     const messagesRef = collection(db, `groops/${groopId}/messages`);
-    const q = query(messagesRef, orderBy('createdAt', 'desc'), limit(maxMessages));
+    
+    // Build query based on whether we have a lastSeenAt timestamp and if this is initial load
+    let q;
+    
+    if (initialLoad) {
+      // Initial load: Get the recent messages within limit
+      q = query(messagesRef, orderBy('createdAt', 'desc'), limit(maxMessages));
+      logger.chat('Initial load: Getting most recent messages');
+    } else if (lastSeenAt) {
+      // Continuous updates: Only get messages after the last seen timestamp
+      const firestoreTimestamp = Timestamp.fromDate(lastSeenAt);
+      
+      // Query for new messages and changes after lastSeenAt
+      q = query(
+        messagesRef, 
+        where("createdAt", ">=", firestoreTimestamp),  
+        orderBy('createdAt', 'desc')
+      );
+      logger.chat(`Continuous updates: Using timestamp filter ${lastSeenAt.toISOString()}`);
+    } else {
+      // Fallback: Get most recent messages
+      q = query(messagesRef, orderBy('createdAt', 'desc'), limit(maxMessages));
+      logger.chat('No timestamp filter, getting recent messages');
+    }
     
     // Track the current message state internally to handle changes
     const currentMessages: Record<string, ChatMessage> = {};
     
+    // Create a performance span for the subscription
+    const subscriptionSpan = SentryService.startTransaction(
+      `ChatSubscription_${groopId}_${initialLoad ? 'initial' : 'continuous'}`,
+      'firestore.subscription'
+    );
+    
+    // Set initial metadata for the subscription
+    if (subscriptionSpan) {
+      subscriptionSpan.setTag('groopId', groopId);
+      subscriptionSpan.setTag('maxMessages', String(maxMessages));
+      subscriptionSpan.setTag('hasTimestampFilter', lastSeenAt ? 'true' : 'false');
+      subscriptionSpan.setTag('initialLoad', String(initialLoad));
+      if (lastSeenAt) {
+        subscriptionSpan.setData('timestampFilter', lastSeenAt.toISOString());
+      }
+    }
+
+    // Performance stats to track optimizations
+    let totalDocumentCount = 0;
+    let totalChangeCount = 0;
+    let docChangeOperations = 0;
+    let batchCount = 0;
+    const startTime = Date.now();
+    
     return onSnapshot(q, async (snapshot) => {
+      batchCount++;
+      const batchStartTime = Date.now();
+      
       const changes = {
         added: [] as ChatMessage[],
         modified: [] as ChatMessage[],
@@ -47,6 +106,56 @@ export class ChatService {
       // First, process the doc changes to categorize them
       const docChanges = snapshot.docChanges();
       
+      // Track total documents vs changes
+      totalDocumentCount += snapshot.docs.length;
+      totalChangeCount += docChanges.length;
+      docChangeOperations += 1;
+      
+      logger.chat(`Received ${docChanges.length} changes from Firestore (total docs: ${snapshot.docs.length})`);
+      
+      // Create a child span for this batch of changes
+      const batchSpan = subscriptionSpan?.startChild(
+        'firestore.batch_processing',
+        `Process batch ${batchCount}`
+      );
+      
+      if (batchSpan) {
+        batchSpan.setData('docChangesCount', docChanges.length);
+        batchSpan.setData('totalDocsCount', snapshot.docs.length);
+        batchSpan.setData('initialLoad', initialLoad);
+      }
+      
+      // For initial load, populate the message map first to ensure proper handling of changes
+      if (initialLoad && batchCount === 1) {
+        for (const doc of snapshot.docs) {
+          const data = doc.data();
+          const messageId = doc.id;
+          
+          // Store basic metadata for now (we'll process text later if needed)
+          currentMessages[messageId] = {
+            id: messageId,
+            text: data.text || '',
+            senderId: data.senderId || '',
+            senderName: data.senderName || 'Unknown',
+            senderAvatar: data.senderAvatar || null,
+            createdAt: data.createdAt ? 
+              (typeof data.createdAt.toDate === 'function' ? data.createdAt.toDate() : new Date(data.createdAt)) 
+              : new Date(),
+            reactions: {},
+            read: data.read || [],
+            isEncrypted: data.isEncrypted || false,
+            isDecrypted: false
+          };
+        }
+        
+        logger.chat(`Initial load: populated ${Object.keys(currentMessages).length} messages`);
+      }
+      
+      // Track decryption performance
+      let totalDecryptionTime = 0;
+      let decryptedCount = 0;
+      
+      // Process each change
       for (const change of docChanges) {
         const data = change.doc.data();
         const messageId = change.doc.id;
@@ -57,13 +166,21 @@ export class ChatService {
         
         if (data.isEncrypted) {
           try {
+            // Measure decryption time
+            const decryptStartTime = performance.now();
+            
             // Try to decrypt the message
             const decryptedText = await EncryptionService.decryptMessage(messageText, groopId);
             messageText = decryptedText || '[Decrypting...]';
             isDecrypted = !!decryptedText;
-            console.log(`[CHAT_DEBUG] Post-decryption state for ${messageId}: text="${messageText.substring(0, 5)}...", isDecrypted=${isDecrypted}`);
+            
+            const decryptionTime = performance.now() - decryptStartTime;
+            totalDecryptionTime += decryptionTime;
+            if (isDecrypted) decryptedCount++;
+            
+            logger.chat(`Decrypted message ${messageId.substring(0, 6)} in ${decryptionTime.toFixed(1)}ms - Success: ${isDecrypted}`);
           } catch (err) {
-            console.error('[CHAT] Error decrypting message:', err);
+            logger.error('[CHAT] Error decrypting message:', err);
             messageText = '[Cannot decrypt - missing key]';
           }
         }
@@ -112,12 +229,83 @@ export class ChatService {
         return timeA.getTime() - timeB.getTime();
       });
       
-      console.log(`[CHAT] Update: ${changes.added.length} added, ${changes.modified.length} modified, ${changes.removed.length} removed`);
+      // Calculate processing time
+      const batchProcessingTime = Date.now() - batchStartTime;
+      
+      // Calculate the efficiency of our delta update approach
+      const totalMessagesCount = allMessages.length;
+      const changesCount = changes.added.length + changes.modified.length + changes.removed.length;
+      const percentProcessed = totalMessagesCount > 0 ? 
+        Math.round((changesCount / totalMessagesCount) * 100) : 0;
+      
+      const percentSaved = totalMessagesCount > 0 ? 
+        Math.round(((totalMessagesCount - changesCount) / totalMessagesCount) * 100) : 0;
+      
+      // Calculate average processing time per message
+      const msPerChange = changesCount > 0 ? 
+        Math.round(batchProcessingTime / changesCount) : 0;
+        
+      const msPerMessage = totalMessagesCount > 0 ? 
+        Math.round(batchProcessingTime / totalMessagesCount) : 0;
+        
+      // Calculate average decryption time
+      const avgDecryptionTime = decryptedCount > 0 ? 
+        Math.round(totalDecryptionTime / decryptedCount) : 0;
+      
+      // Log the detailed performance metrics
+      logger.chat(`Delta update metrics for groop ${groopId}:`);
+      logger.chat(`- Processed ${changesCount} changes out of ${totalMessagesCount} messages (${percentSaved}% reduction)`);
+      logger.chat(`- Processing time: ${batchProcessingTime}ms (${msPerChange}ms per change, ${msPerMessage}ms per message)`);
+      
+      if (decryptedCount > 0) {
+        logger.chat(`- Decryption: ${decryptedCount} messages decrypted in ${totalDecryptionTime.toFixed(1)}ms (avg ${avgDecryptionTime}ms per message)`);
+      }
+      
+      // Update the batch processing span with metrics
+      if (batchSpan) {
+        batchSpan.setData('processingTimeMs', batchProcessingTime);
+        batchSpan.setData('changesCount', changesCount);
+        batchSpan.setData('totalMessagesCount', totalMessagesCount);
+        batchSpan.setData('percentSaved', percentSaved);
+        batchSpan.setData('msPerChange', msPerChange);
+        batchSpan.setData('decryptedCount', decryptedCount);
+        batchSpan.setData('avgDecryptionTimeMs', avgDecryptionTime);
+        batchSpan.finish();
+      }
+      
+      // Update the overall subscription span with cumulative metrics
+      if (subscriptionSpan && batchCount % 5 === 0) {  // Update periodically to avoid too many operations
+        const totalTimeMs = Date.now() - startTime;
+        const avgChangesPerBatch = totalChangeCount / batchCount;
+        const avgDocsPerBatch = totalDocumentCount / batchCount;
+        const overallEfficiency = avgChangesPerBatch / avgDocsPerBatch;
+        
+        subscriptionSpan.setData('totalBatches', batchCount);
+        subscriptionSpan.setData('totalTimeMs', totalTimeMs);
+        subscriptionSpan.setData('avgChangesPerBatch', avgChangesPerBatch.toFixed(1));
+        subscriptionSpan.setData('avgDocsPerBatch', avgDocsPerBatch.toFixed(1));
+        subscriptionSpan.setData('overallEfficiency', overallEfficiency.toFixed(2));
+      }
+      
+      // Find the newest timestamp for continuous listening mode transition
+      if (initialLoad && batchCount === 1 && allMessages.length > 0) {
+        const timestamps = allMessages.map(msg => 
+          msg.createdAt instanceof Date ? msg.createdAt.getTime() : new Date(msg.createdAt).getTime()
+        );
+        const newestTimestamp = new Date(Math.max(...timestamps));
+        
+        logger.chat(`Initial load complete. Newest message timestamp: ${newestTimestamp.toISOString()}`);
+        // Here we'd typically transition to a continuous listener, but we'll let the client handle that
+      }
       
       // Call the callback with both the full messages array and the changes
       callback(allMessages, changes);
     }, error => {
-      console.error("[CHAT] Error listening to messages:", error);
+      logger.error("[CHAT] Error listening to messages:", error);
+      if (subscriptionSpan) {
+        subscriptionSpan.setData('error', error.message);
+        subscriptionSpan.finish();
+      }
     });
   }
 
@@ -644,6 +832,87 @@ export class ChatService {
       return messages;
     } catch (error) {
       console.error('[CHAT] Error searching messages:', error);
+      return [];
+    }
+  }
+
+  // Add this method to ChatService
+  static async fetchOlderMessages(groopId: string, olderThan: Date, limit: number = 20): Promise<ChatMessage[]> {
+    try {
+      logger.chat(`Fetching messages for groop ${groopId} older than ${olderThan.toISOString()}`);
+      
+      const messagesRef = collection(db, `groops/${groopId}/messages`);
+      const firestoreTimestamp = Timestamp.fromDate(olderThan);
+      
+      // Query for messages BEFORE the oldest timestamp we have
+      const q = query(
+        messagesRef,
+        where("createdAt", "<", firestoreTimestamp),
+        orderBy("createdAt", "desc"),
+        limit(limit)
+      );
+      
+      const snapshot = await getDocs(q);
+      
+      if (snapshot.empty) {
+        logger.chat('No older messages found');
+        // Emit an event that can be listened to by components
+        ChatPerformanceMonitor.emit('olderMessagesLoaded', 0);
+        return [];
+      }
+      
+      // Process messages
+      const olderMessages: ChatMessage[] = [];
+      
+      for (const doc of snapshot.docs) {
+        const data = doc.data();
+        const messageId = doc.id;
+        
+        // Process message data
+        let messageText = data.text || '';
+        let isDecrypted = false;
+        
+        if (data.isEncrypted) {
+          try {
+            const decryptedText = await EncryptionService.decryptMessage(messageText, groopId);
+            messageText = decryptedText || '[Decrypting...]';
+            isDecrypted = !!decryptedText;
+          } catch (err) {
+            console.error('[CHAT] Error decrypting older message:', err);
+            messageText = '[Cannot decrypt - missing key]';
+          }
+        }
+        
+        const timestamp = data.createdAt ? 
+          (typeof data.createdAt.toDate === 'function' ? data.createdAt.toDate() : new Date(data.createdAt)) 
+          : new Date();
+        
+        olderMessages.push({
+          id: messageId,
+          text: messageText,
+          senderId: data.senderId || '',
+          senderName: data.senderName || 'Unknown',
+          senderAvatar: data.senderAvatar || null,
+          createdAt: timestamp,
+          reactions: Object.freeze({ ...(data.reactions || {}) }),
+          replyTo: data.replyTo,
+          replyToText: data.replyToText,
+          replyToName: data.replyToName,
+          imageUrl: data.imageUrl,
+          read: data.read || [],
+          isEncrypted: data.isEncrypted || false,
+          isDecrypted: data.isEncrypted ? isDecrypted : null,
+          attachments: data.attachments || []
+        });
+      }
+      
+      console.log(`Fetched ${olderMessages.length} older messages`);
+      // Emit an event with the count so components can update UI accordingly
+      ChatPerformanceMonitor.emit('olderMessagesLoaded', olderMessages.length);
+      return olderMessages;
+    } catch (error) {
+      console.error('[CHAT] Error fetching older messages:', error);
+      ChatPerformanceMonitor.emit('olderMessagesLoaded', 0);
       return [];
     }
   }

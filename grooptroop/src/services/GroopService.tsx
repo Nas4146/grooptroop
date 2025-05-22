@@ -16,7 +16,7 @@ import {
   import { UserProfile } from '../contexts/AuthProvider';
   import { KeyExchangeService } from './KeyExchangeService';
   import { auth } from '../lib/firebase'; // Import auth
-
+  import { Timestamp as FirebaseTimestamp } from 'firebase/firestore';
   // Define our Groop type
   export interface Groop {
     id: string;
@@ -46,6 +46,12 @@ import {
     paymentSettings?: {
       venmoUsername?: string;
     };
+    // Fix these encryption-related properties
+    encryptionEnabled?: boolean;
+    encryptionSetupBy?: string;
+    encryptionSetupAt?: Date | FirebaseTimestamp; // Use FirebaseTimestamp instead
+    keyRotatedAt?: Date | FirebaseTimestamp;      // Use FirebaseTimestamp instead
+    keyRotatedBy?: string;
   }
   
   export class GroopService {

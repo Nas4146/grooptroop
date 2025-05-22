@@ -2,14 +2,18 @@ import React, { useState, useRef, forwardRef, useImperativeHandle } from 'react'
 import { View, TextInput, TouchableOpacity, Platform, Keyboard, Text, StyleSheet, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import tw from '../../utils/tw';
-import { ReplyingToMessage } from '../../models/chat';
+import { ChatMessage, ReplyingToMessage } from '../../models/chat';
 import * as Haptics from 'expo-haptics';
+import { UserProfile } from '../../contexts/AuthProvider'; // Adjust the path as needed
 
 interface MessageInputProps {
   onSend: (text: string, imageUrl?: string) => void;
   replyingTo?: ReplyingToMessage | null;
   onCancelReply?: () => void;
   onInputFocus?: () => void;
+  onReply?: (message: ChatMessage) => void;
+  profile?: UserProfile | null;
+  loading?: boolean;
 }
 
 type MessageInputHandle = {

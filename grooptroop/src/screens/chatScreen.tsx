@@ -14,7 +14,7 @@ import {
   KeyboardEvent,
   Dimensions // Make sure this is imported
 } from 'react-native';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, orderBy, limit, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -42,7 +42,7 @@ import logger from '../utils/logger';
 
 
 type ChatScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
-type ChatScreenRouteProp = RouteProp<RootStackParamList, 'Chat'>; // Or whatever the route name is in your stack
+type ChatScreenRouteProp = RouteProp<RootStackParamList, 'Chat'>;
 
 // Define a MessageInputHandle type to fix the ref issue
 type MessageInputHandle = {
@@ -60,6 +60,9 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
   const [replyingTo, setReplyingTo] = useState<ReplyingToMessage | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [lastSeenTimestamp, setLastSeenTimestamp] = useState<Date | null>(null);
+  const [oldestMessageTimestamp, setOldestMessageTimestamp] = useState<Date | null>(null);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   
   // Fix the ref type to use our custom MessageInputHandle
   const inputRef = useRef<MessageInputHandle>(null);
@@ -67,22 +70,38 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
   const sentryTransaction = useRef<SentrySpan | null>(null);
   const scrollOffsetRef = useRef(0);
   const hasRecentReaction = useRef(false);
+  const isLoadingMoreRef = useRef(false);
+  const prevContentOffsetRef = useRef(0);
+  const scrollDirectionRef = useRef<'up' | 'down'>('down');
+  const initialLoadRef = useRef(true);
+  const continuousSubscriptionRef = useRef<(() => void) | null>(null);
+  // Move the lastSeenTimestampRef here, outside of the useEffect
+  const lastSeenTimestampRef = useRef<Date | null>(null);
   
   const [showEncryptionInfo, setShowEncryptionInfo] = useState(false);
   const [encryptionLoading, setEncryptionLoading] = useState(false);
   const { refreshUnreadCount } = useNotification();
   const [showScrollButton, setShowScrollButton] = useState(false);
-
-  // Add these state variables at the top of your component
   const [initialScrollComplete, setInitialScrollComplete] = useState(false);
   const [hasScrolledToUnread, setHasScrolledToUnread] = useState(false);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false); // Add this line
 
-  // 1. Add a ref to store the current scroll offset and a flag for recent reactions
+  // Calculate the optimal draw distance based on screen height
+  const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+  const OPTIMAL_DRAW_DISTANCE = Math.round(SCREEN_HEIGHT * 1.5);
+
+  // Add these references to monitor scrolling behavior
+  // Handle scroll events
   const handleScroll = useCallback((event: any) => {
     const offsetY = event.nativeEvent.contentOffset.y;
     const contentHeight = event.nativeEvent.contentSize.height;
     const layoutHeight = event.nativeEvent.layoutMeasurement.height;
-  
+
+    // Detect scroll direction
+    const direction = offsetY < prevContentOffsetRef.current ? 'up' : 'down';
+    scrollDirectionRef.current = direction;
+    prevContentOffsetRef.current = offsetY;
+    
     // Store current scroll offset for reaction handling
     scrollOffsetRef.current = offsetY;
     
@@ -90,49 +109,320 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
     setShowScrollButton(offsetY < contentHeight - layoutHeight - 100);
   }, []);
     
+  // Update the function to update lastSeenTimestamp
+  const updateLastSeenTimestamp = useCallback((messages: ChatMessage[]) => {
+    if (messages.length > 0) {
+      // Find the latest message timestamp
+      const latestMessage = [...messages].sort((a, b) => {
+        const timeA = a.createdAt instanceof Date ? a.createdAt : new Date(0);
+        const timeB = b.createdAt instanceof Date ? b.createdAt : new Date(0);
+        return timeB.getTime() - timeA.getTime();  // Newest first
+      })[0];
+      
+      if (latestMessage && latestMessage.createdAt) {
+        let timestamp: Date;
+        
+        // Handle different timestamp formats
+        if (latestMessage.createdAt instanceof Date) {
+          timestamp = latestMessage.createdAt;
+        } else if (typeof latestMessage.createdAt === 'object' && latestMessage.createdAt?.toDate) {
+          // Handle Firestore Timestamp objects
+          timestamp = latestMessage.createdAt.toDate();
+        } else if (typeof latestMessage.createdAt === 'number') {
+          // Handle numeric timestamps
+          timestamp = new Date(latestMessage.createdAt);
+        } else if (typeof latestMessage.createdAt === 'string') {
+          // Handle string timestamps
+          timestamp = new Date(latestMessage.createdAt);
+        } else {
+          // Fallback
+          logger.warn('Unknown timestamp format in updateLastSeenTimestamp', latestMessage.createdAt);
+          timestamp = new Date();
+        }
+        
+        logger.chat(`Setting lastSeenTimestamp to ${timestamp.toISOString()}`);
+        setLastSeenTimestamp(timestamp);
+      }
+    }
+  }, []);
+  
+  // Update function to track oldest message timestamp for pagination using the same logic
+  const updateOldestMessageTimestamp = useCallback((messages: ChatMessage[]) => {
+    if (messages.length > 0) {
+      // Find the oldest message timestamp
+      const oldestMessage = [...messages].sort((a, b) => {
+        const timeA = a.createdAt instanceof Date ? a.createdAt : new Date(0);
+        const timeB = b.createdAt instanceof Date ? b.createdAt : new Date(0);
+        return timeA.getTime() - timeB.getTime(); // Oldest first
+      })[0];
+      
+      if (oldestMessage && oldestMessage.createdAt) {
+        let timestamp: Date;
+        
+        // Handle different timestamp formats
+        if (oldestMessage.createdAt instanceof Date) {
+          timestamp = oldestMessage.createdAt;
+        } else if (typeof oldestMessage.createdAt === 'object' && oldestMessage.createdAt?.toDate) {
+          // Handle Firestore Timestamp objects
+          timestamp = oldestMessage.createdAt.toDate();
+        } else if (typeof oldestMessage.createdAt === 'number') {
+          // Handle numeric timestamps
+          timestamp = new Date(oldestMessage.createdAt);
+        } else if (typeof oldestMessage.createdAt === 'string') {
+          // Handle string timestamps
+          timestamp = new Date(oldestMessage.createdAt);
+        } else {
+          // Fallback
+          logger.warn('Unknown timestamp format in updateOldestMessageTimestamp', oldestMessage.createdAt);
+          timestamp = new Date();
+        }
+        
+        logger.chat(`Setting oldestMessageTimestamp to ${timestamp.toISOString()}`);
+        setOldestMessageTimestamp(timestamp);
+      }
+    }
+  }, []);
+  
+  // Add function to load older messages (for pagination)
+  const loadOlderMessages = useCallback(async () => {
+    // Check if we're already loading or if we're missing required data
+    if (!currentGroop || !profile || !oldestMessageTimestamp || loadingOlderMessages || isLoadingMoreRef.current) {
+      return;
+    }
+    
+    // If we're not scrolling up, don't load more messages
+    if (scrollDirectionRef.current !== 'up') {
+      return;
+    }
+    
+    // Set loading flags to prevent duplicate requests
+    isLoadingMoreRef.current = true;
+    setLoadingOlderMessages(true);
+    
+    try {
+      logger.chat(`Loading messages older than ${oldestMessageTimestamp.toISOString()}`);
+      
+      // Call a ChatService method to fetch older messages
+      const olderMessages = await ChatService.fetchOlderMessages(
+        currentGroop.id,
+        oldestMessageTimestamp,
+        20 // Batch size
+      );
+      
+      if (olderMessages.length === 0) {
+        logger.chat('No older messages found');
+        return;
+      }
+      
+      logger.chat(`Loaded ${olderMessages.length} older messages`);
+      
+      // Track performance metrics for loading older messages
+      if (sentryTransaction.current) {
+        sentryTransaction.current.setData('pagination', {
+          oldMessagesLoaded: olderMessages.length,
+          fromTimestamp: oldestMessageTimestamp.toISOString()
+        });
+      }
+      
+      // Add older messages to the state
+      setMessages(currentMessages => {
+        // Merge with current messages, avoiding duplicates
+        const messageMap = new Map(currentMessages.map(msg => [msg.id, msg]));
+        
+        // Add older messages to the map
+        olderMessages.forEach(msg => {
+          if (!messageMap.has(msg.id)) {
+            messageMap.set(msg.id, msg);
+          }
+        });
+        
+        // Convert back to array and sort
+        const mergedMessages = Array.from(messageMap.values());
+        mergedMessages.sort((a, b) => {
+          const timeA = a.createdAt instanceof Date ? a.createdAt : new Date(0);
+          const timeB = b.createdAt instanceof Date ? b.createdAt : new Date(0);
+          return timeA.getTime() - timeB.getTime();
+        });
+        
+        // Update oldest timestamp if we found older messages
+        if (olderMessages.length > 0) {
+          updateOldestMessageTimestamp(olderMessages);
+        }
+        
+        return mergedMessages;
+      });
+    } catch (error) {
+      logger.error('Error loading older messages:', error);
+    } finally {
+      setLoadingOlderMessages(false);
+      // Reset the loading ref with a small delay to prevent rapid consecutive calls
+      setTimeout(() => {
+        isLoadingMoreRef.current = false;
+      }, 500);
+    }
+  }, [currentGroop, oldestMessageTimestamp, loadingOlderMessages, profile, updateOldestMessageTimestamp]);
+
+  // Effect to track oldest timestamp whenever messages change
+  useEffect(() => {
+    if (messages.length > 0 && !loadingOlderMessages) {
+      updateOldestMessageTimestamp(messages);
+    }
+  }, [messages, loadingOlderMessages, updateOldestMessageTimestamp]);
+
+  // Update the refresh handler to reset timestamp
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    // Reset timestamp filter to get all messages
+    setLastSeenTimestamp(null);
+  }, []);
+
   // Process messages to include date separators
   const processMessagesWithDateSeparators = useCallback(() => {
     if (!messages.length) return [];
 
-    // Helper function for date conversion
+    // Helper function for date conversion with comprehensive error handling
     const getDateValue = (createdAt: any): Date => {
-      if (!createdAt) return new Date();
-      if (createdAt?.toDate) return createdAt.toDate();
-      if (createdAt instanceof Date) return createdAt;
-      return new Date(createdAt);
-    };
-
-    // First, sort messages by date if they aren't already
-    const sortedMessages = [...messages].sort((a, b) => {
-      const dateA = getDateValue(a.createdAt);
-      const dateB = getDateValue(b.createdAt);
-      
-      return dateA.getTime() - dateB.getTime();  // Oldest first (for non-inverted list)
-    });
-      
-    // Then, create a new array with date separators
-    const result: ChatItemType[] = [];
-    let lastDateStr: string | null = null;
-          
-    sortedMessages.forEach(message => {
-      const messageDate = getDateValue(message.createdAt);
-      
-      // Get just the date portion for comparison (year, month, day)
-      const dateStr = messageDate.toDateString();
-      
-      // If this is a new date, add a separator
-      if (dateStr !== lastDateStr) {
-        lastDateStr = dateStr;
-        result.push({
-          id: `date-${dateStr}`,
-          type: 'dateSeparator',
-          date: messageDate
-        });
+      if (!createdAt) {
+        logger.warn('Chat message missing timestamp, using current time');
+        return new Date();
       }
       
-      // Add the message
-      result.push(message);
+      try {
+        // Case 1: Firestore Timestamp object with toDate() method
+        if (createdAt?.toDate && typeof createdAt.toDate === 'function') {
+          return createdAt.toDate();
+        }
+        
+        // Case 2: JavaScript Date object
+        if (createdAt instanceof Date) {
+          // Verify it's a valid date
+          if (!isNaN(createdAt.getTime())) {
+            return createdAt;
+          } else {
+            logger.warn('Invalid Date object in message timestamp');
+            return new Date();
+          }
+        }
+        
+        // Case 3: Timestamp as a number (milliseconds)
+        if (typeof createdAt === 'number') {
+          const date = new Date(createdAt);
+          if (!isNaN(date.getTime())) {
+            return date;
+          } else {
+            logger.warn(`Invalid timestamp number: ${createdAt}`);
+            return new Date();
+          }
+        }
+        
+        // Case 4: Firestore Timestamp as raw object with seconds and nanoseconds
+        if (typeof createdAt === 'object' && 'seconds' in createdAt) {
+          const seconds = createdAt.seconds;
+          const nanoseconds = createdAt.nanoseconds || 0;
+          if (typeof seconds === 'number') {
+            // Convert seconds + nanoseconds to milliseconds
+            const milliseconds = (seconds * 1000) + (nanoseconds / 1000000);
+            return new Date(milliseconds);
+          }
+        }
+        
+        // Case 5: ISO string or other string format
+        if (typeof createdAt === 'string') {
+          const date = new Date(createdAt);
+          if (!isNaN(date.getTime())) {
+            return date;
+          } else {
+            logger.warn(`Cannot parse date string: ${createdAt}`);
+            return new Date();
+          }
+        }
+        
+        // Default fallback
+        logger.warn(`Unrecognized timestamp format: ${typeof createdAt}`, createdAt);
+        return new Date();
+      } catch (error) {
+        logger.error('Error converting message timestamp:', error, 
+          typeof createdAt === 'object' ? JSON.stringify(createdAt) : createdAt
+        );
+        return new Date(); // Fallback to current time
+      }
+    };
+
+    // Pre-sort messages by date with robust error handling
+    const sortedMessages = [...messages].sort((a, b) => {
+      try {
+        const dateA = getDateValue(a.createdAt);
+        const dateB = getDateValue(b.createdAt);
+        
+        return dateA.getTime() - dateB.getTime();  // Oldest first (for non-inverted list)
+      } catch (err) {
+        logger.error('Error sorting messages by date:', err);
+        return 0; // Keep original order if comparison fails
+      }
     });
+    
+    // Performance tracking - measure the time to process date separators
+    const separatorStart = performance.now();
+    
+    // Create a new array with date separators
+    const result: ChatItemType[] = [];
+    let lastDateStr: string | null = null;
+    
+    let invalidDates = 0;
+    let separatorsAdded = 0;
+    
+    sortedMessages.forEach(message => {
+      try {
+        // Get message date with our robust helper
+        const messageDate = getDateValue(message.createdAt);
+        
+        // Get just the date portion for comparison (year, month, day)
+        const dateStr = messageDate.toDateString();
+        
+        // If this is a new date, add a separator
+        if (dateStr !== lastDateStr) {
+          lastDateStr = dateStr;
+          result.push({
+            id: `date-${dateStr}-${Date.now()}`, // Add timestamp to ensure uniqueness
+            type: 'dateSeparator',
+            date: messageDate
+          });
+          separatorsAdded++;
+        }
+        
+        // Add the message
+        result.push(message);
+      } catch (err) {
+        // If we encounter an error processing a specific message, still include it
+        // but log the error for debugging
+        logger.error(`Error processing date for message ${message.id}:`, err);
+        invalidDates++;
+        
+        // Still add the message without a date separator
+        result.push(message);
+      }
+    });
+    
+    const separatorEnd = performance.now();
+    const processingTime = separatorEnd - separatorStart;
+    
+    // Only log performance metrics occasionally to avoid spam
+    if (result.length > 50 || processingTime > 10) {
+      logger.chat(
+        `Processed ${sortedMessages.length} messages with ${separatorsAdded} date separators in ${processingTime.toFixed(1)}ms` + 
+        (invalidDates > 0 ? ` (${invalidDates} invalid dates)` : '')
+      );
+      
+      // Track significant processing time in Sentry for diagnostics
+      if (processingTime > 50 && sentryTransaction.current) {
+        sentryTransaction.current.setData('dateSeparatorProcessing', {
+          messageCount: sortedMessages.length,
+          separatorsAdded,
+          processingTimeMs: Math.round(processingTime),
+          invalidDates
+        });
+      }
+    }
     
     return result;
   }, [messages]);
@@ -218,24 +508,115 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
     }, [refreshUnreadCount, profile])
   );
 
-  // Load messages
+  // Load messages - hybrid approach
   useEffect(() => {
     if (!profile || !currentGroop) return;
     
-    logger.chat(`Subscribing to messages for groop: ${currentGroop.name} (${currentGroop.id})`);
+    logger.chat(`Setting up message subscriptions for groop: ${currentGroop.name} (${currentGroop.id})`);
     
-    // Subscribe to messages with the updated handler
-    const unsubscribe = ChatService.subscribeToMessages(
-      currentGroop.id, 
-      (newMessages, changes) => {
-        // If this is the first load or we're refreshing, replace the entire array
-        if (!changes || loading || refreshing) {
-          logger.chat('Initial load or refresh: setting all messages', newMessages.length);
+    // Update the ref value here instead of creating a new ref
+    lastSeenTimestampRef.current = lastSeenTimestamp;
+    
+    // Clean up previous subscription if it exists
+    if (continuousSubscriptionRef.current) {
+      logger.chat('Cleaning up previous continuous subscription');
+      continuousSubscriptionRef.current();
+      continuousSubscriptionRef.current = null;
+    }
+    
+    // Setup initial load subscription
+    if (!initialLoadComplete || loading || refreshing) {
+      logger.chat('Starting initial message load phase');
+      initialLoadRef.current = true;
+      
+      const unsubscribe = ChatService.subscribeToMessages(
+        currentGroop.id, 
+        (newMessages, changes) => {
+          logger.chat(`Initial load received ${newMessages.length} messages`);
+          
+          // Set the messages immediately
           setMessages(newMessages);
           setLoading(false);
           setRefreshing(false);
-        } else {
-          // Otherwise, apply the incremental updates
+          
+          // Update the timestamps
+          if (newMessages.length > 0) {
+            // Update the timestamps without directly changing state that affects this effect
+            updateOldestMessageTimestamp(newMessages);
+            
+            // Extract the latest timestamp but don't set state yet
+            const latestMessage = [...newMessages].sort((a, b) => {
+              const timeA = a.createdAt instanceof Date ? a.createdAt : new Date(0);
+              const timeB = b.createdAt instanceof Date ? b.createdAt : new Date(0);
+              return timeB.getTime() - timeA.getTime();  // Newest first
+            })[0];
+            
+            if (latestMessage && latestMessage.createdAt) {
+              let timestamp: Date;
+              
+              // Handle different timestamp formats
+              if (latestMessage.createdAt instanceof Date) {
+                timestamp = latestMessage.createdAt;
+              } else if (typeof latestMessage.createdAt === 'object' && latestMessage.createdAt?.toDate) {
+                timestamp = latestMessage.createdAt.toDate();
+              } else if (typeof latestMessage.createdAt === 'number') {
+                timestamp = new Date(latestMessage.createdAt);
+              } else if (typeof latestMessage.createdAt === 'string') {
+                timestamp = new Date(latestMessage.createdAt);
+              } else {
+                timestamp = new Date();
+              }
+              
+              logger.chat(`Initial load completed, setting up continuous subscription with timestamp: ${timestamp.toISOString()}`);
+              
+              // Store in ref rather than state to avoid re-renders
+              lastSeenTimestampRef.current = timestamp;
+              
+              // Now set up continuous subscription with the latest timestamp
+              setupContinuousSubscription(timestamp);
+            }
+          }
+          
+          // Count unread messages
+          const unread = newMessages.filter(msg => 
+            !msg.read.includes(profile.uid) && msg.senderId !== profile.uid
+          );
+          setUnreadCount(unread.length);
+          
+          // Mark initial load as complete, but do this last to avoid retriggering effect
+          setInitialLoadComplete(true);
+        },
+        50, // maxMessages for initial load
+        null, // No timestamp filter for initial load
+        true // This is initial load
+      );
+      
+      // Return the cleanup function
+      return () => {
+        logger.chat('Cleaning up initial message subscription');
+        unsubscribe();
+      };
+    }
+    
+    // Define the continuous subscription setup function
+    function setupContinuousSubscription(timestamp: Date) {
+      // Only set up continuous subscription if we don't already have one
+      if (continuousSubscriptionRef.current) {
+        logger.chat('Continuous subscription already exists, skipping setup');
+        return;
+      }
+      
+      logger.chat(`Setting up continuous subscription with timestamp: ${timestamp.toISOString()}`);
+      
+      const unsubscribe = ChatService.subscribeToMessages(
+        currentGroop.id,
+        (newMessages, changes) => {
+          if (!changes) {
+            logger.chat('Continuous updates received full message set');
+            return; // Unexpected case - should always have changes for continuous mode
+          }
+          
+          // Apply incremental updates
           setMessages(currentMessages => {
             // Start with a copy of current messages in a map for easy access
             const messageMap = new Map(currentMessages.map(msg => [msg.id, msg]));
@@ -263,6 +644,38 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
                 messageMap.set(msg.id, msg);
                 hasChanges = true;
               });
+              
+              // Find the latest message timestamp and update the ref (not state)
+              const allMessages = [...messageMap.values()];
+              const latestMessage = [...allMessages].sort((a, b) => {
+                const timeA = a.createdAt instanceof Date ? a.createdAt : new Date(0);
+                const timeB = b.createdAt instanceof Date ? b.createdAt : new Date(0);
+                return timeB.getTime() - timeA.getTime();  // Newest first
+              })[0];
+              
+              if (latestMessage && latestMessage.createdAt) {
+                let newTimestamp: Date;
+                
+                // Handle different timestamp formats
+                if (latestMessage.createdAt instanceof Date) {
+                  newTimestamp = latestMessage.createdAt;
+                } else if (typeof latestMessage.createdAt === 'object' && latestMessage.createdAt?.toDate) {
+                  newTimestamp = latestMessage.createdAt.toDate();
+                } else if (typeof latestMessage.createdAt === 'number') {
+                  newTimestamp = new Date(latestMessage.createdAt);
+                } else if (typeof latestMessage.createdAt === 'string') {
+                  newTimestamp = new Date(latestMessage.createdAt);
+                } else {
+                  newTimestamp = new Date();
+                }
+                
+                logger.chat(`Updating lastSeenTimestamp ref to ${newTimestamp.toISOString()}`);
+                lastSeenTimestampRef.current = newTimestamp;
+                
+                // Now update the state, but this won't trigger a re-render of this effect
+                // because we're using the ref in the dependency array
+                setLastSeenTimestamp(newTimestamp);
+              }
             }
             
             // Only rebuild the array if there were actual changes
@@ -279,570 +692,227 @@ export default function ChatScreen({ route }: { route: ChatScreenRouteProp }) {
             });
             
             logger.chat(`Applied incremental updates: ${changes.added.length} added, ${changes.modified.length} modified, ${changes.removed.length} removed`);
+            
             return updatedMessages;
           });
-        }
-        
-        // Count unread messages
-        const unread = newMessages.filter(msg => 
-          !msg.read.includes(profile.uid) && msg.senderId !== profile.uid
-        );
-        setUnreadCount(unread.length);
-      }
-    );
+          
+          // Count unread messages
+          const unread = newMessages.filter(msg => 
+            !msg.read.includes(profile.uid) && msg.senderId !== profile.uid
+          );
+          setUnreadCount(unread.length);
+        },
+        50, // maxMessages
+        timestamp, // Use timestamp filter for continuous updates
+        false // Not initial load
+      );
+      
+      // Store the continuous subscription for cleanup
+      continuousSubscriptionRef.current = unsubscribe;
+    }
+    
+    // If we've completed initial load and have a timestamp but no continuous subscription,
+    // set it up here
+    if (initialLoadComplete && lastSeenTimestampRef.current && !continuousSubscriptionRef.current) {
+      setupContinuousSubscription(lastSeenTimestampRef.current);
+    }
     
     // Cleanup subscription
     return () => {
-      logger.chat(`Unsubscribing from messages for groop: ${currentGroop?.id || 'unknown'}`);
-      unsubscribe();
-      setHasScrolledToUnread(false); // Reset for next time
+      if (continuousSubscriptionRef.current) {
+        logger.chat(`Cleaning up continuous subscription for groop: ${currentGroop?.id || 'unknown'}`);
+        continuousSubscriptionRef.current();
+        continuousSubscriptionRef.current = null;
+      }
     };
-  }, [profile, currentGroop]);
+  }, [profile, currentGroop, loading, refreshing, initialLoadComplete, lastSeenTimestamp]); // Add lastSeenTimestamp to dependencies
 
-  // Add a separate useEffect specifically for scrolling logic
-  useEffect(() => {
-    // Only run scroll logic when we have messages and haven't scrolled yet
-    if (messages.length > 0 && !hasScrolledToUnread && !loading) {
-      logger.chat('Attempting to scroll to first unread message');
-      
-      // Process messages first to ensure reliable indexes
-      const processedItems = processMessagesWithDateSeparators();
-      
-      // Find the first unread message
-      const firstUnreadMsg = messages.find(msg => 
-        !msg.read.includes(profile?.uid || '') && msg.senderId !== profile?.uid
-      );
-      
-      // Use a shorter timeout - FlashList initializes faster
-      setTimeout(() => {
-        if (firstUnreadMsg) {
-          // Find unread message in processed items
-          const unreadIndex = processedItems.findIndex(item => 
-            'id' in item && item.id === firstUnreadMsg.id
-          );
-          
-          if (unreadIndex !== -1) {
-            logger.chat(`Scrolling to first unread message at index ${unreadIndex}`);
-            
-            // Use scrollToIndex with viewOffset and viewPosition for better positioning
-            flashListRef.current?.scrollToIndex({ 
-              index: unreadIndex, 
-              animated: true,
-              viewOffset: 20, // Extra space at the top
-              viewPosition: 0.3 // Position the item 30% from the top
-            });
-          }
-        } else {
-          // No unread messages, scroll to bottom
-          logger.chat('No unread messages, scrolling to latest message');
-          flashListRef.current?.scrollToEnd({ animated: false });
-        }
-        
-        setHasScrolledToUnread(true);
-        
-        // Mark messages as read after scrolling
-        if (messages.length > 0 && profile?.uid) {
-          const unreadIds = messages
-            .filter(msg => !msg.read.includes(profile.uid) && msg.senderId !== profile.uid)
-            .map(msg => msg.id);
-          
-          if (unreadIds.length > 0) {
-            logger.chat(`Marking ${unreadIds.length} messages as read`);
-            ChatService.markAsRead(currentGroop?.id || '', unreadIds, profile.uid);
-          }
-        }
-      }, 150); // Reduced timeout
-    }
-  }, [messages, hasScrolledToUnread, loading, profile?.uid, processMessagesWithDateSeparators]);
-
-  // 5. Send message functionality
-  const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
-    if (!profile || !currentGroop) {
-      logger.chat('Cannot send message: No profile or groop selected');
-      return;
-    }
-    
-    // Define messageId for tracking
-    const messageId = `msg_${Date.now()}`;
-    
-    try {
-      // Always use direct try/catch blocks for better error handling
-      try {
-        logger.chat('Starting performance tracking for message', messageId);
-        ChatPerformanceMonitor.trackMessageSendStart(messageId, text.length);
-      } catch (e) {
-        logger.error('Error starting performance tracking:', e);
-      }
-      
-      logger.chat(`Sending message to groop: ${currentGroop.id}`);
-      logger.chat('Current user profile:', JSON.stringify({
-        displayName: profile.displayName,
-        hasAvatar: !!profile.avatar,
-        avatarType: profile.avatar?.type
-      }));
-      
-      // Send the actual message
-      await ChatService.sendMessage(currentGroop.id, {
-        text,
-        senderId: profile.uid,
-        senderName: profile.displayName || 'Anonymous',
-        senderAvatar: profile.avatar,
-        replyTo: replyingTo?.id,
-        replyToName: replyingTo?.senderName,
-        replyToText: replyingTo?.text,
-        imageUrl
-      });
-      
-      // Clear reply state
-      if (replyingTo) setReplyingTo(null);
-      
-      // Scroll to the bottom after sending only once
-      // Use requestAnimationFrame for better performance
-      requestAnimationFrame(() => {
-        flashListRef.current?.scrollToEnd({
-          animated: true
-        });
-      });
-      
-      // Track successful send - in its own try/catch
-      try {
-        logger.chat('Completing performance tracking for message', messageId);
-        ChatPerformanceMonitor.trackMessageSendComplete(messageId, true);
-      } catch (e) {
-        logger.error('Error completing performance tracking:', e);
-      }
-      
-    } catch (error) {
-      logger.error('Error sending message:', error);
-      
-      // Track failed send - in its own try/catch
-      try {
-        logger.chat('Tracking failed message send', messageId);
-        ChatPerformanceMonitor.trackMessageSendComplete(messageId, false);
-      } catch (e) {
-        logger.error('Error tracking message failure:', e);
-      }
-      
-      // Log error
-      SentryService.captureError(error as Error, {
-        context: 'ChatScreen.sendMessage',
-        groopId: currentGroop.id
-      });
-    }
-  }, [profile, currentGroop, replyingTo]);
-  
-  // 2. Handle reactions with minimal dependencies
-  const handleReaction = useCallback((messageId: string, emoji: string) => {
-    if (!profile || !currentGroop) return;
-    
-    logger.chat(`Adding reaction ${emoji} to message ${messageId}`);
-    
-    // Set flag to prevent auto-scroll
-    hasRecentReaction.current = true;
-    
-    // Add the reaction
-    ChatService.addReaction(
-      currentGroop.id, 
-      messageId, 
-      emoji, 
-      profile.uid
-    )
-    .then(() => {
-      logger.chat(`Successfully added reaction ${emoji}`);
-    })
-    .catch(err => {
-      logger.error('Error adding reaction:', err);
-      // Show an error toast
-      Alert.alert('Error', 'Failed to add reaction');
-    });
-  }, [profile, currentGroop]);
-
-  // 3. Handle reply with no dependencies
-  const handleReply = useCallback((message: ChatMessage) => {
-    // Store the complete reply information
-    setReplyingTo({
-      id: message.id,
-      text: message.text,
-      senderName: message.senderName
-    });
-    
-    // Optionally focus the input when replying
-    inputRef.current?.focus();
-  }, []);
-
-  // 4. Handle refresh
-  const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-    // The refreshing state will be reset when new messages come in
-  }, []);
-  
-  // 8. Estimate message size (for FlashList optimization)
-  const estimateMessageSize = useCallback((message: ChatMessage): number => {
-    // Base size for a message bubble
-    let size = 60;
-    
-    // Add height for text
-    const textLines = Math.ceil(message.text.length / 40); // Approx chars per line
-    size += textLines * 20; // 20px per line of text
-    
-    // Add space for reactions if any
-    if (message.reactions && message.reactions.length > 0) {
-      size += 30;
-    }
-    
-    // Add space if it's a reply
-    if (message.replyTo) {
-      size += 40;
-    }
-    
-    // Add space for image if any
-    if (message.imageUrl) {
-      size += 200;
-    }
-    
-    return size;
-  }, []);
-
-  // Define renderItem outside the render function using useCallback
-  const renderItem = useCallback(({ item }: { item: ChatItemType }) => {
-    // Check if item is a date separator
-    if ('type' in item && item.type === 'dateSeparator') {
-      return <DateSeparator date={item.date} />;
-    }
-    
-    // Regular message - cast once and use consistently
-    const message = item as ChatMessage;
-    
-    // Ensure message has all required fields for the avatar
-    if (__DEV__ && message.senderId === profile?.uid) {
-      // Only log for current user's messages to reduce noise
-      logger.chat('Sending message with avatar:', 
-        message.senderAvatar ? 
-        `type: ${message.senderAvatar.type}` : 
-        'undefined avatar');
-    }
-    
-    return (
-      <MessageBubble 
-        message={message}
-        isFromCurrentUser={message.senderId === profile?.uid}
-        onReactionPress={handleReaction}
-        onReplyPress={handleReply}
-        // Use message ID as the key prop for React's reconciliation
-        key={message.id}
-      />
-    );
-  }, [profile?.uid, handleReaction, handleReply]);
-
-  // Sentry and performance monitoring
-  const chatId = route.params?.chatId || currentGroop?.id || 'unknown_chat';
-  const perf = usePerformance('ChatScreen');
-  
-  // Start monitoring when component mounts
-  useEffect(() => {
-    logger.chat('Setting up performance monitoring for', chatId);
-    
-    try {
-      // Start chat performance monitoring
-      if (currentGroop?.id) {
-        ChatPerformanceMonitor.startChatMonitoring(currentGroop.id);
-        
-        // Add FlashList specific tracking
-        if (sentryTransaction.current) {
-          sentryTransaction.current.setTag('using_flashlist', 'true');
-          
-          // Track initial render time
-          const startTime = performance.now();
-          
-          // After component is mounted, record the initial render time
-          setTimeout(() => {
-            const renderTime = performance.now() - startTime;
-            sentryTransaction.current?.setMeasurement(
-              'initial_render_time', 
-              renderTime, 
-              'millisecond'
-            );
-          }, 300);
-        }
-      }
-      
-      sentryTransaction.current = SentryService.startTransaction(
-        `Chat:${chatId}`, 
-        'chat_session'
-      );
-      
-      // Set relevant tags
-      if (sentryTransaction.current) {
-        sentryTransaction.current.setTag('chat_id', chatId);
-        sentryTransaction.current.setTag('groop_name', currentGroop?.name || 'unknown');
-        sentryTransaction.current.setTag('user_id', profile?.uid || 'unknown');
-      }
-      
-      // Track initial load operation
-      const initialLoadOp = perf.trackOperation('initialLoad');
-      setTimeout(() => {
-        initialLoadOp.end();
-      }, 500);
-      
-      // Cleanup function runs when component unmounts
-      return () => {
-        // Stop ChatPerformanceMonitor
-        ChatPerformanceMonitor.stopChatMonitoring();
-        
-        // Finish the transaction
-        if (sentryTransaction.current) {
-          sentryTransaction.current.finish();
-        }
-      };
-    } catch (e) {
-      logger.error('Error initializing performance monitoring:', e);
-    }
-  }, [chatId, currentGroop?.id, currentGroop?.name, profile?.uid]);
-
-  // Monitor message sends
-  const monitoredSendMessage = useCallback(async (messageText: string) => {
-    const messageId = `msg_${Date.now()}`;
-    let messageSendSpan = null;
-    
-    try {
-      // Track message sending performance
-      if (typeof ChatPerformanceMonitor?.trackMessageSendStart === 'function') {
-        ChatPerformanceMonitor.trackMessageSendStart(messageId, messageText.length);
-      }
-      
-      // Create child span for message sending
-      if (sentryTransaction.current) {
-        messageSendSpan = sentryTransaction.current.startChild(
-          `send_message`,
-          `Send message ${messageId.slice(0, 6)}`
-        );
-        
-        messageSendSpan.setData('messageLength', messageText.length);
-        messageSendSpan.setData('messageId', messageId);
-      }
-
-      // Your existing message sending logic
-      await sendMessage(messageText);
-      
-      // Mark as successfully sent
-      if (typeof ChatPerformanceMonitor?.trackMessageSendComplete === 'function') {
-        ChatPerformanceMonitor.trackMessageSendComplete(messageId, true);
-      }
-      
-      // Finish the span
-      if (messageSendSpan) {
-        messageSendSpan.finish();
-      }
-    } catch (error) {
-      // Track failed sends
-      if (typeof ChatPerformanceMonitor?.trackMessageSendComplete === 'function') {
-        ChatPerformanceMonitor.trackMessageSendComplete(messageId, false);
-      }
-      
-      // Log error using SentryService instead of direct Sentry
-      SentryService.captureError(error as Error, {
-        messageId,
-        chatId: route.params?.chatId || currentGroop?.id || 'unknown_chat',
-        messageLength: messageText.length
-      });
-      
-      // Finish the span with error status
-      if (messageSendSpan) {
-        messageSendSpan.setStatus('error');
-        messageSendSpan.setData('error', (error as Error).message);
-        messageSendSpan.finish();
-      }
-    }
-  }, [route.params?.chatId, currentGroop?.id, sendMessage]);
-
-  // Track message rendering performance
-  const renderMessage = (message: ChatMessage) => {
-    const startTime = performance.now();
-    
-    // Your message rendering logic here
-    const renderedMessage = (
-      <View key={message.id}>
-        <Text>{message.text}</Text>
+  // Improve the LoadingIndicatorItem component with better UX
+  const LoadingIndicatorItem = () => (
+    <View style={tw`py-4 items-center justify-center`}>
+      <View style={tw`bg-gray-50 rounded-full p-3`}>
+        <ActivityIndicator size="small" color="#7C3AED" />
       </View>
-    );
-    
-    // Track rendering performance
-    const endTime = performance.now();
-    if (typeof ChatPerformanceMonitor?.trackMessageRender === 'function') {
-      ChatPerformanceMonitor.trackMessageRender(message.id, startTime, endTime);
-    }
-    
-    return renderedMessage;
-  };
-  
-  // Track user interactions
-  const onTyping = () => {
-    // Use custom perf hook
-    perf.trackInteraction('user_typing');
-  };
-  
-  const onScrollChat = () => {
-    // Use custom perf hook
-    const scrollOp = perf.trackOperation('chatScroll');
-    
-    // End the operation after scrolling completes
-    setTimeout(() => {
-      scrollOp.end();
-    }, 100);
-  };
-  
-  // Add this new useEffect to manage keyboard behavior
-  useEffect(() => {
-    // Function to handle keyboard showing
-    const handleKeyboardShow = (event: KeyboardEvent) => {
-      // Only scroll if we have messages
-      if (messages.length > 0) {
-        // Get keyboard height
-        const keyboardHeight = event.endCoordinates.height;
-        
-        logger.chat(`Keyboard shown with height: ${keyboardHeight}`);
-        
-        // Slight delay to let the layout adjust
-        setTimeout(() => {
-          // Scroll to end (latest message) with extra padding to account for the keyboard
-          flashListRef.current?.scrollToEnd({ animated: true });
-        }, 100);
-      }
-    };
-
-    // Set up keyboard listeners
-    const keyboardDidShowListener = Keyboard.addListener(
-      'keyboardDidShow',
-      handleKeyboardShow
-    );
-
-    // Clean up
-    return () => {
-      keyboardDidShowListener.remove();
-    };
-  }, [messages.length]);
-
-  // ===== Conditional Rendering =====
-  
-  // IMPORTANT: Only put conditions here, after all hooks are defined
-  if (!currentGroop) {
-    return (
-      <SafeAreaView style={tw`flex-1 justify-center items-center bg-light`}>
-        <Ionicons name="chatbubbles" size={64} color="#CBD5E1" />
-        <Text style={tw`text-xl font-bold text-gray-800 mt-4 text-center`}>
-          No active conversation
-        </Text>
-        <Text style={tw`text-gray-600 text-center mt-2 mx-10`}>
-          Select or create a groop to start chatting
-        </Text>
-      </SafeAreaView>
-    );
-  }
-  
-  if (loading) {
-    return (
-      <SafeAreaView style={tw`flex-1 justify-center items-center bg-light`}>
-        <ActivityIndicator size="large" color="#78c0e1" />
-        <Text style={tw`mt-4 font-semibold text-primary`}>Loading your chat...</Text>
-      </SafeAreaView>
-    );
-  }
-  
-  // EmptyChat component for displaying when no messages exist
-  const EmptyChat = () => (
-    <View style={tw`py-20 items-center`}>
-      <View style={tw`w-16 h-16 bg-gray-100 rounded-full items-center justify-center mb-3`}>
-        <Ionicons name="chatbubble-outline" size={32} color="#7C3AED" />
-      </View>
-      <Text style={tw`text-neutral font-medium`}>No messages yet</Text>
-      <Text style={tw`text-gray-500 text-sm mt-1 text-center max-w-[70%]`}>
-        Be the first to say something to the group!
-      </Text>
-      <TouchableOpacity
-        style={tw`mt-6 bg-primary px-5 py-2.5 rounded-lg`}
-        onPress={() => inputRef.current?.focus()}
-      >
-        <Text style={tw`text-white font-medium`}>Start Chatting</Text>
-      </TouchableOpacity>
+      <Text style={tw`text-xs text-gray-500 mt-2`}>Loading older messages...</Text>
     </View>
   );
 
-  const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-  // Set drawDistance to be ~1.5x screen height for a good balance
-  // This is a bit less than 2x but still provides a buffer for smooth scrolling
-  const OPTIMAL_DRAW_DISTANCE = Math.round(SCREEN_HEIGHT * 1.5);
+  // Add this component to let users know when they've reached the beginning of history
+  const NoMoreMessagesHeader = () => (
+    <View style={tw`py-4 items-center justify-center border-t border-gray-100`}>
+      <Text style={tw`text-xs text-gray-400`}>You've reached the beginning of this chat</Text>
+    </View>
+  );
+
+  // Add state to track if there are more messages to load
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+
+  // Update the ChatService.fetchOlderMessages callback to set hasMoreMessages
+  useEffect(() => {
+    // Listen for updates from the fetch operation
+    const handleOlderMessagesUpdate = (count: number) => {
+      if (count === 0 && hasMoreMessages) {
+        setHasMoreMessages(false);
+        logger.chat('No more older messages available');
+      } else if (count > 0 && !hasMoreMessages) {
+        setHasMoreMessages(true);
+      }
+    };
+    
+    // Set up a listener in ChatPerformanceMonitor
+    ChatPerformanceMonitor.on('olderMessagesLoaded', handleOlderMessagesUpdate);
+    
+    return () => {
+      ChatPerformanceMonitor.off('olderMessagesLoaded', handleOlderMessagesUpdate);
+    };
+  }, [hasMoreMessages]);
 
   return (
-  <SafeAreaView style={tw`flex-1 bg-light`}>
-<GroopHeader 
-  title={currentGroop?.name} 
-  onBackPress={() => navigation.goBack()}
-  onShowEncryptionInfo={() => setShowEncryptionInfo(true)} // Changed from showEncryptionInfo to onShowEncryptionInfo
-  encryptionEnabled={currentGroop?.encryptionEnabled}
-  loading={encryptionLoading}
-  isChatScreen={true} // Make sure this is set since this is the chat screen
-/>
-
-    <KeyboardAvoidingView 
-      style={tw`flex-1 mt-4`}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0} // Changed from 90 to 0
-    >
-      <FlashList
-        ref={flashListRef}
-        data={processMessagesWithDateSeparators()}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.id}
-        estimatedItemSize={120}
-        contentContainerStyle={tw`px-4 pt-4 pb-2`}
+    <SafeAreaView style={tw`flex-1 bg-white`}>
+      <GroopHeader 
+        title={currentGroop?.name} 
+        onBackPress={() => navigation.goBack()} 
+        showEncryptionInfo={() => setShowEncryptionInfo(true)}  // This is correct - it's a function that shows the modal
+        profile={profile}
+        unreadCount={unreadCount}
         onRefresh={handleRefresh}
-        refreshing={refreshing}
-        ListEmptyComponent={<EmptyChat />}
-        onScroll={handleScroll}
-        scrollEventThrottle={16} // Good value
-        initialScrollIndex={0}
-        maintainVisibleContentPosition={{
-          minIndexForVisible: 0,
-        }}
-        drawDistance={OPTIMAL_DRAW_DISTANCE} // Optimized value based on screen height
-        // Add these optimizations:
-        removeClippedSubviews={true} // Offscreen views are detached
-        disableAutoLayout={Platform.OS === 'ios' ? false : true} // Optimize layout on Android
-        optimizeItemLayout={true} // Enable layout optimization
-        keyboardDismissMode="on-drag" // Dismiss keyboard when scrolling
+        loading={loading}
+        encryptionEnabled={currentGroop?.encryptionEnabled}  // This is correct - it's the boolean flag
       />
-
-      {showScrollButton && (
-        <TouchableOpacity
-              style={tw`absolute right-4 bottom-16 bg-primary rounded-full w-10 h-10 items-center justify-center z-10`}
-              onPress={() => flashListRef.current?.scrollToEnd({ animated: true })}
-        >
-          <Ionicons name="arrow-down" size={24} color="white" />
-        </TouchableOpacity>
-      )}
       
-      <MessageInput 
-        onSend={sendMessage} 
-        replyingTo={replyingTo}
-        onCancelReply={() => setReplyingTo(null)}
-        onInputFocus={() => {
-          // Only scroll to end if we're already near the bottom
-          // This prevents excess scrolling that invalidates recycler positions
-          logger.chat('MessageInput focused, scrolling to end');
-          if (showScrollButton === false) { // If we're already near the bottom
-            setTimeout(() => {
-              flashListRef.current?.scrollToEnd({ animated: true });
-            }, 50);
+      <View style={tw`flex-1`}>
+        {/* Message list */}
+        <FlashList
+          ref={flashListRef}
+          data={processMessagesWithDateSeparators()}
+          renderItem={({ item }) => {
+            if (item.type === 'dateSeparator') {
+              return <DateSeparator date={item.date} />;
+            }
+            
+            return (
+              <MessageBubble 
+                message={item} 
+                isFromCurrentUser={item.senderId === profile?.uid}
+                onReactionPress={(messageId, emoji) => {
+                  if (currentGroop && profile) {
+                    ChatService.addReaction(currentGroop.id, messageId, emoji, profile.uid);
+                  } else {
+                    logger.error('Cannot add reaction: currentGroop or profile is null');
+                  }
+                }}
+                onReplyPress={(message) => {
+                  setReplyingTo({
+                    id: message.id,
+                    text: message.text,
+                    senderName: message.senderName
+                  });
+                  inputRef.current?.focus();
+                }}
+              />
+            );
+          }}
+          keyExtractor={item => item.id}
+          estimatedItemSize={120}
+          contentContainerStyle={tw`px-4 pt-4 pb-2`}
+          onRefresh={handleRefresh}
+          refreshing={refreshing}
+          ListEmptyComponent={
+            loading ? (
+              <View style={tw`flex-1 justify-center items-center p-8`}>
+                <ActivityIndicator size="large" color="#7C3AED" />
+                <Text style={tw`text-gray-500 mt-4`}>Loading messages...</Text>
+              </View>
+            ) : (
+              <View style={tw`flex-1 justify-center items-center p-8`}>
+                <Ionicons name="chatbubble-outline" size={64} color="#E5E7EB" />
+                <Text style={tw`text-gray-500 mt-4 text-center`}>
+                  No messages yet. Be the first to send a message!
+                </Text>
+              </View>
+            )
           }
-        }}
-      />
-    </KeyboardAvoidingView>
-    <EncryptionInfoModal 
-      visible={showEncryptionInfo} // Change from isVisible to visible
-      onClose={() => setShowEncryptionInfo(false)}
-      groopId={currentGroop?.id} // Make sure to pass the groopId
-      tw={tw} // Pass the tw utility if needed by the component
-    />
-  </SafeAreaView>
-);
+          // Show loading indicator at the top when loading older messages,
+          // or show "no more messages" header if we've reached the beginning
+          ListHeaderComponent={
+            loadingOlderMessages ? 
+              <LoadingIndicatorItem /> : 
+              !hasMoreMessages && messages.length > 0 ? 
+                <NoMoreMessagesHeader /> : 
+                null
+          }
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          // This handler now checks scroll direction and avoids duplicate loading
+          onEndReached={() => {
+            if (scrollDirectionRef.current === 'up' && hasMoreMessages) {
+              loadOlderMessages();
+            }
+          }}
+          onEndReachedThreshold={0.2} // Increase threshold for earlier triggering
+          maintainVisibleContentPosition={{
+            minIndexForVisible: 0,
+            autoscrollToTopThreshold: null, // Disable automatic scrolling while loading
+          }}
+          drawDistance={OPTIMAL_DRAW_DISTANCE}
+          removeClippedSubviews={Platform.OS === 'android'} // This works better on Android, can cause issues on iOS
+          disableAutoLayout={Platform.OS === 'ios' ? false : true}
+          keyboardDismissMode="on-drag"
+        />
+        
+        {/* Message input */}
+        <MessageInput 
+          ref={inputRef}
+          onSend={(text) => {
+            // Handle send message
+            if (text.trim().length > 0 && currentGroop && profile) {
+              // Proper call format with null checks
+              ChatService.sendMessage(currentGroop.id, {
+                text: text,
+                senderId: profile.uid,
+                senderName: profile.displayName || 'User',
+                senderAvatar: profile.avatar
+              });
+              setReplyingTo(null); // Clear replying state after sending
+            }
+          }}
+          onReply={(message: ChatMessage) => {
+            // Handle reply with proper typing
+            setReplyingTo({
+              id: message.id,
+              text: message.text,
+              senderName: message.senderName
+            });
+            // Focus the input and prepend the reply text
+            inputRef.current?.focus();
+          }}
+          replyingTo={replyingTo}
+          profile={profile}
+          loading={encryptionLoading}
+        />
+        
+        {/* Scroll to top button */}
+        {showScrollButton && (
+          <TouchableOpacity 
+            style={tw`absolute bottom-24 right-4 bg-blue-500 rounded-full p-3`}
+            onPress={() => {
+              // Scroll to top
+              flashListRef.current?.scrollToOffset({ offset: 0, animated: true });
+            }}
+          >
+            <Ionicons name="arrow-up" size={24} color="white" />
+          </TouchableOpacity>
+        )}
+      </View>
+      
+      {/* Encryption info modal */}
+      {showEncryptionInfo && (
+        <EncryptionInfoModal 
+          visible={showEncryptionInfo} 
+          onClose={() => setShowEncryptionInfo(false)} 
+          groopId={currentGroop?.id}
+        />
+      )}
+    </SafeAreaView>
+  );
 }

@@ -13,6 +13,7 @@ export interface ChatGroup {
 
 export interface ChatMessage {
   id: string;
+  type?: 'message'; // Add this discriminator field
   text: string;
   senderId: string;
   senderName: string;
@@ -33,11 +34,13 @@ export interface ChatMessage {
   }[];
 }
 
-export type ChatItemType = ChatMessage | {
+export type DateSeparator = {
   id: string;
   type: 'dateSeparator';
   date: Date;
 };
+
+export type ChatItemType = ChatMessage | DateSeparator;
 
 export interface ReplyingToMessage {
   id: string;

@@ -11,18 +11,13 @@ import logger from '../../utils/logger';
 // Common emoji reactions
 const COMMON_REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🔥'];
 
-type Reactions = {
-  [emoji: string]: string[];
-};
-
 interface MessageBubbleProps {
   message: ChatMessage;
   isFromCurrentUser: boolean;
   onReactionPress: (messageId: string, emoji: string) => void;
-  onReplyPress: (messageId: string) => void;
+  onReplyPress: (message: ChatMessage) => void;
 }
 
-// First, define the MessageBubble function component as normal
 function MessageBubble({ 
   message, 
   isFromCurrentUser,
@@ -45,18 +40,18 @@ function MessageBubble({
     // Reset animation value
     reactionAnimRef.setValue(0);
     
-    // Run animation sequence
+    // Run animation sequence with useNativeDriver: true
     Animated.sequence([
       Animated.timing(reactionAnimRef, {
         toValue: 1,
         duration: 200,
-        useNativeDriver: true,
+        useNativeDriver: true, // Use native driver for performance
       }),
       Animated.delay(400),
       Animated.timing(reactionAnimRef, {
         toValue: 0,
         duration: 200,
-        useNativeDriver: true,
+        useNativeDriver: true, // Use native driver for performance
       })
     ]).start();
   };
@@ -229,31 +224,35 @@ function MessageBubble({
     );
   }, [message.senderAvatar, message.senderName, isFromCurrentUser]);
 
-  // Memoize the animation styles for reaction feedback
-  const animationStyle = useMemo(() => {
-    return {
-      position: 'absolute',
-      right: isFromCurrentUser ? 0 : 'auto',
-      left: isFromCurrentUser ? 'auto' : 40,
-      top: 10,
-      backgroundColor: 'rgba(124, 58, 237, 0.1)',
-      borderRadius: 20,
-      padding: 8,
-      transform: [
-        { scale: reactionAnimRef.interpolate({
-            inputRange: [0, 0.5, 1],
-            outputRange: [0.5, 1.2, 1]
-          })
-        },
-        { translateY: reactionAnimRef.interpolate({
-            inputRange: [0, 1],
-            outputRange: [10, -20]
-          })
-        }
-      ],
-      opacity: reactionAnimRef
-    };
-  }, [isFromCurrentUser, reactionAnimRef]);
+  // Split animation styles into static and animated parts for better native driver support
+  const staticAnimationStyle = useMemo(() => ({
+    position: 'absolute',
+    right: isFromCurrentUser ? 0 : 'auto',
+    left: isFromCurrentUser ? 'auto' : 40,
+    top: 10,
+    backgroundColor: 'rgba(124, 58, 237, 0.1)',
+    borderRadius: 20,
+    padding: 8,
+  }), [isFromCurrentUser]);
+
+  // Keep only natively-supported properties in the animated part
+  const animatedStyle = useMemo(() => ({
+    transform: [
+      { 
+        scale: reactionAnimRef.interpolate({
+          inputRange: [0, 0.5, 1],
+          outputRange: [0.5, 1.2, 1]
+        })
+      },
+      { 
+        translateY: reactionAnimRef.interpolate({
+          inputRange: [0, 1],
+          outputRange: [10, -20]
+        })
+      }
+    ],
+    opacity: reactionAnimRef
+  }), [reactionAnimRef]);
 
   // Add this to render the reaction feedback animation
   const renderReactionFeedback = () => {
@@ -262,7 +261,7 @@ function MessageBubble({
     return (
       <Animated.View 
         key={feedbackKey} // This forces the animation to restart on every tap
-        style={animationStyle}
+        style={[staticAnimationStyle, animatedStyle]}
       >
         <Text style={{ fontSize: 24 }}>{recentReactionEmoji}</Text>
       </Animated.View>
@@ -379,7 +378,7 @@ function MessageBubble({
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setShowReactions(false);
-                // Pass the entire message object instead of just the ID
+                // Pass the entire message object
                 onReplyPress(message);
               }}
             >
@@ -406,21 +405,12 @@ function MessageBubble({
   );
 }
 
-// Then export a memoized version with custom comparison function
-export default memo(MessageBubble, (p, n) => {
+// Export a memoized version with custom comparison function
+export default memo(MessageBubble, (prevProps, nextProps) => {
   return (
-    p.message.id === n.message.id &&
-    p.message.text === n.message.text &&
-    shallowEqualReactions(p.message.reactions, n.message.reactions) &&
-    p.isFromCurrentUser === n.isFromCurrentUser
+    prevProps.message.id === nextProps.message.id &&
+    prevProps.message.text === nextProps.message.text &&
+    JSON.stringify(prevProps.message.reactions) === JSON.stringify(nextProps.message.reactions) &&
+    prevProps.isFromCurrentUser === nextProps.isFromCurrentUser
   );
 });
-
-// Add the helper function for shallow comparison of reactions
-const shallowEqualReactions = (a?: Reactions, b?: Reactions) => {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  const keysA = Object.keys(a);
-  if (keysA.length !== Object.keys(b).length) return false;
-  return keysA.every(k => a[k]?.length === b[k]?.length);
-};

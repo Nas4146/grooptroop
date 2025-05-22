@@ -42,7 +42,14 @@ type ChatSessionHistory = {
   frameDrops: number;
 };
 
+// Simple event listener type
+type EventListener = (...args: any[]) => void;
+
+// Instead of extending EventEmitter, implement a simple event system
 class ChatPerformanceMonitor {
+  // Add a simple event system
+  private listeners: Record<string, EventListener[]> = {};
+  
   // Store performance data for messages
   private messagePerformance: Record<string, MessagePerformanceData> = {};
   private isActive = false;
@@ -535,6 +542,38 @@ class ChatPerformanceMonitor {
   // Add a method to get the session history
   getSessionHistory(): ChatSessionHistory[] {
     return this.sessionHistory;
+  }
+  
+  // Simple event emitter implementation
+  emit(event: string, ...args: any[]): boolean {
+    if (!this.listeners[event]) {
+      return false;
+    }
+    
+    this.listeners[event].forEach(listener => {
+      try {
+        listener(...args);
+      } catch (error) {
+        console.error(`Error in event listener for "${event}":`, error);
+      }
+    });
+    
+    return true;
+  }
+
+  on(event: string, listener: EventListener): this {
+    if (!this.listeners[event]) {
+      this.listeners[event] = [];
+    }
+    this.listeners[event].push(listener);
+    return this;
+  }
+
+  off(event: string, listener: EventListener): this {
+    if (this.listeners[event]) {
+      this.listeners[event] = this.listeners[event].filter(l => l !== listener);
+    }
+    return this;
   }
 }
 
