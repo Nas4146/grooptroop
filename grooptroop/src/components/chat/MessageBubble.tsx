@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import FastImage from 'react-native-fast-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,54 +24,15 @@ function MessageBubble({
   onReactionPress,
   onReplyPress
 }: MessageBubbleProps) {
+  // All useState hooks first
   const [showReactions, setShowReactions] = useState(false);
   const [feedbackKey, setFeedbackKey] = useState(0);
   const [recentReactionEmoji, setRecentReactionEmoji] = useState<string | null>(null);
   
-  // Animation ref for reaction feedback
+  // All useRef hooks next
   const reactionAnimRef = useRef(new Animated.Value(0)).current;
   
-  // Function to flash the reaction feedback
-  const flashReaction = (emoji: string) => {
-    // Set the emoji to animate
-    setRecentReactionEmoji(emoji);
-    // Increment key to force animation restart
-    setFeedbackKey(k => k + 1);
-    // Reset animation value
-    reactionAnimRef.setValue(0);
-    
-    // Run animation sequence with useNativeDriver: true
-    Animated.sequence([
-      Animated.timing(reactionAnimRef, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true, // Use native driver for performance
-      }),
-      Animated.delay(400),
-      Animated.timing(reactionAnimRef, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true, // Use native driver for performance
-      })
-    ]).start();
-  };
-  
-  // Replace handleReactionPress with simplified version
-  const handleReactionPress = (emoji: string) => {
-    // Close reaction panel
-    setShowReactions(false);
-    
-    // Call the actual handler
-    onReactionPress(message.id, emoji);
-    
-    // Show visual feedback
-    flashReaction(emoji);
-    
-    // Provide haptic feedback
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-
-  // Memoize expensive operations
+  // All useMemo hooks - these should be consistent on every render
   const reactionCounts = useMemo(() => {
     const counts: {[key: string]: number} = {};
     
@@ -86,20 +47,10 @@ function MessageBubble({
     return counts;
   }, [message.reactions]);
 
-  // Check if there are any reactions
   const hasReactions = useMemo(() => {
     return Object.keys(reactionCounts).length > 0;
   }, [reactionCounts]);
 
-  // Check if current user has reacted with this emoji
-  const hasUserReacted = useCallback((emoji: string) => {
-    return message.reactions && 
-           message.reactions[emoji] && 
-           Array.isArray(message.reactions[emoji]) && 
-           message.reactions[emoji].includes(message.senderId);
-  }, [message.reactions, message.senderId]);
-  
-  // Memoize styles to prevent unnecessary re-renders
   const reactionCountsContainerStyle = useMemo(() => {
     return tw`flex-row mt-1 ${isFromCurrentUser ? 'mr-2' : 'ml-10'}`;
   }, [isFromCurrentUser]);
@@ -111,17 +62,94 @@ function MessageBubble({
     ];
   }, [isFromCurrentUser]);
   
-  // Create memoized styles for each common reaction emoji
+  const staticAnimationStyle = useMemo(() => ({
+    position: 'absolute' as const,
+    right: isFromCurrentUser ? 0 : 'auto',
+    left: isFromCurrentUser ? 'auto' : 40,
+    top: 10,
+    backgroundColor: 'rgba(124, 58, 237, 0.1)',
+    borderRadius: 20,
+    padding: 8,
+  }), [isFromCurrentUser]);
+
+  const animatedStyle = useMemo(() => ({
+    transform: [
+      { 
+        scale: reactionAnimRef.interpolate({
+          inputRange: [0, 0.5, 1],
+          outputRange: [0.5, 1.2, 1]
+        })
+      },
+      { 
+        translateY: reactionAnimRef.interpolate({
+          inputRange: [0, 1],
+          outputRange: [10, -20]
+        })
+      }
+    ],
+    opacity: reactionAnimRef
+  }), [reactionAnimRef]);
+
+  const messageBubbleStyle = useMemo(() => {
+    return [
+      tw`rounded-2xl p-3 ${isFromCurrentUser ? 'bg-primary rounded-tr-none' : 'bg-gray-200 rounded-tl-none ml-10'}`,
+      { maxWidth: '80%' }
+    ];
+  }, [isFromCurrentUser]);
+  
   const reactionButtonStyles = useMemo(() => {
     const styles: Record<string, any> = {};
     COMMON_REACTIONS.forEach(emoji => {
-      const isReacted = hasUserReacted(emoji);
+      const isReacted = message.reactions && 
+                        message.reactions[emoji] && 
+                        Array.isArray(message.reactions[emoji]) && 
+                        message.reactions[emoji].includes(message.senderId);
       styles[emoji] = tw`p-1.5 ${isReacted ? 'bg-gray-100 rounded-full' : ''}`;
     });
     return styles;
-  }, [hasUserReacted]);
+  }, [message.reactions, message.senderId]);
   
-  // Create a memoized component for reaction count buttons
+  // All useCallback hooks
+  const hasUserReacted = useCallback((emoji: string) => {
+    return message.reactions && 
+           message.reactions[emoji] && 
+           Array.isArray(message.reactions[emoji]) && 
+           message.reactions[emoji].includes(message.senderId);
+  }, [message.reactions, message.senderId]);
+  
+  const flashReaction = useCallback((emoji: string) => {
+    setRecentReactionEmoji(emoji);
+    setFeedbackKey(k => k + 1);
+    reactionAnimRef.setValue(0);
+    
+    Animated.sequence([
+      Animated.timing(reactionAnimRef, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.delay(400),
+      Animated.timing(reactionAnimRef, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      })
+    ]).start();
+  }, [reactionAnimRef]);
+  
+  const handleReactionPress = useCallback((emoji: string) => {
+    setShowReactions(false);
+    onReactionPress(message.id, emoji);
+    flashReaction(emoji);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [message.id, onReactionPress, flashReaction]);
+  
+  const formatTime = useCallback((timestamp: any) => {
+    if (!timestamp) return '';
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }, []);
+  
   const ReactionCountButton = useCallback(({emoji, count}: {emoji: string, count: number}) => (
     <TouchableOpacity
       key={emoji}
@@ -133,15 +161,32 @@ function MessageBubble({
     </TouchableOpacity>
   ), [message.id, onReactionPress]);
 
-  // Optimize other expensive calculations
-  const formatTime = useCallback((timestamp: any) => {
-    if (!timestamp) return '';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }, []);
+  const renderAvatar = useCallback(() => {
+    const senderName = message.senderName || 'User';
+    
+    logger.avatar(`Rendering avatar for ${senderName} type: ${message.senderAvatar?.type || 'undefined'}`);
+    
+    return (
+      <View 
+        style={tw`absolute ${isFromCurrentUser ? 'right-0 mr-1' : 'left-0 ml-1'} bottom-0`}
+      >
+        <View style={[
+          tw`rounded-full overflow-hidden`,
+          { backgroundColor: 'white' }
+        ]}>
+          <View style={{width: 32, height: 32, borderRadius: 16, overflow: 'hidden'}}>
+            <Avatar 
+              displayName={senderName}
+              size={32}
+              avatar={message.senderAvatar}
+            />
+          </View>
+        </View>
+      </View>
+    );
+  }, [message.senderAvatar, message.senderName, isFromCurrentUser]);
   
-  // Render encryption indicator based on message status
-  const renderEncryptionIndicator = () => {
+  const renderEncryptionIndicator = useCallback(() => {
     if (message.isEncrypted) {
       if (message.isDecrypted) {
         return (
@@ -172,8 +217,37 @@ function MessageBubble({
         />
       );
     }
-  };
+  }, [message.isEncrypted, message.isDecrypted, isFromCurrentUser]);
   
+  const renderReactionFeedback = useCallback(() => {
+    if (!recentReactionEmoji) return null;
+    
+    return (
+      <Animated.View 
+        key={feedbackKey}
+        style={[staticAnimationStyle, animatedStyle]}
+      >
+        <Text style={{ fontSize: 24 }}>{recentReactionEmoji}</Text>
+      </Animated.View>
+    );
+  }, [recentReactionEmoji, feedbackKey, staticAnimationStyle, animatedStyle]);
+  
+  const handleLongPress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setShowReactions(true);
+  }, []);
+  
+  const handleCloseReactions = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowReactions(false);
+  }, []);
+  
+  const handleReplyButtonPress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowReactions(false);
+    onReplyPress(message);
+  }, [message, onReplyPress]);
+
   // Special handling for encrypted messages that couldn't be decrypted
   if (message.isEncrypted && 
       (!message.isDecrypted || 
@@ -195,87 +269,6 @@ function MessageBubble({
     );
   }
   
-  // Update the avatar rendering in MessageBubble
-  const renderAvatar = useCallback(() => {
-    // If there's no sender name, provide a fallback
-    const senderName = message.senderName || 'User';
-    
-    // Log the render operation using our optimized logger
-    logger.avatar(`Rendering avatar for ${senderName} type: ${message.senderAvatar?.type || 'undefined'}`);
-    
-    // Create a visible container with proper dimensions and position
-    return (
-      <View 
-        style={tw`absolute ${isFromCurrentUser ? 'right-0 mr-1' : 'left-0 ml-1'} bottom-0`}
-      >
-        <View style={[
-          tw`rounded-full overflow-hidden`,
-          { backgroundColor: 'white' }
-        ]}>
-          <View style={{width: 32, height: 32, borderRadius: 16, overflow: 'hidden'}}>
-            <Avatar 
-              displayName={senderName}
-              size={32}
-              avatar={message.senderAvatar}
-            />
-          </View>
-        </View>
-      </View>
-    );
-  }, [message.senderAvatar, message.senderName, isFromCurrentUser]);
-
-  // Split animation styles into static and animated parts for better native driver support
-  const staticAnimationStyle = useMemo(() => ({
-    position: 'absolute',
-    right: isFromCurrentUser ? 0 : 'auto',
-    left: isFromCurrentUser ? 'auto' : 40,
-    top: 10,
-    backgroundColor: 'rgba(124, 58, 237, 0.1)',
-    borderRadius: 20,
-    padding: 8,
-  }), [isFromCurrentUser]);
-
-  // Keep only natively-supported properties in the animated part
-  const animatedStyle = useMemo(() => ({
-    transform: [
-      { 
-        scale: reactionAnimRef.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [0.5, 1.2, 1]
-        })
-      },
-      { 
-        translateY: reactionAnimRef.interpolate({
-          inputRange: [0, 1],
-          outputRange: [10, -20]
-        })
-      }
-    ],
-    opacity: reactionAnimRef
-  }), [reactionAnimRef]);
-
-  // Add this to render the reaction feedback animation
-  const renderReactionFeedback = () => {
-    if (!recentReactionEmoji) return null;
-    
-    return (
-      <Animated.View 
-        key={feedbackKey} // This forces the animation to restart on every tap
-        style={[staticAnimationStyle, animatedStyle]}
-      >
-        <Text style={{ fontSize: 24 }}>{recentReactionEmoji}</Text>
-      </Animated.View>
-    );
-  };
-
-  // Memoize message bubble style
-  const messageBubbleStyle = useMemo(() => {
-    return [
-      tw`rounded-2xl p-3 ${isFromCurrentUser ? 'bg-primary rounded-tr-none' : 'bg-gray-200 rounded-tl-none ml-10'}`,
-      { maxWidth: '80%' }
-    ];
-  }, [isFromCurrentUser]);
-
   return (
     <View style={tw`mb-3 ${isFromCurrentUser ? 'items-end' : 'items-start'}`}>
       {/* Sender name for messages from others */}
@@ -290,13 +283,8 @@ function MessageBubble({
         {/* Message bubble with proper margin for avatar */}
         <TouchableOpacity
           style={messageBubbleStyle}
-          onLongPress={() => {
-            // Add haptic feedback
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            // Show reaction selector
-            setShowReactions(true);
-          }}
-          delayLongPress={200} // Make it respond more quickly
+          onLongPress={handleLongPress}
+          delayLongPress={200}
         >
           {/* Reply content if exists */}
           {message.replyTo && message.replyToText && (
@@ -375,12 +363,7 @@ function MessageBubble({
             {/* Reply button */}
             <TouchableOpacity
               style={tw`p-1.5 rounded-full bg-primary bg-opacity-10`}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setShowReactions(false);
-                // Pass the entire message object
-                onReplyPress(message);
-              }}
+              onPress={handleReplyButtonPress}
             >
               <Ionicons name="return-down-back" size={18} color="#7C3AED" />
             </TouchableOpacity>
@@ -388,10 +371,7 @@ function MessageBubble({
             {/* Close button */}
             <TouchableOpacity
               style={tw`p-1.5 ml-1`}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setShowReactions(false);
-              }}
+              onPress={handleCloseReactions}
             >
               <Ionicons name="close" size={18} color="#6B7280" />
             </TouchableOpacity>
@@ -406,7 +386,7 @@ function MessageBubble({
 }
 
 // Export a memoized version with custom comparison function
-export default memo(MessageBubble, (prevProps, nextProps) => {
+export default React.memo(MessageBubble, (prevProps, nextProps) => {
   return (
     prevProps.message.id === nextProps.message.id &&
     prevProps.message.text === nextProps.message.text &&
