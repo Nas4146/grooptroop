@@ -6,18 +6,19 @@ import {
   Platform,
   Keyboard,
   StyleSheet,
-  Dimensions
+  Dimensions,
+  KeyboardAvoidingView
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import Animated, { useAnimatedStyle, useSharedValue, runOnJS } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { GestureDetector, Gesture, TouchableWithoutFeedback } from 'react-native-gesture-handler';
+import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 
 // Components and hooks
@@ -29,12 +30,13 @@ import useKeyboardController from '../hooks/useKeyboardController';
 import { useGroop } from '../contexts/GroopProvider';
 import { useAuth } from '../contexts/AuthProvider';
 import { useNotification } from '../contexts/NotificationProvider';
+import { useChatMessages } from '../hooks/useChatMessages';
 import tw from '../utils/tw';
 import logger from '../utils/logger';
 import { performanceLogger } from '../utils/performanceLogger';
+import GroopHeader from '../components/common/GroopHeader';
 
 // Services
-import { useChatMessages } from '../hooks/useChatMessages';
 import { EncryptionService } from '../services/EncryptionService';
 import ImageUploadService from '../services/imageUploadService';
 
@@ -77,8 +79,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     keyboardVisible,
     keyboardHeight,
     keyboardSpacerStyle,
-    inputContainerStyle,
-    dismissKeyboard
+    inputContainerStyle
   } = useKeyboardController({
     bottomInset: insets.bottom,
   });
@@ -326,12 +327,6 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     inputRef.current?.focus();
   }, []);
 
-  // Set up gesture handler for keyboard dismissing - Fix the Reanimated error
-  const tap = Gesture.Tap().onStart(() => {
-    'worklet';
-    runOnJS(Keyboard.dismiss)();
-  });
-
   // Fix the scroll button position
   const scrollButtonStyle = useAnimatedStyle(() => {
     return {
@@ -375,72 +370,81 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   }, [messages.length]);
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-white`}>
-      <GestureDetector gesture={tap}>
-        <View style={tw`flex-1`}>
-          {/* Main content area */}
+    <SafeAreaView style={tw`flex-1 bg-white`} edges={['top']}>
+      <KeyboardAvoidingView 
+        style={tw`flex-1`}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
           <View style={tw`flex-1`}>
-            <MessageList
-              ref={messageListRef}
-              messages={messages}
-              loading={loading}
-              refreshing={refreshing}
-              hasMoreMessages={hasMoreMessages}
-              loadingOlderMessages={loadingOlderMessages}
-              onEndReached={loadOlderMessages}
-              onScroll={handleScroll}
-              onRefresh={handleRefresh}
-              onReactionPress={handleReactionPress}
-              onReplyPress={handleReplyPress}
-              openImagePreview={handleOpenImagePreview}
+            {/* GroopHeader */}
+            <GroopHeader 
+              isChatScreen={true}
+              encryptionEnabled={hasEncryptionKey}
+              onShowEncryptionInfo={() => setShowEncryptionInfo(true)}
             />
-          </View>
-          
-          {/* Scroll to bottom button 
-          <Animated.View style={scrollButtonStyle}>
-            <TouchableOpacity 
-              style={tw`bg-violet-500 p-3 shadow-md rounded-full`}
-              onPress={() => {
-                messageListRef.current?.scrollToEnd({ animated: true });
-              }}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="arrow-down" size={24} color="white" />
-            </TouchableOpacity>
-          </Animated.View>*/}
-          
-          {/* Message input - sits directly above bottom navigator */}
-          <View style={tw`bg-white border-t border-gray-200`}>
+            
+            {/* Main content area */}
+            <View style={tw`flex-1`}>
+              <MessageList
+                ref={messageListRef}
+                messages={messages}
+                loading={loading}
+                refreshing={refreshing}
+                hasMoreMessages={hasMoreMessages}
+                loadingOlderMessages={loadingOlderMessages}
+                onEndReached={loadOlderMessages}
+                onScroll={handleScroll}
+                onRefresh={handleRefresh}
+                onReactionPress={handleReactionPress}
+                onReplyPress={handleReplyPress}
+                openImagePreview={handleOpenImagePreview}
+              />
+            </View>
+            
+            {/* Scroll to bottom button
+            <Animated.View style={scrollButtonStyle}>
+              <TouchableOpacity 
+                style={tw`bg-violet-500 p-3 shadow-md rounded-full`}
+                onPress={() => {
+                  messageListRef.current?.scrollToEnd({ animated: true });
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="arrow-down" size={24} color="white" />
+              </TouchableOpacity>
+            </Animated.View>*/}
+            
+            {/* Message input */}
             <MessageInput
               ref={inputRef}
               onSend={handleSendMessage}
               replyingTo={replyingTo}
               onReplyCancel={() => setReplyingTo(null)}
-              loading={imageUploading}            
+              loading={imageUploading}
+              profile={profile}
               hasEncryptionKey={hasEncryptionKey}
               onEncryptionInfoPress={() => setShowEncryptionInfo(true)}
             />
+
+            {/* Modals */}
+            <ImagePreview
+              visible={!!selectedImage}
+              imageUrl={selectedImage || ''}
+              onClose={() => setSelectedImage(null)}
+            />
+
+            {showEncryptionInfo && (
+              <React.Suspense fallback={<View />}>
+                <EncryptionInfoModal
+                  visible={showEncryptionInfo}
+                  onClose={() => setShowEncryptionInfo(false)}
+                  groopId={currentGroop?.id}
+                />
+              </React.Suspense>
+            )}
           </View>
-
-          {/* Image preview modal */}
-          <ImagePreview
-            visible={!!selectedImage}
-            imageUrl={selectedImage || ''}
-            onClose={() => setSelectedImage(null)}
-          />
-
-          {/* Encryption info modal */}
-          {showEncryptionInfo && (
-            <React.Suspense fallback={<View />}>
-              <EncryptionInfoModal
-                visible={showEncryptionInfo}
-                onClose={() => setShowEncryptionInfo(false)}
-                groopId={currentGroop?.id}
-              />
-            </React.Suspense>
-          )}
-        </View>
-      </GestureDetector>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

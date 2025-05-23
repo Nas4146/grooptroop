@@ -159,20 +159,20 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
     
     return (
       <AnimatedReplyContainer 
-        style={tw`flex-row bg-gray-100 px-3 py-2 rounded-t-lg`}
+        style={tw`flex-row bg-gray-50 px-4 py-3 mx-3 mt-2 rounded-t-xl border-l-4 border-violet-500`} // Better styling
         entering={FadeIn.duration(200)}
         exiting={FadeOut.duration(200)}
       >
-        <View style={tw`flex-1 border-l-2 border-primary pl-2`}>
-          <Text style={tw`text-xs font-bold text-gray-700`} numberOfLines={1}>
-            {replyingTo.senderName}
+        <View style={tw`flex-1`}>
+          <Text style={tw`text-xs font-semibold text-violet-600 mb-1`} numberOfLines={1}>
+            Replying to {replyingTo.senderName}
           </Text>
-          <Text style={tw`text-xs text-gray-600`} numberOfLines={1}>
+          <Text style={tw`text-sm text-gray-600`} numberOfLines={2}>
             {replyingTo.text}
           </Text>
         </View>
-        <TouchableOpacity onPress={handleReplyCancel} style={tw`justify-center px-1`}>
-          <Ionicons name="close-circle" size={18} color="#666" />
+        <TouchableOpacity onPress={handleReplyCancel} style={tw`justify-center px-2`}>
+          <Ionicons name="close-circle" size={20} color="#6B7280" />
         </TouchableOpacity>
       </AnimatedReplyContainer>
     );
@@ -184,21 +184,26 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
     
     return (
       <AnimatedReplyContainer 
-        style={tw`bg-gray-100 p-2 ${replyingTo ? 'rounded-none' : 'rounded-t-lg'}`}
+        style={tw`bg-gray-50 p-3 mx-3 ${replyingTo ? 'rounded-none' : 'mt-2 rounded-t-xl'}`}
         entering={FadeIn.duration(200)}
         exiting={FadeOut.duration(200)}
       >
         <View style={tw`flex-row items-center`}>
           <Image 
             source={{ uri: selectedImage }} 
-            style={tw`w-16 h-16 rounded-md`} 
+            style={tw`w-20 h-20 rounded-xl`} // Larger and more rounded
             resizeMode="cover"
           />
-          <Text style={tw`flex-1 text-xs text-gray-600 ml-2`} numberOfLines={1}>
-            Image attached
-          </Text>
-          <TouchableOpacity onPress={() => setSelectedImage(null)} style={tw`justify-center px-1`}>
-            <Ionicons name="close-circle" size={18} color="#666" />
+          <View style={tw`flex-1 ml-3`}>
+            <Text style={tw`text-sm font-medium text-gray-800 mb-1`}>
+              Image ready to send
+            </Text>
+            <Text style={tw`text-xs text-gray-500`}>
+              Tap send to share this image
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => setSelectedImage(null)} style={tw`justify-center px-2`}>
+            <Ionicons name="close-circle" size={20} color="#6B7280" />
           </TouchableOpacity>
         </View>
       </AnimatedReplyContainer>
@@ -304,7 +309,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     width: '100%',
     paddingBottom: 0,
-    paddingTop: 0
+    paddingTop: 0,
+    marginBottom: 0,
   },
   disabledContainer: {
     opacity: 0.8
@@ -312,10 +318,11 @@ const styles = StyleSheet.create({
   inputBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: 'white',
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
   },
   inputBarWithTopContent: {
     borderTopLeftRadius: 0,
@@ -324,30 +331,36 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flex: 1,
     backgroundColor: '#F3F4F6',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    marginHorizontal: 8
+    borderRadius: 25,
+    paddingHorizontal: 16,
+    marginHorizontal: 8,
+    minHeight: 50,
+    justifyContent: 'center',
   },
   input: {
     fontSize: 16,
-    paddingTop: Platform.OS === 'ios' ? 8 : 0,
-    paddingBottom: Platform.OS === 'ios' ? 8 : 0,
-    maxHeight: 100, // Limit max height
-    color: '#1F2937'
+    paddingTop: Platform.OS === 'ios' ? 12 : 8,
+    paddingBottom: Platform.OS === 'ios' ? 12 : 8,
+    maxHeight: 100,
+    color: '#1F2937',
+    textAlignVertical: 'center',
   },
   disabledInput: {
     color: '#6B7280'
   },
   iconButton: {
-    padding: 8,
-    borderRadius: 20
+    padding: 10,
+    borderRadius: 25,
+    backgroundColor: '#F9FAFB',
+    marginHorizontal: 2,
   },
   sendButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
+    marginLeft: 8,
   },
   sendButtonEnabled: {
     backgroundColor: '#7C3AED' // violet-600
@@ -355,14 +368,6 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     backgroundColor: '#C4B5FD' // violet-300
   },
-  keyboardDismiss: {
-    paddingVertical: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'white',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderColor: '#E5E7EB'
-  }
 });
 
 MessageInput.displayName = 'MessageInput';

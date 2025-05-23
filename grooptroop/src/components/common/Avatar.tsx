@@ -71,7 +71,7 @@ const Avatar: React.FC<AvatarProps> = ({
   imageStyle
 }) => {
   // Debug log to see what props are being passed - only in development
-  logger.avatar(`Rendering avatar for ${displayName || 'unknown'}, type: ${avatar?.type || 'none'}`);
+  logger.debug(`[AVATAR] Rendering avatar for ${displayName || 'unknown'}, type: ${avatar?.type || 'none'}`);
   
   // Add state for tracking image loading errors
   const [hasImageError, setHasImageError] = useState(false);
