@@ -95,7 +95,9 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     sendMessage, 
     addReaction, 
     refreshMessages,
-    pendingOperations
+    pendingOperations,
+    firstUnreadMessageId,      // Add this
+    lastReadTimestamp         // Add this
   } = useChatMessages(currentGroop?.id);
 
   // Start performance monitoring when the chat screen loads
@@ -399,6 +401,8 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
                 onReactionPress={handleReactionPress}
                 onReplyPress={handleReplyPress}
                 openImagePreview={handleOpenImagePreview}
+                firstUnreadMessageId={firstUnreadMessageId}    // Add this
+                shouldScrollToBottom={!firstUnreadMessageId}   // Add this
               />
             </View>
             

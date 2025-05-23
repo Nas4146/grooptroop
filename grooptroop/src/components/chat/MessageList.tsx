@@ -1,4 +1,4 @@
-import React, { forwardRef, useCallback, useImperativeHandle, useRef, memo, useEffect } from 'react';
+import React, { forwardRef, useCallback, useImperativeHandle, useRef, memo, useEffect, useState } from 'react';
 import { 
   View, 
   ActivityIndicator, 
@@ -14,7 +14,7 @@ import { ChatItem, ChatMessage } from '../../models/chat';
 import MessageBubble from './MessageBubble';
 import DateSeparator from './DateSeparator';
 import tw from '../../utils/tw';
-import { useChatPerformance } from '../../hooks/useChatPerformance';
+import logger from '../../utils/logger';
 
 // Optimize draw distance
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -31,7 +31,9 @@ interface MessageListProps {
   onRefresh: () => void;
   onReactionPress: (messageId: string, emoji: string) => void;
   onReplyPress: (message: ChatMessage) => void;
-  openImagePreview?: (imageUrl: string) => void; // Add this line
+  openImagePreview?: (imageUrl: string) => void;
+  firstUnreadMessageId?: string | null;    // Add this
+  shouldScrollToBottom?: boolean;          // Add this
 }
 
 export interface MessageListRef {
@@ -79,27 +81,60 @@ const areEqual = (prevProps: MessageListProps, nextProps: MessageListProps) => {
 const MessageList = React.forwardRef<FlashListRef<ChatItem>, MessageListProps>(
   (props, ref) => {
     const { profile } = useAuth();
+    const [hasInitiallyScrolled, setHasInitiallyScrolled] = useState(false);
+    
     console.log('🔍 MessageList rendering with FlashList - Messages:', props.messages?.length || 0);
     
-    // Safety checks
-    if (!props.messages) {
-      console.warn('⚠️ MessageList received undefined messages');
-      return (
-        <View style={tw`flex-1 justify-center items-center`}>
-          <Text>No messages data available</Text>
-        </View>
-      );
-    }
-
     // Create FlashList ref
     const flashListRef = useRef<FlashList<ChatItem>>(null);
     
+    // Update the imperative handle:
     useImperativeHandle(ref, () => ({
       scrollToEnd: (params?: { animated?: boolean }) => {
         console.log('🔍 MessageList scrollToEnd called');
-        flashListRef.current?.scrollToEnd(params);
+        // For normal list, scrollToEnd means scroll to the actual end (newest messages)
+        flashListRef.current?.scrollToEnd({ 
+          animated: params?.animated ?? true 
+        });
       },
     }));
+
+    // Handle initial scroll position
+    useEffect(() => {
+      if (!props.loading && !hasInitiallyScrolled && props.messages.length > 0) {
+        setHasInitiallyScrolled(true);
+        
+        // Small delay to ensure FlashList is fully rendered
+        setTimeout(() => {
+          if (props.firstUnreadMessageId) {
+            // Find the index of the first unread message
+            const unreadIndex = props.messages.findIndex(item => {
+              return !('type' in item) && (item as ChatMessage).id === props.firstUnreadMessageId;
+            });
+            
+            if (unreadIndex !== -1) {
+              logger.chat(`Scrolling to first unread message at index ${unreadIndex}`);
+              // For normal list, use the actual index
+              flashListRef.current?.scrollToIndex({
+                index: unreadIndex,
+                animated: false,
+                viewPosition: 0.1 // Show unread message near top
+              });
+              return;
+            }
+          }
+          
+          // No unread messages, scroll to bottom (newest messages)
+          logger.chat('Scrolling to newest messages (bottom)');
+          flashListRef.current?.scrollToEnd({ animated: false });
+        }, 100);
+      }
+    }, [props.loading, props.messages.length, props.firstUnreadMessageId, hasInitiallyScrolled]);
+
+    // Reset scroll flag when messages change significantly
+    useEffect(() => {
+      setHasInitiallyScrolled(false);
+    }, [props.firstUnreadMessageId]);
 
     // MINIMAL renderItem to test FlashList without complex children
     const renderItem = useCallback(({ item, index }: { item: ChatItem; index: number }) => {
@@ -143,6 +178,8 @@ const MessageList = React.forwardRef<FlashListRef<ChatItem>, MessageListProps>(
 
     console.log('🔍 About to render FlashList with', props.messages.length, 'items');
 
+    // Update the FlashList configuration:
+
     return (
       <View style={tw`flex-1`}>
         <FlashList
@@ -157,17 +194,34 @@ const MessageList = React.forwardRef<FlashListRef<ChatItem>, MessageListProps>(
             }
             return (item as ChatMessage).id || `msg-${index}`;
           }}
-          onEndReached={props.onEndReached}
-          onEndReachedThreshold={0.1}
+          // REMOVE: inverted={true}
+          // Keep normal order: oldest at top, newest at bottom
+          
+          // Load older messages when scrolling to TOP (start of list)
+          onStartReached={() => {
+            if (props.hasMoreMessages && !props.loadingOlderMessages) {
+              console.log('🔍 Loading older messages from scrolling to top');
+              props.onEndReached(); // This loads older messages
+            }
+          }}
+          onStartReachedThreshold={0.1}
+          
+          // Don't trigger onEndReached for bottom scroll
+          onEndReached={undefined}
+          onEndReachedThreshold={0}
+          
           onScroll={props.onScroll}
           refreshing={props.refreshing}
           onRefresh={props.onRefresh}
+          
           ListEmptyComponent={() => (
             <View style={tw`flex-1 justify-center items-center p-4`}>
               <Text style={tw`text-gray-500`}>No messages yet</Text>
             </View>
           )}
-          ListFooterComponent={() => {
+          
+          // Move loading indicator to header (top of list = older messages)
+          ListHeaderComponent={() => {
             if (props.loadingOlderMessages) {
               return (
                 <View style={tw`p-4 items-center`}>
