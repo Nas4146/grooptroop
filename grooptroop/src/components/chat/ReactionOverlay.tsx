@@ -182,71 +182,65 @@ const styles = StyleSheet.create({
     right: 20, // Keep some margin from right edge
   },
   overlay: {
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 12,
+    // REMOVED: All shadow properties
+    // Using background color for depth instead
   },
   glassContainer: {
-    borderRadius: 20, // Slightly smaller radius
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.98)', // Slightly more opaque
+    borderWidth: 2, // Increased border width for definition
+    borderColor: 'rgba(99, 102, 241, 0.2)', // Colored border instead of shadow
     overflow: 'hidden',
-    minWidth: 260, // Reduced width
+    minWidth: 260,
     maxWidth: 280,
-    // Glass effect shadow
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
+    // REMOVED: All shadow properties
   },
   innerContainer: {
-    padding: 12, // Reduced padding
+    padding: 12,
+    backgroundColor: 'transparent', // Ensure solid background
   },
   emojisContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingVertical: 4, // Reduced vertical padding
-    marginBottom: 0, // Removed bottom margin
+    paddingVertical: 4,
+    marginBottom: 0,
+    backgroundColor: 'transparent', // Solid background
   },
   emojiButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: 38, // Slightly smaller
+    width: 38,
     height: 38,
   },
   emojiGlow: {
-    width: 34, // Slightly smaller
+    width: 34,
     height: 34,
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1, // Border instead of shadow
+    borderColor: 'rgba(99, 102, 241, 0.1)',
+    // REMOVED: All shadow properties
   },
   emoji: {
-    fontSize: 18, // Slightly smaller emoji
+    fontSize: 18,
   },
   divider: {
     height: 1,
-    backgroundColor: 'rgba(156, 163, 175, 0.2)',
-    marginVertical: 8, // Reduced margin
+    backgroundColor: 'rgba(99, 102, 241, 0.2)', // More visible divider
+    marginVertical: 8,
     marginHorizontal: 8,
   },
   replyButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10, // Reduced padding
+    paddingVertical: 10,
     paddingHorizontal: 16,
-    borderRadius: 14, // Smaller radius
-    backgroundColor: 'rgba(99, 102, 241, 0.08)',
+    borderRadius: 14,
+    backgroundColor: 'rgba(99, 102, 241, 0.1)', // Slightly more visible
+    borderWidth: 1, // Border for definition
+    borderColor: 'rgba(99, 102, 241, 0.2)',
   },
   replyText: {
     fontSize: 15,

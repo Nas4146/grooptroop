@@ -365,7 +365,7 @@ export class ChatService {
   }
   
   /**
-   * Add a reaction to a message
+   * Add a reaction to a message (one reaction per user, toggle same emoji)
    */
   static async addReaction(groopId: string, messageId: string, emoji: string, userId: string): Promise<void> {
     try {
@@ -379,18 +379,37 @@ export class ChatService {
       }
       
       const data = messageDoc.data();
-      const reactions = data.reactions || {};
+      const reactions = { ...data.reactions } || {};
       
-      // Check if the user already reacted with this emoji
-      if (!reactions[emoji]) {
-        reactions[emoji] = [userId];
-      } else if (!reactions[emoji].includes(userId)) {
-        reactions[emoji] = [...reactions[emoji], userId];
-      } else {
-        // User is removing their reaction
+      // Check if user already has this exact emoji reaction
+      const hasThisEmoji = reactions[emoji]?.includes(userId);
+      
+      if (hasThisEmoji) {
+        // User clicked same emoji - REMOVE it entirely
         reactions[emoji] = reactions[emoji].filter(id => id !== userId);
         if (reactions[emoji].length === 0) {
           delete reactions[emoji];
+        }
+        logger.chat(`Removed user's reaction: ${emoji}`);
+      } else {
+        // Remove user from ALL other existing reactions first (one reaction per user)
+        Object.keys(reactions).forEach(existingEmoji => {
+          if (existingEmoji !== emoji && reactions[existingEmoji] && reactions[existingEmoji].includes(userId)) {
+            reactions[existingEmoji] = reactions[existingEmoji].filter(id => id !== userId);
+            if (reactions[existingEmoji].length === 0) {
+              delete reactions[existingEmoji];
+            }
+            logger.chat(`Removed user from existing reaction: ${existingEmoji}`);
+          }
+        });
+        
+        // Add the new reaction
+        if (!reactions[emoji]) {
+          reactions[emoji] = [userId];
+          logger.chat(`Added new reaction: ${emoji}`);
+        } else {
+          reactions[emoji] = [...reactions[emoji], userId];
+          logger.chat(`Added user to existing reaction: ${emoji}`);
         }
       }
       

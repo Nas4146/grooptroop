@@ -307,19 +307,20 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     
     if (addReaction && profile?.uid) {
       console.log(`[CHAT_SCREEN] Calling addReaction with userId: ${profile.uid}`);
+      console.log(`[CHAT_SCREEN] This will either add ${emoji} or remove it if user already reacted with ${emoji}`);
       
       // Track performance of reaction operation
       const reactionStartTime = performance.now();
       
-      // Add the reaction
+      // Add/remove the reaction
       addReaction(messageId, emoji, profile.uid);
       
       const reactionTime = performance.now() - reactionStartTime;
-      ChatPerformanceMonitor.trackRenderTime('ReactionAdd', reactionTime);
+      ChatPerformanceMonitor.trackRenderTime('ReactionToggle', reactionTime);
       
-      console.log(`[CHAT_SCREEN] Reaction add completed in ${reactionTime.toFixed(1)}ms`);
+      console.log(`[CHAT_SCREEN] Reaction toggle completed in ${reactionTime.toFixed(1)}ms`);
     } else {
-      console.warn(`[CHAT_SCREEN] Cannot add reaction - missing dependencies:`, {
+      console.warn(`[CHAT_SCREEN] Cannot toggle reaction - missing dependencies:`, {
         hasAddReaction: !!addReaction,
         hasProfile: !!profile,
         hasUserId: !!profile?.uid

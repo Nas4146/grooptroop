@@ -30,7 +30,7 @@ const ReactionDisplay = ({
       }))
       .filter(item => item.count > 0)
       .sort((a, b) => {
-        // Sort by user reaction first, then by count
+        // FIXED: Sort user's reaction first, then by count
         if (a.hasReacted && !b.hasReacted) return -1;
         if (!a.hasReacted && b.hasReacted) return 1;
         return b.count - a.count;
