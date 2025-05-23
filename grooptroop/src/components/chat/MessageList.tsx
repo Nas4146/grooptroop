@@ -76,135 +76,112 @@ const areEqual = (prevProps: MessageListProps, nextProps: MessageListProps) => {
   return JSON.stringify(prevProps.messages) === JSON.stringify(nextProps.messages);
 };
 
-const MessageList = forwardRef<MessageListRef, MessageListProps>(({
-  messages,
-  loading,
-  refreshing,
-  hasMoreMessages,
-  loadingOlderMessages,
-  onEndReached,
-  onScroll,
-  onRefresh,
-  onReactionPress,
-  onReplyPress,
-  openImagePreview
-}, ref) => {
-  // Refs
-  const flashListRef = useRef<FlashList<ChatItem>>(null);
-  
-  // Auth context
-  const { profile } = useAuth();
-  const { trackRenderStart } = useChatPerformance(); // <-- Moved here
-  
-  // Set up the ref forwarding
-  useImperativeHandle(ref, () => ({
-    scrollToEnd: ({ animated } = { animated: true }) => {
-      flashListRef.current?.scrollToEnd({ animated });
-    }
-  }));
-  
-  // Track render performance
-  useEffect(() => {
-    const finishTracking = trackRenderStart('MessageList');
-    return finishTracking;
-  }, [messages]); // Track re-renders when messages change
-  
-  // Render item based on type
-  const renderItem = useCallback(({ item }: { item: ChatItem }) => {
-    // Date separator
-    if ('type' in item && item.type === 'dateSeparator') {
-      return <DateSeparator date={item.date} />;
-    }
+const MessageList = React.forwardRef<FlashListRef<ChatItem>, MessageListProps>(
+  (props, ref) => {
+    const { profile } = useAuth();
+    console.log('🔍 MessageList rendering with FlashList - Messages:', props.messages?.length || 0);
     
-    // Regular message
-    const message = item as ChatMessage;
-    const isFromCurrentUser = message.senderId === profile?.uid;
-    
-    return (
-      <MessageBubble 
-        message={message}
-        isFromCurrentUser={isFromCurrentUser}
-        onReactionPress={onReactionPress}
-        onReplyPress={onReplyPress}
-        openImagePreview={openImagePreview} // Make sure this is passed
-        currentUserId={profile?.uid || ''}
-      />
-    );
-  }, [profile?.uid, onReactionPress, onReplyPress, openImagePreview]); // Add to deps array
-  
-  // Key extractor for optimized list rendering
-  const keyExtractor = useCallback((item: ChatItem) => item.id, []);
-  
-  // Header component for when loading older messages or no more messages
-  const ListHeaderComponent = useCallback(() => {
-    if (loadingOlderMessages) {
+    // Safety checks
+    if (!props.messages) {
+      console.warn('⚠️ MessageList received undefined messages');
       return (
-        <View style={tw`py-4 justify-center items-center`}>
-          <ActivityIndicator color="#7C3AED" />
+        <View style={tw`flex-1 justify-center items-center`}>
+          <Text>No messages data available</Text>
         </View>
       );
     }
+
+    // Create FlashList ref
+    const flashListRef = useRef<FlashList<ChatItem>>(null);
     
-    if (!hasMoreMessages && messages.length > 0) {
+    useImperativeHandle(ref, () => ({
+      scrollToEnd: (params?: { animated?: boolean }) => {
+        console.log('🔍 MessageList scrollToEnd called');
+        flashListRef.current?.scrollToEnd(params);
+      },
+    }));
+
+    // MINIMAL renderItem to test FlashList without complex children
+    const renderItem = useCallback(({ item, index }: { item: ChatItem; index: number }) => {
+      // Safety check
+      if (!item) {
+        return (
+          <View style={tw`p-2 bg-red-100`}>
+            <Text style={tw`text-red-600`}>Invalid item at index {index}</Text>
+          </View>
+        );
+      }
+
+      // Render DateSeparator
+      if ('type' in item && item.type === 'dateSeparator') {
+        return <DateSeparator date={item.date} />;
+      }
+
+      // Render MessageBubble
+      const message = item as ChatMessage;
+      const isFromCurrentUser = message.senderId === profile?.uid;
+      
+      if (!message.id || !message.senderId) {
+        return (
+          <View style={tw`p-2 bg-red-100`}>
+            <Text style={tw`text-red-600`}>Invalid message data</Text>
+          </View>
+        );
+      }
+
       return (
-        <View style={tw`py-4 justify-center items-center`}>
-          <Text style={tw`text-gray-400 text-sm`}>
-            Start of conversation
-          </Text>
-        </View>
+        <MessageBubble 
+          message={message}
+          isFromCurrentUser={isFromCurrentUser}
+          onReactionPress={props.onReactionPress}
+          onReplyPress={props.onReplyPress}
+          openImagePreview={props.openImagePreview}
+          currentUserId={profile?.uid || ''}
+        />
       );
-    }
-    
-    return null;
-  }, [loadingOlderMessages, hasMoreMessages, messages.length]);
-  
-  // Empty component when no messages
-  const ListEmptyComponent = useCallback(() => {
-    if (loading) return null;
-    
+    }, [profile?.uid, props.onReactionPress, props.onReplyPress, props.openImagePreview]);
+
+    console.log('🔍 About to render FlashList with', props.messages.length, 'items');
+
     return (
-      <View style={tw`flex-1 justify-center items-center p-6 opacity-60`}>
-        <Text style={tw`text-gray-500 text-center mb-4 text-lg font-medium`}>
-          No messages yet
-        </Text>
-        <Text style={tw`text-gray-400 text-center mb-6`}>
-          Start the conversation by sending a message below
-        </Text>
+      <View style={tw`flex-1`}>
+        <FlashList
+          ref={flashListRef}
+          data={props.messages}
+          renderItem={renderItem}
+          estimatedItemSize={50}
+          contentContainerStyle={tw`p-2`}
+          keyExtractor={(item, index) => {
+            if ('type' in item && item.type === 'dateSeparator') {
+              return `date-${item.id || index}`;
+            }
+            return (item as ChatMessage).id || `msg-${index}`;
+          }}
+          onEndReached={props.onEndReached}
+          onEndReachedThreshold={0.1}
+          onScroll={props.onScroll}
+          refreshing={props.refreshing}
+          onRefresh={props.onRefresh}
+          ListEmptyComponent={() => (
+            <View style={tw`flex-1 justify-center items-center p-4`}>
+              <Text style={tw`text-gray-500`}>No messages yet</Text>
+            </View>
+          )}
+          ListFooterComponent={() => {
+            if (props.loadingOlderMessages) {
+              return (
+                <View style={tw`p-4 items-center`}>
+                  <ActivityIndicator size="small" color="#7C3AED" />
+                  <Text style={tw`text-xs text-gray-500 mt-2`}>Loading older messages...</Text>
+                </View>
+              );
+            }
+            return null;
+          }}
+        />
       </View>
     );
-  }, [loading]);
-  
-  return (
-    <View style={[tw`flex-1`, { minHeight: 50 }]}> {/* Add minHeight */}
-      <FlashList
-        ref={flashListRef}
-        data={messages}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        estimatedItemSize={120}
-        contentContainerStyle={tw`px-4 pt-4 pb-16`}
-        onRefresh={onRefresh}
-        refreshing={refreshing}
-        ListHeaderComponent={ListHeaderComponent}
-        ListEmptyComponent={ListEmptyComponent}
-        onScroll={onScroll}
-        scrollEventThrottle={16}
-        onEndReached={onEndReached}
-        onEndReachedThreshold={0.2}
-        maintainVisibleContentPosition={{
-          minIndexForVisible: 0,
-          autoscrollToTopThreshold: null,
-        }}
-        drawDistance={OPTIMAL_DRAW_DISTANCE}
-        removeClippedSubviews={Platform.OS === 'android'}
-        disableAutoLayout={Platform.OS === 'ios' ? false : true}
-        keyboardDismissMode="interactive"
-      />
-    </View>
-  );
-});
+  }
+);
 
-MessageList.displayName = 'MessageList';
-
-// Replace export default with:
 export default memo(MessageList, areEqual);

@@ -10,17 +10,21 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../navigation/types';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureDetector, Gesture, TouchableWithoutFeedback } from 'react-native-gesture-handler';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 
 // Components and hooks
 import MessageList from '../components/chat/MessageList';
 import MessageInput, { MessageInputRef } from '../components/chat/MessageInput';
 import ImagePreview from '../components/chat/ImagePreview';
+import EncryptionInfoModal from '../components/chat/EncryptionInfoModal'; // Add this import
 import useKeyboardController from '../hooks/useKeyboardController';
 import { useGroop } from '../contexts/GroopProvider';
 import { useAuth } from '../contexts/AuthProvider';
@@ -30,7 +34,7 @@ import logger from '../utils/logger';
 import { performanceLogger } from '../utils/performanceLogger';
 
 // Services
-import { useChatMessages }from '../hooks/useChatMessages';
+import { useChatMessages } from '../hooks/useChatMessages';
 import { EncryptionService } from '../services/EncryptionService';
 import ImageUploadService from '../services/imageUploadService';
 
@@ -38,14 +42,10 @@ import ImageUploadService from '../services/imageUploadService';
 import ChatPerformanceMonitor from '../utils/chatPerformanceMonitor';
 import ChatPerformanceOverlay from '../components/chat/ChatPerformanceOverlay';
 
-// Constants for performance optimization
-const SCREEN_HEIGHT = Dimensions.get('window').height;
-const OPTIMAL_DRAW_DISTANCE = Math.min(SCREEN_HEIGHT * 1.5, 280);
-const INPUT_HEIGHT = 60;
+// Define the screen props type using NativeStackScreenProps
+type ChatScreenProps = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 
-const EncryptionInfoModal = React.lazy(() => import('../components/chat/EncryptionInfoModal'));
-
-export default function ChatScreen({ navigation, route }) {
+export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   // Performance monitoring
   const renderStartTime = useRef(performance.now());
   const [showPerformanceOverlay, setShowPerformanceOverlay] = useState(__DEV__);
@@ -150,13 +150,13 @@ export default function ChatScreen({ navigation, route }) {
     const checkEncryption = async () => {
       setEncryptionLoading(true);
       try {
-        // Safe check if hasGroupKey exists
-        if (typeof EncryptionService.hasGroupKey === 'function') {
-          const hasKey = await EncryptionService.hasGroupKey(currentGroop.id);
+        // Fix the method name from hasGroupKey to hasGroopKey
+        if (typeof EncryptionService.hasGroopKey === 'function') {
+          const hasKey = await EncryptionService.hasGroopKey(currentGroop.id);
           setHasEncryptionKey(hasKey);
         } else {
           // Fallback if the function doesn't exist
-          console.log('[CHAT] EncryptionService.hasGroupKey is not available, assuming encryption is not set up');
+          console.log('[CHAT] EncryptionService.hasGroopKey is not available, assuming encryption is not set up');
           setHasEncryptionKey(false);
         }
       } catch (error) {
@@ -198,8 +198,8 @@ export default function ChatScreen({ navigation, route }) {
       // Update the lastRead timestamp for this user in the groop
       const groopRef = doc(db, 'groops', currentGroop.id);
       
-      // Use dot notation for nested field update
-      const updateData = {};
+      // Define the type of updateData with an index signature
+      const updateData: { [key: string]: any } = {};
       updateData[`lastRead.${profile.uid}`] = serverTimestamp();
       
       await updateDoc(groopRef, updateData);
@@ -211,7 +211,7 @@ export default function ChatScreen({ navigation, route }) {
   }, [currentGroop?.id, profile?.uid]);
 
   // Handle scroll events
-  const handleScroll = useCallback((event) => {
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
     const y = contentOffset.y;
     
@@ -314,16 +314,17 @@ export default function ChatScreen({ navigation, route }) {
 
   // Handle reaction press
   const handleReactionPress = useCallback((messageId: string, emoji: string) => {
-    if (addReaction) {
+    if (addReaction && profile?.uid) {
       // Track performance of reaction operation
       const reactionStartTime = performance.now();
       
-      addReaction(messageId, emoji);
+      // Add the missing userId parameter (profile.uid)
+      addReaction(messageId, emoji, profile.uid);
       
       const reactionTime = performance.now() - reactionStartTime;
       ChatPerformanceMonitor.trackRenderTime('ReactionAdd', reactionTime);
     }
-  }, [addReaction]);
+  }, [addReaction, profile?.uid]); // Add profile?.uid to the dependencies array
 
   // Handle reply press
   const handleReplyPress = useCallback((message: any) => {
@@ -377,12 +378,43 @@ export default function ChatScreen({ navigation, route }) {
     }
   });
 
+  // Log MessageList props for debugging
+  useEffect(() => {
+    console.log('MessageList props:', { 
+      messageCount: messages.length,
+      loading,
+      refreshing,
+      hasMoreMessages 
+    });
+  }, [messages, loading, refreshing, hasMoreMessages]);
+
+  // Add this debugging in ChatScreen before rendering MessageList
+  useEffect(() => {
+    console.log('Messages data validation:');
+    messages.forEach((msg, index) => {
+      if ('type' in msg) {
+        console.log(`Message ${index}: DateSeparator - ${msg.date}`);
+      } else {
+        console.log(`Message ${index}: Regular message - ${msg.id} - Text: "${msg.text?.substring(0, 50)}"`);
+        if (!msg.text || typeof msg.text !== 'string') {
+          console.warn(`Message ${index} has invalid text:`, msg.text);
+        }
+      }
+    });
+  }, [messages]);
+
+  // Add this useEffect near your other debugging useEffects
+  useEffect(() => {
+    console.log('About to render MessageList with', messages.length, 'messages');
+  }, [messages.length]);
+
   return (
     <SafeAreaView style={tw`flex-1 bg-white`}>
       <GestureDetector gesture={tap}>
         <View style={tw`flex-1 relative`}>
-          {/* MessageList needs a container with explicit flex-1 */}
-          <View style={tw`flex-1 pb-16`}> {/* Added pb-16 for bottom padding */}
+          {/* Content wrapper to ensure proper layout */}
+          <View style={tw`flex-1 pb-16`}>
+            {/* Restore MessageList */}
             <MessageList
               ref={messageListRef}
               messages={messages}
@@ -404,14 +436,7 @@ export default function ChatScreen({ navigation, route }) {
             <TouchableOpacity 
               style={tw`bg-violet-500 p-3 shadow-md rounded-full`}
               onPress={() => {
-                const scrollStartTime = performance.now();
                 messageListRef.current?.scrollToEnd({ animated: true });
-                
-                // Track scroll to end performance
-                setTimeout(() => {
-                  const scrollTime = performance.now() - scrollStartTime;
-                  ChatPerformanceMonitor.trackRenderTime('ScrollToEnd', scrollTime);
-                }, 300);
               }}
               activeOpacity={0.7}
             >
@@ -419,29 +444,21 @@ export default function ChatScreen({ navigation, route }) {
             </TouchableOpacity>
           </Animated.View>
           
-          {/* Message input now at the bottom with fixed positioning */}
-          <Animated.View style={[
-            { 
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: 'white', 
-              borderTopWidth: 1,
-              borderTopColor: '#E5E7EB',
-              zIndex: 10
-            }
+          {/* Message input */}
+          <View style={[
+            tw`absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200`,
+            Platform.OS === 'ios' ? { paddingBottom: insets.bottom } : {}
           ]}>
             <MessageInput
               ref={inputRef}
               onSend={handleSendMessage}
               replyingTo={replyingTo}
-              onCancelReply={() => setReplyingTo(null)}
-              uploadingImage={imageUploading}
+              onReplyCancel={() => setReplyingTo(null)}
+              loading={imageUploading}            
               hasEncryptionKey={hasEncryptionKey}
               onEncryptionInfoPress={() => setShowEncryptionInfo(true)}
             />
-          </Animated.View>
+          </View>
 
           {/* Image preview modal */}
           <ImagePreview
@@ -451,15 +468,15 @@ export default function ChatScreen({ navigation, route }) {
           />
 
           {/* Encryption info modal */}
-          <React.Suspense fallback={<View />}>
-            {showEncryptionInfo && (
+          {showEncryptionInfo && (
+            <React.Suspense fallback={<View />}>
               <EncryptionInfoModal
                 visible={showEncryptionInfo}
                 onClose={() => setShowEncryptionInfo(false)}
                 groopId={currentGroop?.id}
               />
-            )}
-          </React.Suspense>
+            </React.Suspense>
+          )}
           
           {/* Performance overlay in dev mode */}
           {__DEV__ && showPerformanceOverlay && currentGroop?.id && (
@@ -470,12 +487,13 @@ export default function ChatScreen({ navigation, route }) {
             />
           )}
           
-          {/* Dev mode toggle for performance overlay */}
+          {/* Dev mode toggle for performance overlay - FIX HERE */}
           {__DEV__ && !showPerformanceOverlay && (
             <TouchableOpacity
               style={tw`absolute bottom-20 right-2 bg-gray-800 opacity-70 p-1 rounded-full z-50`}
               onPress={() => setShowPerformanceOverlay(true)}
             >
+              {/* Use Text component for the emoji */}
               <Text style={tw`text-white text-xs p-1`}>📊</Text>
             </TouchableOpacity>
           )}

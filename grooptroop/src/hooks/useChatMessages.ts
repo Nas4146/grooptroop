@@ -224,8 +224,8 @@ export function useChatMessages(groopId: string | undefined) {
         senderId: 'current-user', // Will be replaced by actual user ID in service
         senderName: 'You',
         createdAt: new Date(),
-        reactions: {},
-        read: [],
+        reactions: {}, // No need to freeze for optimistic messages
+        read: [], // Use mutable array without Object.freeze
         replyTo: replyTo?.id,
         replyToText: replyTo?.text,
         replyToSenderName: replyTo?.senderName,

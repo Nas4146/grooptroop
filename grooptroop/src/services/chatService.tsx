@@ -17,6 +17,7 @@ import {
 import { db } from '../lib/firebase';
 import { ChatMessage } from '../models/chat';
 import { EncryptionService } from './EncryptionService';
+import { UserAvatar } from '../contexts/AuthProvider'; // Add this import
 import logger from '../utils/logger';
 
 interface MessageData {
@@ -24,6 +25,12 @@ interface MessageData {
   replyTo?: { id: string; text: string; senderName: string };
   imageUrl?: string;
   senderAvatar?: any;
+}
+
+interface UserProfile {
+  uid: string;
+  displayName: string;
+  avatar?: UserAvatar; // Now this will be recognized
 }
 
 export class ChatService {
@@ -152,9 +159,9 @@ export class ChatService {
               senderName: data.senderName || 'User',
               senderAvatar: data.senderAvatar,
               createdAt,
-              // Freeze objects to ensure stable references
+              // Use a spread operator to create a new array without freezing
               reactions: Object.freeze({ ...data.reactions }) || Object.freeze({}),
-              read: Object.freeze([...data.read || []]),
+              read: [...(data.read || [])], // Remove Object.freeze here
               replyTo: data.replyTo,
               replyToSenderName: data.replyToSenderName,
               replyToText: data.replyToText,
@@ -295,7 +302,7 @@ export class ChatService {
             senderAvatar: data.senderAvatar,
             createdAt,
             reactions: Object.freeze({ ...data.reactions }) || Object.freeze({}),
-            read: Object.freeze([...data.read || []]),
+            read: [...(data.read || [])], // Remove Object.freeze here
             replyTo: data.replyTo,
             replyToSenderName: data.replyToSenderName,
             replyToText: data.replyToText,
@@ -553,12 +560,16 @@ export class ChatService {
   }
 
   // Helper methods for the service
-  private static async getCurrentUserProfile() {
+  private static async getCurrentUserProfile(): Promise<UserProfile> {
     // This would need to be implemented based on your auth system
     // For now we'll assume it comes from a global context or service
     
     // Placeholder: Get the user from AuthProvider
-    return { uid: 'current-user', displayName: 'Current User' };
+    return { 
+      uid: 'current-user', 
+      displayName: 'Current User',
+      avatar: undefined // Explicitly set as undefined
+    };
   }
   
   private static async getGroopEncryptionStatus(groopId: string) {

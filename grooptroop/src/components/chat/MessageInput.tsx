@@ -27,6 +27,8 @@ export interface MessageInputProps {
   profile?: any;
   keyboardHeight?: number;
   disabled?: boolean;
+  hasEncryptionKey?: boolean;
+  onEncryptionInfoPress?: () => void;
 }
 
 export interface MessageInputRef {
