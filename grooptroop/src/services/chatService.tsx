@@ -50,45 +50,43 @@ export class ChatService {
     lastSeenAt?: Date | null,
     initialLoad = true
   ): () => void {
-    // Create performance tracking
     const startTime = performance.now();
     
     try {
       const messagesRef = collection(db, `groops/${groopId}/messages`);
       let messagesQuery;
       
+      // FIXED: Always use the same query structure for consistent behavior
+      logger.chat(`Setting up message subscription - Initial: ${initialLoad}, LastSeen: ${lastSeenAt?.toISOString()}`);
+      
       if (initialLoad) {
         // Initial load query - get most recent messages
-        logger.chat(`Initial load: Getting most recent messages`);
         messagesQuery = query(
           messagesRef,
           orderBy('createdAt', 'desc'),
           limit(maxMessages)
         );
-      } else if (lastSeenAt) {
-        // Continuous updates query - only get messages newer than lastSeenAt
-        logger.chat(`Continuous updates: Using timestamp filter ${lastSeenAt.toISOString()}`);
+      } else {
+        // Continuous updates - get ALL messages (not just new ones)
+        // This ensures we have the full context
         messagesQuery = query(
           messagesRef,
-          orderBy('createdAt', 'asc'),
-          where('createdAt', '>', lastSeenAt)
+          orderBy('createdAt', 'desc'),
+          limit(maxMessages)
         );
-      } else {
-        logger.error('Invalid subscription parameters: missing lastSeenAt for continuous updates');
-        return () => {};
       }
       
       // Variables to track performance
       let totalDocumentCount = 0;
       let totalChangeCount = 0;
       let docChangeOperations = 0;
+      let isFirstLoad = true;
       
       // Set up the message map to track all messages
       const messagesMap = new Map<string, ChatMessage>();
       
       // Set up the subscription
       const unsubscribe = onSnapshot(messagesQuery, async (snapshot) => {
-        // Track the start time for this batch
         const batchStartTime = performance.now();
         
         // Get docChanges for more efficient updates
@@ -99,122 +97,68 @@ export class ChatService {
         totalChangeCount += docChanges.length;
         docChangeOperations += 1;
         
-        logger.chat(`Received ${docChanges.length} changes from Firestore (total docs: ${snapshot.docs.length})`);
+        // FIXED: Only process actual changes, not all documents
+        if (isFirstLoad) {
+          logger.chat(`Initial load: Processing ${snapshot.docs.length} messages`);
+          // Process all messages on first load
+          for (const doc of snapshot.docs) {
+            await this.processMessageDoc(doc, 'added', messagesMap, groopId);
+          }
+          isFirstLoad = false;
+        } else {
+          logger.chat(`Update: Processing ${docChanges.length} changes (not reloading all ${snapshot.docs.length} messages)`);
+          // Only process actual changes
+          for (const change of docChanges) {
+            await this.processMessageDoc(change.doc, change.type, messagesMap, groopId);
+          }
+        }
         
-        // Process messages with careful error handling
+        // Calculate processing time
+        const processingTime = performance.now() - batchStartTime;
+        
+        // Create changes object for callback
         const changes = {
           added: [] as ChatMessage[],
           modified: [] as ChatMessage[],
           removed: [] as string[]
         };
         
-        // Process each change incrementally
+        // Populate changes based on docChanges
         for (const change of docChanges) {
-          try {
-            const data = change.doc.data();
-            const messageId = change.doc.id;
-            
-            if (change.type === 'removed') {
-              changes.removed.push(messageId);
-              messagesMap.delete(messageId);
-              continue;
-            }
-            
-            // Convert createdAt to Date
-            let createdAt: Date;
-            if (data.createdAt) {
-              if (data.createdAt.toDate) {
-                createdAt = data.createdAt.toDate();
-              } else if (typeof data.createdAt === 'number') {
-                createdAt = new Date(data.createdAt);
-              } else {
-                createdAt = new Date();
-              }
-            } else {
-              createdAt = new Date();
-            }
-            
-            // Handle encrypted messages
-            let messageText = data.text || '';
-            let messageIsDecrypted = !data.isEncrypted;
-            
-            if (data.isEncrypted) {
-              try {
-                const decryptStartTime = performance.now();
-                const decryptedText = await EncryptionService.decryptMessage(messageText, groopId);
-                messageText = decryptedText || "[Encrypted message]";
-                messageIsDecrypted = !!decryptedText;
-                const decryptionTime = performance.now() - decryptStartTime;
-                logger.chat(`Decrypted message ${messageId.substring(0, 6)} in ${decryptionTime.toFixed(1)}ms - Success: ${messageIsDecrypted}`);
-              } catch (error) {
-                logger.error(`Error decrypting message ${messageId}:`, error);
-                messageText = "[Encrypted message]";
-                messageIsDecrypted = false;
+          const messageId = change.doc.id;
+          
+          if (change.type === 'removed') {
+            changes.removed.push(messageId);
+            messagesMap.delete(messageId);
+          } else {
+            const message = messagesMap.get(messageId);
+            if (message) {
+              if (change.type === 'added') {
+                changes.added.push(message);
+              } else if (change.type === 'modified') {
+                changes.modified.push(message);
               }
             }
-            
-            // Create a stable ChatMessage object to prevent unnecessary re-renders
-            const message: ChatMessage = {
-              id: messageId,
-              text: messageText,
-              senderId: data.senderId,
-              senderName: data.senderName || 'User',
-              senderAvatar: data.senderAvatar,
-              createdAt,
-              // Use a spread operator to create a new array without freezing
-              reactions: Object.freeze({ ...data.reactions }) || Object.freeze({}),
-              read: [...(data.read || [])], // Remove Object.freeze here
-              replyTo: data.replyTo,
-              replyToSenderName: data.replyToSenderName,
-              replyToText: data.replyToText,
-              imageUrl: data.imageUrl,
-              isEncrypted: data.isEncrypted || false,
-              isDecrypted: messageIsDecrypted
-            };
-            
-            // Add to the appropriate collection and update the messageMap
-            if (change.type === 'added') {
-              changes.added.push(message);
-              messagesMap.set(messageId, message);
-            } else if (change.type === 'modified') {
-              changes.modified.push(message);
-              messagesMap.set(messageId, message);
-            }
-          } catch (error) {
-            logger.error('Error processing message:', error);
           }
         }
         
-        // Calculate total processing time
-        const processingTime = performance.now() - batchStartTime;
-        const perChangeTime = processingTime / Math.max(1, docChanges.length);
-        const perMessageTime = processingTime / Math.max(1, snapshot.docs.length);
-        
         // Log performance metrics
-        logger.chat(`Delta update metrics for groop ${groopId}:`);
-        logger.chat(`- Processed ${docChanges.length} changes out of ${snapshot.docs.length} messages (${Math.round((1 - docChanges.length / snapshot.docs.length) * 100)}% reduction)`);
-        logger.chat(`- Processing time: ${processingTime.toFixed(0)}ms (${perChangeTime.toFixed(0)}ms per change, ${perMessageTime.toFixed(0)}ms per message)`);
+        if (isFirstLoad || docChanges.length > 0) {
+          logger.chat(`${isFirstLoad ? 'Initial load' : 'Delta update'} metrics:`);
+          logger.chat(`- Processed ${docChanges.length} changes out of ${snapshot.docs.length} total messages`);
+          logger.chat(`- Processing time: ${processingTime.toFixed(0)}ms`);
+        }
         
         // Create a sorted array of messages
         const messagesArray = Array.from(messagesMap.values());
         messagesArray.sort((a, b) => {
           const timeA = a.createdAt instanceof Date ? a.createdAt : new Date(0);
           const timeB = b.createdAt instanceof Date ? b.createdAt : new Date(0);
-          return timeA.getTime() - timeB.getTime(); // Ascending: oldest first, newest last
+          return timeA.getTime() - timeB.getTime();
         });
         
-        // Call the callback with chronologically sorted messages
+        // Call the callback
         callback(messagesArray, changes);
-        
-        // Log completion for initial load
-        if (initialLoad && docChangeOperations === 1) {
-          const newestMessage = messagesArray[messagesArray.length - 1];
-          const newestTimestamp = newestMessage?.createdAt instanceof Date ? 
-            newestMessage.createdAt : 
-            new Date((newestMessage?.createdAt as any).seconds * 1000);
-          
-          logger.chat(`Initial load complete. Newest message timestamp: ${newestTimestamp.toISOString()}`);
-        }
       }, error => {
         logger.error(`Error in message subscription for groop ${groopId}:`, error);
       });
@@ -659,6 +603,83 @@ export class ChatService {
       }
     } catch (error) {
       logger.error('Error sending notifications:', error);
+    }
+  }
+  
+  // Add this helper method to process individual message documents
+  private static async processMessageDoc(
+    doc: QueryDocumentSnapshot<DocumentData>, 
+    changeType: 'added' | 'modified' | 'removed',
+    messagesMap: Map<string, ChatMessage>,
+    groopId: string
+  ): Promise<void> {
+    try {
+      const data = doc.data();
+      const messageId = doc.id;
+      
+      if (changeType === 'removed') {
+        messagesMap.delete(messageId);
+        return;
+      }
+      
+      // Convert createdAt to Date
+      let createdAt: Date;
+      if (data.createdAt) {
+        if (data.createdAt.toDate) {
+          createdAt = data.createdAt.toDate();
+        } else if (typeof data.createdAt === 'number') {
+          createdAt = new Date(data.createdAt);
+        } else {
+          createdAt = new Date();
+        }
+      } else {
+        createdAt = new Date();
+      }
+      
+      // Handle encrypted messages
+      let messageText = data.text || '';
+      let messageIsDecrypted = !data.isEncrypted;
+      
+      if (data.isEncrypted) {
+        try {
+          const decryptStartTime = performance.now();
+          const decryptedText = await EncryptionService.decryptMessage(messageText, groopId);
+          messageText = decryptedText || "[Encrypted message]";
+          messageIsDecrypted = !!decryptedText;
+          const decryptionTime = performance.now() - decryptStartTime;
+          
+          if (changeType === 'added') {
+            logger.chat(`Decrypted new message ${messageId.substring(0, 6)} in ${decryptionTime.toFixed(1)}ms`);
+          }
+        } catch (error) {
+          logger.error(`Error decrypting message ${messageId}:`, error);
+          messageText = "[Encrypted message]";
+          messageIsDecrypted = false;
+        }
+      }
+      
+      // Create message object
+      const message: ChatMessage = {
+        id: messageId,
+        text: messageText,
+        senderId: data.senderId,
+        senderName: data.senderName || 'User',
+        senderAvatar: data.senderAvatar,
+        createdAt,
+        reactions: Object.freeze({ ...data.reactions }) || Object.freeze({}),
+        read: [...(data.read || [])],
+        replyTo: data.replyTo,
+        replyToSenderName: data.replyToSenderName,
+        replyToText: data.replyToText,
+        imageUrl: data.imageUrl,
+        isEncrypted: data.isEncrypted || false,
+        isDecrypted: messageIsDecrypted
+      };
+      
+      // Store in map
+      messagesMap.set(messageId, message);
+    } catch (error) {
+      logger.error('Error processing message document:', error);
     }
   }
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ChatMessage, ChatItem, MessageOperation } from '../models/chat';
+import { ChatMessage, ChatItem, MessageOperation, DateSeparator } from '../models/chat';
 import { ChatService } from '../services/chatService';
 import logger from '../utils/logger';
 import { startOfDay } from '../utils/dateUtils';
@@ -9,6 +9,44 @@ import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthProvider';
 
 const MESSAGES_PER_PAGE = 30;
+
+const deduplicateMessages = (messages: ChatMessage[]): ChatMessage[] => {
+  const seen = new Set<string>();
+  const deduplicated: ChatMessage[] = [];
+  
+  // Process messages in reverse order (newest first) to keep the latest version
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (!seen.has(msg.id)) {
+      seen.add(msg.id);
+      deduplicated.unshift(msg); // Add to beginning to maintain chronological order
+    }
+  }
+  
+  return deduplicated;
+};
+
+// Add this helper function at the top of the file, after imports:
+
+const convertToDate = (dateInput: Date | any): Date => {
+  if (dateInput instanceof Date) {
+    return dateInput;
+  }
+  
+  // Handle Firestore Timestamp
+  if (dateInput && typeof dateInput.seconds === 'number') {
+    return new Date(dateInput.seconds * 1000);
+  }
+  
+  // Handle other formats
+  if (typeof dateInput === 'string' || typeof dateInput === 'number') {
+    return new Date(dateInput);
+  }
+  
+  // Fallback to current date
+  console.warn('Unknown date format, using current date:', dateInput);
+  return new Date();
+};
 
 export function useChatMessages(groopId: string | undefined) {
   // Get auth context at the top level (this is the correct place)
@@ -71,7 +109,7 @@ export function useChatMessages(groopId: string | undefined) {
       try {
         logger.chat('Starting initial message load phase');
         
-        // Get current user's last read timestamp (profile is already available from hook call above)
+        // Get current user's last read timestamp
         let lastRead: Date | null = null;
         
         if (profile?.uid) {
@@ -80,54 +118,157 @@ export function useChatMessages(groopId: string | undefined) {
           logger.chat(`Last read timestamp: ${lastRead?.toISOString() || 'none'}`);
         }
         
+        // FIXED: Track if this is the first load vs subsequent updates
+        let isFirstLoad = true;
+        
         // Initial message subscription
         unsubscribeRef.current = ChatService.subscribeToMessages(
           groopId,
           (newMessages, changes) => {
-            logger.chat(`Initial load received ${newMessages.length} messages`);
-            
-            // Find first unread message if we have a lastRead timestamp
-            if (lastRead && profile?.uid) {
-              const firstUnread = newMessages.find(msg => {
-                const msgDate = msg.createdAt instanceof Date ? 
-                  msg.createdAt : 
-                  new Date((msg.createdAt as any).seconds * 1000);
-                
-                return msgDate > lastRead && msg.senderId !== profile.uid;
-              });
+            if (isFirstLoad) {
+              logger.chat(`Initial load received ${newMessages.length} messages`);
+              isFirstLoad = false;
               
-              if (firstUnread) {
-                setFirstUnreadMessageId(firstUnread.id);
-                logger.chat(`Found first unread message: ${firstUnread.id}`);
-              } else {
-                setFirstUnreadMessageId(null);
-                logger.chat('No unread messages found');
+              // Find first unread message if we have a lastRead timestamp
+              if (lastRead && profile?.uid) {
+                const firstUnread = newMessages.find(msg => {
+                  const msgDate = msg.createdAt instanceof Date ? 
+                    msg.createdAt : 
+                    new Date((msg.createdAt as any).seconds * 1000);
+                
+                  return msgDate > lastRead && msg.senderId !== profile.uid;
+                });
+              
+                if (firstUnread) {
+                  setFirstUnreadMessageId(firstUnread.id);
+                  logger.chat(`Found first unread message: ${firstUnread.id}`);
+                } else {
+                  setFirstUnreadMessageId(null);
+                  logger.chat('No unread messages found');
+                }
+              }
+            
+              // Ensure messages are sorted chronologically (oldest first)
+              const sortedMessages = [...newMessages].sort((a, b) => {
+                const dateA = convertToDate(a.createdAt);
+                const dateB = convertToDate(b.createdAt);                return dateA.getTime() - dateB.getTime();
+              });
+            
+              setMessages(sortedMessages);
+            
+              // Update oldest message for pagination
+              if (sortedMessages.length > 0) {
+                const oldest = sortedMessages[0];
+                const oldestDate = oldest.createdAt instanceof Date ? 
+                  oldest.createdAt : 
+                  new Date((oldest.createdAt as any).seconds * 1000);
+              
+                oldestMessageTimestamp.current = oldestDate;
+                logger.chat(`Setting oldestMessageTimestamp to ${oldestDate.toISOString()}`);
+              }
+            
+              setLoading(false);
+            } else {
+              // FIXED: Handle incremental updates without full reload
+              logger.chat(`Delta update: ${changes?.added?.length || 0} added, ${changes?.modified?.length || 0} modified, ${changes?.removed?.length || 0} removed`);
+              
+              if (changes) {
+                setMessages(prevMessages => {
+                  // Create a stable map from current messages
+                  const messageMap = new Map(prevMessages.map(msg => [msg.id, msg]));
+                  
+                  // FIXED: Only remove messages that are actually in the removed list from Firestore
+                  // Don't remove messages just because we're processing optimistic updates
+                  changes.removed.forEach(id => {
+                    if (id.startsWith('temp-')) {
+                      // Always remove temp messages
+                      messageMap.delete(id);
+                      logger.chat(`Removed temp message: ${id}`);
+                    } else {
+                      // Log but don't remove real messages to prevent data inconsistency
+                      logger.chat(`Ignoring removal of real message ${id} - likely due to query limits`);
+                    }
+                  });
+                  
+                  // Process added/modified messages
+                  [...(changes.added || []), ...(changes.modified || [])].forEach(msg => {
+                    messageMap.set(msg.id, msg);
+                    logger.chat(`${changes.added?.includes(msg) ? 'Added' : 'Modified'} message: ${msg.id.substring(0, 6)}`);
+                    
+                    // FIXED: Remove any optimistic messages with the same text and sender
+                    if (changes.added?.includes(msg)) {
+                      // Find and remove temp messages from the same user with similar content
+                      const tempMessagesToRemove: string[] = [];
+                      
+                      messageMap.forEach((existingMsg, existingId) => {
+                        if (existingId.startsWith('temp-') && 
+                            existingMsg.senderId === msg.senderId && 
+                            existingMsg.text === msg.text) {
+                          
+                          // FIXED: Use helper function for consistent date conversion
+                          const msgDate = convertToDate(msg.createdAt);
+                          const existingMsgDate = convertToDate(existingMsg.createdAt);
+                          
+                          const timeDifference = Math.abs(msgDate.getTime() - existingMsgDate.getTime());
+                          
+                          if (timeDifference < 10000) { // Within 10 seconds - likely the optimistic version
+                            tempMessagesToRemove.push(existingId);
+                          }
+                        }
+                      });
+                      
+                      // Remove the temp messages
+                      tempMessagesToRemove.forEach(tempId => {
+                        messageMap.delete(tempId);
+                        logger.chat(`Removed optimistic message: ${tempId}`);
+                        
+                        // Also remove from pending operations
+                        setPendingOperations(prev => prev.filter(op => op.id !== tempId));
+                      });
+                    }
+                  });
+                  
+                  // Convert back to sorted array - ensure stable sort
+                  const updatedMessages = Array.from(messageMap.values());
+                  
+                  // FIXED: Add debugging for message count changes
+                  const messageCountBefore = prevMessages.length;
+                  const messageCountAfter = updatedMessages.length;
+                  
+                  if (Math.abs(messageCountBefore - messageCountAfter) > 1) {
+                    logger.chat(`WARNING: Unexpected message count change: ${messageCountBefore} → ${messageCountAfter}`);
+                    logger.chat(`Added: ${changes.added?.length || 0}, Modified: ${changes.modified?.length || 0}, Removed: ${changes.removed.length}`);
+                    
+                    // Log which messages are missing
+                    const prevIds = new Set(prevMessages.map(m => m.id));
+                    const newIds = new Set(updatedMessages.map(m => m.id));
+                    
+                    const missingIds = Array.from(prevIds).filter(id => !newIds.has(id));
+                    const addedIds = Array.from(newIds).filter(id => !prevIds.has(id));
+                    
+                    if (missingIds.length > 0) {
+                      logger.chat(`Missing messages: ${missingIds.join(', ')}`);
+                    }
+                    if (addedIds.length > 0) {
+                      logger.chat(`Added messages: ${addedIds.join(', ')}`);
+                    }
+                  }
+                  
+                  updatedMessages.sort((a, b) => {
+                    const dateA = convertToDate(a.createdAt);
+                    const dateB = convertToDate(b.createdAt);
+                    return dateA.getTime() - dateB.getTime();
+                  });
+                  
+                  logger.chat(`Updated message list: ${messageCountBefore} → ${messageCountAfter} messages`);
+                  return updatedMessages;
+                });
               }
             }
-            
-            // Ensure messages are sorted chronologically (oldest first)
-            const sortedMessages = [...newMessages].sort((a, b) => {
-              const dateA = a.createdAt instanceof Date ? a.createdAt : new Date((a.createdAt as any).seconds * 1000);
-              const dateB = b.createdAt instanceof Date ? b.createdAt : new Date((b.createdAt as any).seconds * 1000);
-              return dateA.getTime() - dateB.getTime(); // Ascending order: oldest first (index 0), newest last
-            });
-            
-            setMessages(sortedMessages);
-            
-            // Update oldest message for pagination
-            if (sortedMessages.length > 0) {
-              const oldest = sortedMessages[0]; // First message is oldest
-              const oldestDate = oldest.createdAt instanceof Date ? 
-                oldest.createdAt : 
-                new Date((oldest.createdAt as any).seconds * 1000);
-              
-              oldestMessageTimestamp.current = oldestDate;
-              logger.chat(`Setting oldestMessageTimestamp to ${oldestDate.toISOString()}`);
-            }
-            
-            setLoading(false);
           },
-          MESSAGES_PER_PAGE
+          MESSAGES_PER_PAGE,
+          lastRead,
+          true // Initial load = true
         );
       } catch (err) {
         logger.error('Error setting up message subscription:', err);
@@ -145,7 +286,7 @@ export function useChatMessages(groopId: string | undefined) {
         unsubscribeRef.current = null;
       }
     };
-  }, [groopId, profile?.uid, getLastReadTimestamp]); // Add profile?.uid to dependencies
+  }, [groopId, profile?.uid, getLastReadTimestamp]);
   
   // Function to load older messages (pagination)
   const loadOlderMessages = useCallback(async () => {
@@ -171,8 +312,8 @@ export function useChatMessages(groopId: string | undefined) {
       } else {
         // Update the oldest timestamp for next pagination
         const sortedMessages = [...olderMessages].sort((a, b) => {
-          const dateA = a.createdAt instanceof Date ? a.createdAt : new Date((a.createdAt as any).seconds * 1000);
-          const dateB = b.createdAt instanceof Date ? b.createdAt : new Date((b.createdAt as any).seconds * 1000);
+          const dateA = convertToDate(a.createdAt);
+          const dateB = convertToDate(b.createdAt);          
           return dateA.getTime() - dateB.getTime();
         });
         
@@ -198,9 +339,8 @@ export function useChatMessages(groopId: string | undefined) {
           // Convert back to array and sort
           const mergedMessages = Array.from(messageMap.values());
           return mergedMessages.sort((a, b) => {
-            const dateA = a.createdAt instanceof Date ? a.createdAt : new Date((a.createdAt as any).seconds * 1000);
-            const dateB = b.createdAt instanceof Date ? b.createdAt : new Date((b.createdAt as any).seconds * 1000);
-            return dateA.getTime() - dateB.getTime();
+            const dateA = convertToDate(a.createdAt);
+            const dateB = convertToDate(b.createdAt);            return dateA.getTime() - dateB.getTime();
           });
         });
       }
@@ -218,12 +358,19 @@ export function useChatMessages(groopId: string | undefined) {
   const processMessagesWithDateSeparators = useCallback((): ChatItem[] => {
     if (!messages.length) return [];
 
+    // First, deduplicate messages
+    const deduplicatedMessages = deduplicateMessages(messages);
+    
+    // Log if any duplicates were removed
+    if (deduplicatedMessages.length !== messages.length) {
+      logger.chat(`Deduplicated: ${messages.length} → ${deduplicatedMessages.length} messages`);
+    }
+
     const items: ChatItem[] = [];
     let currentDay: Date | null = null;
 
-    // Messages are already sorted chronologically (oldest first)
-    // Process them in order to add date separators
-    messages.forEach(message => {
+    // Process deduplicated messages in order to add date separators
+    deduplicatedMessages.forEach(message => {
       const messageDate = message.createdAt instanceof Date ? 
         message.createdAt : 
         new Date((message.createdAt as any).seconds * 1000);
@@ -237,7 +384,7 @@ export function useChatMessages(groopId: string | undefined) {
           id: `date-${messageDay.toISOString()}`,
           type: 'dateSeparator',
           date: messageDay
-        } as DateSeparatorItem);
+        } as DateSeparator);
       }
       
       // Add the message
@@ -253,7 +400,10 @@ export function useChatMessages(groopId: string | undefined) {
     replyTo?: { id: string, text: string, senderName: string }, 
     imageUrl?: string
   ) => {
-    if (!groopId) return;
+    if (!groopId || !profile) {
+      console.warn('[CHAT] Cannot send message: missing groopId or profile');
+      return false;
+    }
     
     const messageId = `msg_${Date.now()}`;
     const messageSize = text.length + (imageUrl ? 1000 : 0);
@@ -274,36 +424,33 @@ export function useChatMessages(groopId: string | undefined) {
       const optimisticMessage: ChatMessage = {
         id: tempId,
         text,
-        senderId: 'current-user', // Will be replaced by actual user ID in service
-        senderName: 'You',
+        senderId: profile.uid,
+        senderName: profile.displayName || 'You',
+        senderAvatar: profile.avatar,
         createdAt: new Date(),
-        reactions: {}, // No need to freeze for optimistic messages
-        read: [], // Use mutable array without Object.freeze
+        reactions: {},
+        read: [],
         replyTo: replyTo?.id,
         replyToText: replyTo?.text,
         replyToSenderName: replyTo?.senderName,
-        imageUrl, // Add image URL
+        imageUrl,
         isEncrypted: false,
         isDecrypted: true
       };
       
-      setMessages(prev => [...prev, optimisticMessage]);
+      // Add optimistic message
+      setMessages(prev => {
+        // Remove any existing temp messages from this user first
+        const withoutTemp = prev.filter(msg => !msg.id.startsWith('temp-'));
+        return [...withoutTemp, optimisticMessage];
+      });
       
       // Actually send the message
       await ChatService.sendMessage(groopId, { text, replyTo, imageUrl });
       
-      // Update operation status
-      setPendingOperations(prev => 
-        prev.map(op => op.id === tempId ? { ...op, status: 'sent' } : op)
-      );
-      
-      // Remove the optimistic message after a delay
-      // The real message will come through the subscription
-      setTimeout(() => {
-        setMessages(prev => prev.filter(msg => msg.id !== tempId));
-        setPendingOperations(prev => prev.filter(op => op.id !== tempId));
-      }, 300);
-      
+      // FIXED: Don't remove immediately - let the subscription handle it
+      // The real message will come through the subscription and we'll handle cleanup there
+    
       ChatPerformanceMonitor.trackMessageSendComplete(messageId, true);
       
       return true;
@@ -315,18 +462,18 @@ export function useChatMessages(groopId: string | undefined) {
         prev.map(op => op.id === tempId ? { ...op, status: 'failed' } : op)
       );
       
-      // Remove the optimistic message
+      // Remove the optimistic message on failure
       setMessages(prev => prev.filter(msg => msg.id !== tempId));
       
       ChatPerformanceMonitor.trackMessageSendComplete(messageId, false);
       
       return false;
     }
-  }, [groopId]);
+  }, [groopId, profile]);
   
   // Add a reaction to a message
   const addReaction = useCallback(async (messageId: string, emoji: string, userId: string) => {
-    if (!groopId) return;
+    if (!groopId || !profile) return;
     
     try {
       // Optimistic update
@@ -359,7 +506,7 @@ export function useChatMessages(groopId: string | undefined) {
       logger.error('Error adding reaction:', err);
       // We could implement a rollback here if needed
     }
-  }, [groopId]);
+  }, [groopId, profile]);
   
   // Refresh messages
   const refreshMessages = useCallback(() => {
@@ -393,6 +540,10 @@ export function useChatMessages(groopId: string | undefined) {
         unsubscribeRef.current = ChatService.subscribeToMessages(
           groopId,
           (newMessages) => {
+            // Fix for refresh: always set messages directly on refresh
+            setMessages(newMessages);
+            setLoading(false);
+            
             // Find first unread message on refresh
             if (lastRead && profile?.uid) {
               const firstUnread = newMessages.find(msg => {
@@ -410,15 +561,11 @@ export function useChatMessages(groopId: string | undefined) {
               }
             }
             
-            setMessages(newMessages);
-            setLoading(false);
-            
             // Update oldest timestamp for pagination
             if (newMessages.length > 0) {
               const sortedMessages = [...newMessages].sort((a, b) => {
-                const dateA = a.createdAt instanceof Date ? a.createdAt : new Date((a.createdAt as any).seconds * 1000);
-                const dateB = b.createdAt instanceof Date ? b.createdAt : new Date((b.createdAt as any).seconds * 1000);
-                return dateA.getTime() - dateB.getTime();
+                const dateA = convertToDate(a.createdAt);
+                const dateB = convertToDate(b.createdAt);                return dateA.getTime() - dateB.getTime();
               });
               
               const oldest = sortedMessages[0];

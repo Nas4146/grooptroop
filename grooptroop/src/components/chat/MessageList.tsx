@@ -47,35 +47,66 @@ const areEqual = (prevProps: MessageListProps, nextProps: MessageListProps) => {
   if (prevProps.refreshing !== nextProps.refreshing) return false;
   if (prevProps.loadingOlderMessages !== nextProps.loadingOlderMessages) return false;
   
-  // Check if messages array has changed
-  if (prevProps.messages.length !== nextProps.messages.length) return false;
-  
-  // If lengths are the same, check if the last message has changed
-  // This optimization assumes that most changes are adding new messages
-  // or modifying the most recent ones
-  if (prevProps.messages.length > 0 && nextProps.messages.length > 0) {
-    const prevLastMsg = prevProps.messages[prevProps.messages.length - 1];
-    const nextLastMsg = nextProps.messages[nextProps.messages.length - 1];
-    
-    if ('type' in prevLastMsg && 'type' in nextLastMsg) {
-      // Both are date separators
-      return prevLastMsg.id === nextLastMsg.id;
-    } else if (!('type' in prevLastMsg) && !('type' in nextLastMsg)) {
-      // Both are messages
-      const prevMsg = prevLastMsg as ChatMessage;
-      const nextMsg = nextLastMsg as ChatMessage;
-      
-      // Check ID and reactions (common things that change)
-      if (prevMsg.id !== nextMsg.id) return false;
-      if (JSON.stringify(prevMsg.reactions) !== JSON.stringify(nextMsg.reactions)) return false;
-      
-      return true;
-    }
-    
+  // Check if messages array length changed
+  if (prevProps.messages.length !== nextProps.messages.length) {
+    console.log(`MessageList: Length changed ${prevProps.messages.length} → ${nextProps.messages.length}`);
     return false;
   }
   
-  return JSON.stringify(prevProps.messages) === JSON.stringify(nextProps.messages);
+  // If lengths are the same, do a deeper check to see if content actually changed
+  if (prevProps.messages.length > 0 && nextProps.messages.length > 0) {
+    // Check last message ID to detect if new messages were added
+    const prevLastMsg = prevProps.messages[prevProps.messages.length - 1];
+    const nextLastMsg = nextProps.messages[nextProps.messages.length - 1];
+    
+    // Handle both ChatMessage and DateSeparator types
+    const prevLastId = 'type' in prevLastMsg ? prevLastMsg.id : (prevLastMsg as ChatMessage).id;
+    const nextLastId = 'type' in nextLastMsg ? nextLastMsg.id : (nextLastMsg as ChatMessage).id;
+    
+    if (prevLastId !== nextLastId) {
+      console.log(`MessageList: Last message changed ${prevLastId} → ${nextLastId}`);
+      return false;
+    }
+    
+    // FIXED: Check if any temp messages are present in either array
+    const prevHasTemp = prevProps.messages.some(msg => 
+      !('type' in msg) && (msg as ChatMessage).id.startsWith('temp-')
+    );
+    const nextHasTemp = nextProps.messages.some(msg => 
+      !('type' in msg) && (msg as ChatMessage).id.startsWith('temp-')
+    );
+    
+    // If temp message state changed, we need to re-render
+    if (prevHasTemp !== nextHasTemp) {
+      console.log(`MessageList: Temp message state changed: ${prevHasTemp} → ${nextHasTemp}`);
+      return false;
+    }
+    
+    // Check for reaction changes in the last few messages
+    const checkCount = Math.min(3, prevProps.messages.length);
+    for (let i = 0; i < checkCount; i++) {
+      const prevIndex = prevProps.messages.length - 1 - i;
+      const nextIndex = nextProps.messages.length - 1 - i;
+      
+      const prevMsg = prevProps.messages[prevIndex];
+      const nextMsg = nextProps.messages[nextIndex];
+      
+      // Only check reactions for actual ChatMessages, not DateSeparators
+      if (!('type' in prevMsg) && !('type' in nextMsg)) {
+        const prevChatMsg = prevMsg as ChatMessage;
+        const nextChatMsg = nextMsg as ChatMessage;
+        
+        if (JSON.stringify(prevChatMsg.reactions) !== JSON.stringify(nextChatMsg.reactions)) {
+          console.log(`MessageList: Reactions changed for message ${prevChatMsg.id}`);
+          return false;
+        }
+      }
+    }
+    
+    return true; // No significant changes detected
+  }
+  
+  return true;
 };
 
 const MessageList = React.forwardRef<FlashList<ChatItem>, MessageListProps>(

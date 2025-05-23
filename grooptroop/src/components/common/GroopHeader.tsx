@@ -36,7 +36,7 @@ interface MemberData {
   avatar?: any; // Using UserAvatar type but keeping it simple for debugging
 }
 
-export default function GroopHeader({ 
+export default React.memo(function GroopHeader({ 
   minimal = false, 
   showMembers = true, 
   onPressMembers,
@@ -404,4 +404,14 @@ export default function GroopHeader({
       />
     </View>
   );
-}
+}, (prevProps, nextProps) => {
+  // Only re-render if props actually changed
+  return (
+    prevProps.minimal === nextProps.minimal &&
+    prevProps.showMembers === nextProps.showMembers &&
+    prevProps.isChatScreen === nextProps.isChatScreen &&
+    prevProps.title === nextProps.title &&
+    prevProps.encryptionEnabled === nextProps.encryptionEnabled &&
+    prevProps.loading === nextProps.loading
+  );
+});
