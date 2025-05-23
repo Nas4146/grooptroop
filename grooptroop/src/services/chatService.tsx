@@ -198,10 +198,10 @@ export class ChatService {
         messagesArray.sort((a, b) => {
           const timeA = a.createdAt instanceof Date ? a.createdAt : new Date(0);
           const timeB = b.createdAt instanceof Date ? b.createdAt : new Date(0);
-          return timeA.getTime() - timeB.getTime(); // Ascending order: oldest first
+          return timeA.getTime() - timeB.getTime(); // Ascending: oldest first, newest last
         });
         
-        // Call the callback with the current state and changes
+        // Call the callback with chronologically sorted messages
         callback(messagesArray, changes);
         
         // Log completion for initial load

@@ -329,6 +329,12 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     inputRef.current?.focus();
   }, []);
 
+  // Add debug logging to see when loadOlderMessages is called:
+  const handleLoadOlderMessages = useCallback(() => {
+    console.log('🔍 ChatScreen handleLoadOlderMessages called');
+    loadOlderMessages();
+  }, [loadOlderMessages]);
+
   // Fix the scroll button position
   const scrollButtonStyle = useAnimatedStyle(() => {
     return {
@@ -395,14 +401,14 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
                 refreshing={refreshing}
                 hasMoreMessages={hasMoreMessages}
                 loadingOlderMessages={loadingOlderMessages}
-                onEndReached={loadOlderMessages}
+                onEndReached={handleLoadOlderMessages} // Use the debug wrapper
                 onScroll={handleScroll}
                 onRefresh={handleRefresh}
                 onReactionPress={handleReactionPress}
                 onReplyPress={handleReplyPress}
                 openImagePreview={handleOpenImagePreview}
-                firstUnreadMessageId={firstUnreadMessageId}    // Add this
-                shouldScrollToBottom={!firstUnreadMessageId}   // Add this
+                firstUnreadMessageId={firstUnreadMessageId}
+                shouldScrollToBottom={!firstUnreadMessageId}
               />
             </View>
             

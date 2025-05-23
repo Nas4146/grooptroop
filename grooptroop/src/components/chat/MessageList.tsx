@@ -7,7 +7,7 @@ import {
   Platform,
   Dimensions 
 } from 'react-native';
-import { FlashList } from '@shopify/flash-list';
+import { FlashList, FlashListProps } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthProvider';
 import { ChatItem, ChatMessage } from '../../models/chat';
@@ -78,10 +78,11 @@ const areEqual = (prevProps: MessageListProps, nextProps: MessageListProps) => {
   return JSON.stringify(prevProps.messages) === JSON.stringify(nextProps.messages);
 };
 
-const MessageList = React.forwardRef<FlashListRef<ChatItem>, MessageListProps>(
+const MessageList = React.forwardRef<FlashList<ChatItem>, MessageListProps>(
   (props, ref) => {
     const { profile } = useAuth();
     const [hasInitiallyScrolled, setHasInitiallyScrolled] = useState(false);
+    const [isNearTop, setIsNearTop] = useState(false);
     
     console.log('🔍 MessageList rendering with FlashList - Messages:', props.messages?.length || 0);
     
@@ -92,7 +93,6 @@ const MessageList = React.forwardRef<FlashListRef<ChatItem>, MessageListProps>(
     useImperativeHandle(ref, () => ({
       scrollToEnd: (params?: { animated?: boolean }) => {
         console.log('🔍 MessageList scrollToEnd called');
-        // For normal list, scrollToEnd means scroll to the actual end (newest messages)
         flashListRef.current?.scrollToEnd({ 
           animated: params?.animated ?? true 
         });
@@ -176,6 +176,29 @@ const MessageList = React.forwardRef<FlashListRef<ChatItem>, MessageListProps>(
       );
     }, [profile?.uid, props.onReactionPress, props.onReplyPress, props.openImagePreview]);
 
+    // Custom scroll handler to detect when near top
+    const handleScroll = useCallback((event: any) => {
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      
+      // Calculate distance from top
+      const distanceFromTop = contentOffset.y;
+      const threshold = 100; // Trigger when within 100px of top
+      
+      // Check if we're near the top and have more messages to load
+      const nearTop = distanceFromTop < threshold;
+      
+      if (nearTop && !isNearTop && props.hasMoreMessages && !props.loadingOlderMessages) {
+        console.log('🔍 Near top - triggering older message load');
+        setIsNearTop(true);
+        props.onEndReached(); // This calls loadOlderMessages
+      } else if (!nearTop && isNearTop) {
+        setIsNearTop(false);
+      }
+      
+      // Call parent scroll handler
+      props.onScroll(event);
+    }, [isNearTop, props.hasMoreMessages, props.loadingOlderMessages, props.onEndReached, props.onScroll]);
+
     console.log('🔍 About to render FlashList with', props.messages.length, 'items');
 
     // Update the FlashList configuration:
@@ -194,23 +217,14 @@ const MessageList = React.forwardRef<FlashListRef<ChatItem>, MessageListProps>(
             }
             return (item as ChatMessage).id || `msg-${index}`;
           }}
+          
           // REMOVE: inverted={true}
-          // Keep normal order: oldest at top, newest at bottom
+          // Keep normal order: oldest at top (index 0), newest at bottom (last index)
           
-          // Load older messages when scrolling to TOP (start of list)
-          onStartReached={() => {
-            if (props.hasMoreMessages && !props.loadingOlderMessages) {
-              console.log('🔍 Loading older messages from scrolling to top');
-              props.onEndReached(); // This loads older messages
-            }
-          }}
-          onStartReachedThreshold={0.1}
+          // Use custom scroll detection instead of onEndReached
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
           
-          // Don't trigger onEndReached for bottom scroll
-          onEndReached={undefined}
-          onEndReachedThreshold={0}
-          
-          onScroll={props.onScroll}
           refreshing={props.refreshing}
           onRefresh={props.onRefresh}
           

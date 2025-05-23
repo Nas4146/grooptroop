@@ -109,7 +109,7 @@ export function useChatMessages(groopId: string | undefined) {
             const sortedMessages = [...newMessages].sort((a, b) => {
               const dateA = a.createdAt instanceof Date ? a.createdAt : new Date((a.createdAt as any).seconds * 1000);
               const dateB = b.createdAt instanceof Date ? b.createdAt : new Date((b.createdAt as any).seconds * 1000);
-              return dateA.getTime() - dateB.getTime(); // Ascending order: oldest first
+              return dateA.getTime() - dateB.getTime(); // Ascending order: oldest first (index 0), newest last
             });
             
             setMessages(sortedMessages);
