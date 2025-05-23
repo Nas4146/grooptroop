@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, runOnJS } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureDetector, Gesture, TouchableWithoutFeedback } from 'react-native-gesture-handler';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
@@ -40,16 +40,11 @@ import ImageUploadService from '../services/imageUploadService';
 
 // Performance monitoring
 import ChatPerformanceMonitor from '../utils/chatPerformanceMonitor';
-import ChatPerformanceOverlay from '../components/chat/ChatPerformanceOverlay';
 
 // Define the screen props type using NativeStackScreenProps
 type ChatScreenProps = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 
 export default function ChatScreen({ navigation, route }: ChatScreenProps) {
-  // Performance monitoring
-  const renderStartTime = useRef(performance.now());
-  const [showPerformanceOverlay, setShowPerformanceOverlay] = useState(__DEV__);
-
   // Chat state
   const { currentGroop } = useGroop();
   const { profile } = useAuth();
@@ -68,6 +63,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   const isAtBottom = useRef<boolean>(true);
   const scrollDirectionRef = useRef<'up' | 'down'>('down');
   const prevScrollY = useRef<number>(0);
+  const renderStartTime = useRef<number>(performance.now()); // ADD THIS
   
   // Animation values
   const showScrollButton = useSharedValue(0);
@@ -104,9 +100,6 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   // Start performance monitoring when the chat screen loads
   useEffect(() => {
     if (currentGroop?.id) {
-      // Track render start time
-      renderStartTime.current = performance.now();
-      
       // Start performance monitoring
       ChatPerformanceMonitor.startChatMonitoring(currentGroop.id);
       
@@ -333,51 +326,24 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     inputRef.current?.focus();
   }, []);
 
-  // Set up gesture handler for keyboard dismissing
+  // Set up gesture handler for keyboard dismissing - Fix the Reanimated error
   const tap = Gesture.Tap().onStart(() => {
-    Keyboard.dismiss();
+    'worklet';
+    runOnJS(Keyboard.dismiss)();
   });
 
-  // Animated styles
+  // Fix the scroll button position
   const scrollButtonStyle = useAnimatedStyle(() => {
     return {
       opacity: showScrollButton.value,
       transform: [{ scale: showScrollButton.value }],
       position: 'absolute',
       right: 16,
-      bottom: 80,
+      bottom: 16, // Changed from 100 to 16 - this removes the white space!
       zIndex: 10,
     };
   });
   
-  const messageInputStyle = useAnimatedStyle(() => {
-    if (Platform.OS === 'ios') {
-      return {
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        bottom: keyboard.value,
-        marginBottom: -2, // Negative margin to close any gap
-        backgroundColor: 'white',
-        zIndex: 10,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: '#E5E7EB',
-      };
-    } else {
-      return {
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'white',
-        zIndex: 10,
-        transform: [{ translateY: -keyboard.value }],
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: '#E5E7EB',
-      };
-    }
-  });
-
   // Log MessageList props for debugging
   useEffect(() => {
     console.log('MessageList props:', { 
@@ -411,10 +377,9 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   return (
     <SafeAreaView style={tw`flex-1 bg-white`}>
       <GestureDetector gesture={tap}>
-        <View style={tw`flex-1 relative`}>
-          {/* Content wrapper to ensure proper layout */}
-          <View style={tw`flex-1 pb-16`}>
-            {/* Restore MessageList */}
+        <View style={tw`flex-1`}>
+          {/* Main content area */}
+          <View style={tw`flex-1`}>
             <MessageList
               ref={messageListRef}
               messages={messages}
@@ -431,7 +396,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
             />
           </View>
           
-          {/* Scroll to bottom button */}
+          {/* Scroll to bottom button 
           <Animated.View style={scrollButtonStyle}>
             <TouchableOpacity 
               style={tw`bg-violet-500 p-3 shadow-md rounded-full`}
@@ -442,13 +407,10 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
             >
               <Ionicons name="arrow-down" size={24} color="white" />
             </TouchableOpacity>
-          </Animated.View>
+          </Animated.View>*/}
           
-          {/* Message input */}
-          <View style={[
-            tw`absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200`,
-            Platform.OS === 'ios' ? { paddingBottom: insets.bottom } : {}
-          ]}>
+          {/* Message input - sits directly above bottom navigator */}
+          <View style={tw`bg-white border-t border-gray-200`}>
             <MessageInput
               ref={inputRef}
               onSend={handleSendMessage}
@@ -476,26 +438,6 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
                 groopId={currentGroop?.id}
               />
             </React.Suspense>
-          )}
-          
-          {/* Performance overlay in dev mode */}
-          {__DEV__ && showPerformanceOverlay && currentGroop?.id && (
-            <ChatPerformanceOverlay 
-              chatId={currentGroop.id}
-              onClose={() => setShowPerformanceOverlay(false)}
-              getMetrics={() => ChatPerformanceMonitor.getChatPerformanceMetrics()}
-            />
-          )}
-          
-          {/* Dev mode toggle for performance overlay - FIX HERE */}
-          {__DEV__ && !showPerformanceOverlay && (
-            <TouchableOpacity
-              style={tw`absolute bottom-20 right-2 bg-gray-800 opacity-70 p-1 rounded-full z-50`}
-              onPress={() => setShowPerformanceOverlay(true)}
-            >
-              {/* Use Text component for the emoji */}
-              <Text style={tw`text-white text-xs p-1`}>📊</Text>
-            </TouchableOpacity>
           )}
         </View>
       </GestureDetector>

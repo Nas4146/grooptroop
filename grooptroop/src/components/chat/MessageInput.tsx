@@ -285,7 +285,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
         </TouchableOpacity>
       </View>
       
-      {/* Keyboard dismiss bar - only on iOS */}
+      {/* Keyboard dismiss bar - only on iOS
       {Platform.OS === 'ios' && (
         <TouchableOpacity
           style={styles.keyboardDismiss}
@@ -294,7 +294,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
         >
           <Ionicons name="chevron-down" size={18} color="#9CA3AF" />
         </TouchableOpacity>
-      )}
+      )}*/}
     </View>
   );
 });
