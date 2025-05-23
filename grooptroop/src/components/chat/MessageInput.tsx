@@ -53,7 +53,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isImageUploading, setIsImageUploading] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [inputHeight, setInputHeight] = useState(36); // Initial input height
+  const [inputHeight, setInputHeight] = useState(30); // Reduced from 36
   
   // Refs
   const inputRef = useRef<TextInput>(null);
@@ -71,7 +71,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
   
   // Reset height when text is cleared
   const resetHeight = useCallback(() => {
-    setInputHeight(36);
+    setInputHeight(30); // Reduced from 36
   }, []);
   
   // Handle send button press
@@ -240,7 +240,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
         >
           <Ionicons 
             name="camera-outline" 
-            size={22} 
+            size={18}                       // Reduced from 22
             color={disabled ? '#D1D5DB' : '#6B7280'} 
           />
         </TouchableOpacity>
@@ -253,7 +253,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
         >
           <Ionicons 
             name="image-outline" 
-            size={22} 
+            size={18}                       // Reduced from 22
             color={disabled ? '#D1D5DB' : '#6B7280'} 
           />
         </TouchableOpacity>
@@ -264,7 +264,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
             ref={inputRef}
             style={[
               styles.input,
-              { height: Math.max(44, inputHeight + 8) }, // Add padding to height calculation
+              { height: Math.max(36, inputHeight + 6) }, // Reduced from max(44, +8)
               disabled && styles.disabledInput
             ]}
             value={text}
@@ -275,8 +275,8 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
             onFocus={handleInputFocus}
             editable={!disabled}
             onContentSizeChange={(e) => {
-              // Limit max height and account for line height
-              const newHeight = Math.min(80, Math.max(20, e.nativeEvent.contentSize.height));
+              // Reduced max height and adjusted calculation
+              const newHeight = Math.min(70, Math.max(18, e.nativeEvent.contentSize.height));
               setInputHeight(newHeight);
             }}
           />
@@ -294,7 +294,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
           {isSending || loading ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
-            <Ionicons name="send" size={18} color="#FFFFFF" />
+            <Ionicons name="send" size={16} color="#FFFFFF" />  // Reduced from 18
           )}
         </TouchableOpacity>
       </View>
@@ -327,12 +327,12 @@ const styles = StyleSheet.create({
   inputBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginHorizontal: 12, // Add horizontal margin
-    marginVertical: 8,    // Add vertical margin
-    backgroundColor: '#F3F4F6', // Light gray background for the entire bar
-    borderRadius: 25,     // Circular/rounded corners for the entire bar
+    paddingHorizontal: 12,          // Reduced from 16
+    paddingVertical: 8,             // Reduced from 12
+    marginHorizontal: 10,           // Reduced from 12
+    marginVertical: 6,              // Reduced from 8
+    backgroundColor: '#F3F4F6',
+    borderRadius: 20,               // Reduced from 25
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -340,60 +340,60 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   inputBarWithTopContent: {
-    marginTop: 0, // Remove top margin when there's content above
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-    borderBottomLeftRadius: 25,
-    borderBottomRightRadius: 25,
+    marginTop: 0,
+    borderTopLeftRadius: 6,         // Reduced from 8
+    borderTopRightRadius: 6,
+    borderBottomLeftRadius: 20,     // Reduced from 25
+    borderBottomRightRadius: 20,
   },
   inputWrapper: {
     flex: 1,
     backgroundColor: 'white',
-    borderRadius: 18,               // Slightly less rounded than the container
-    paddingHorizontal: 14,
-    marginHorizontal: 8,
-    minHeight: 44,
+    borderRadius: 14,               // Reduced from 18
+    paddingHorizontal: 10,          // Reduced from 14
+    marginHorizontal: 6,            // Reduced from 8
+    minHeight: 36,                  // Reduced from 44
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#D1D5DB',        // Slightly darker border for more definition
-    shadowColor: '#000',           // Add subtle shadow to the white input
+    borderColor: '#D1D5DB',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 1,
     elevation: 1,
   },
   input: {
-    fontSize: 16,
-    paddingTop: Platform.OS === 'ios' ? 10 : 8,
-    paddingBottom: Platform.OS === 'ios' ? 10 : 8,
-    paddingHorizontal: 0,           // Remove horizontal padding
-    maxHeight: 80,                  // Reduce max height
+    fontSize: 14,                   // Reduced from 16
+    paddingTop: Platform.OS === 'ios' ? 8 : 6,      // Reduced from 10/8
+    paddingBottom: Platform.OS === 'ios' ? 8 : 6,   // Reduced from 10/8
+    paddingHorizontal: 0,
+    maxHeight: 70,                  // Reduced from 80
     color: '#1F2937',
     textAlignVertical: 'center',
-    lineHeight: 20,                 // Add line height for better text positioning
+    lineHeight: 18,                 // Reduced from 20
   },
   disabledInput: {
     color: '#6B7280'
   },
   iconButton: {
-    padding: 8,                     // Reduce padding
-    borderRadius: 20,
-    backgroundColor: 'transparent', // Make transparent
-    marginHorizontal: 2,
+    padding: 6,                     // Reduced from 8
+    borderRadius: 16,               // Reduced from 20
+    backgroundColor: 'transparent',
+    marginHorizontal: 1,            // Reduced from 2
   },
   sendButton: {
-    width: 40,                      // Slightly smaller
-    height: 40,
-    borderRadius: 20,               // Perfect circle
+    width: 34,                      // Reduced from 40
+    height: 34,                     // Reduced from 40
+    borderRadius: 17,               // Reduced from 20
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 8,
+    marginLeft: 6,                  // Reduced from 8
   },
   sendButtonEnabled: {
-    backgroundColor: '#7C3AED'      // violet-600
+    backgroundColor: '#7C3AED'
   },
   sendButtonDisabled: {
-    backgroundColor: '#C4B5FD'      // violet-300
+    backgroundColor: '#C4B5FD'
   },
 });
 
