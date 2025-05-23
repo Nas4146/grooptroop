@@ -74,6 +74,8 @@ const MessageBubble = React.memo(({
   
   // Long press handler with haptic feedback
   const handleLongPress = useCallback(() => {
+    console.log(`[MESSAGE_BUBBLE] Long press detected on message ${message.id}`);
+    
     // Provide haptic feedback on long press
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -86,23 +88,32 @@ const MessageBubble = React.memo(({
     );
     
     // Show reaction overlay
+    console.log(`[MESSAGE_BUBBLE] Setting showReactionOverlay to true`);
     setShowReactionOverlay(true);
-  }, [bubbleScale]);
+  }, [bubbleScale, message.id]);
   
   // Handle reaction press with animation
   const handleReactionPress = useCallback((emoji: string) => {
+    console.log(`[MESSAGE_BUBBLE] Reaction ${emoji} pressed for message ${message.id}`);
+    
     if (onReactionPress) {
       onReactionPress(message.id, emoji);
     }
+    
+    // Close overlay
     setShowReactionOverlay(false);
   }, [message.id, onReactionPress]);
   
   // Handle reply press
   const handleReplyPress = useCallback(() => {
-    setShowReactionPicker(false);
+    console.log(`[MESSAGE_BUBBLE] Reply pressed for message ${message.id}`);
+    
     if (onReplyPress) {
       onReplyPress(message);
     }
+    
+    // Close overlay
+    setShowReactionOverlay(false);
   }, [message, onReplyPress]);
   
   // Message container animated style
@@ -305,13 +316,11 @@ const MessageBubble = React.memo(({
       <ReactionOverlay
         visible={showReactionOverlay}
         onReactionSelect={handleReactionPress}
-        onClose={() => setShowReactionOverlay(false)}
-        onReplyPress={() => {
-          if (onReplyPress) {
-            onReplyPress(message);
-          }
+        onClose={() => {
+          console.log(`[MESSAGE_BUBBLE] Closing reaction overlay for message ${message.id}`);
           setShowReactionOverlay(false);
         }}
+        onReplyPress={handleReplyPress}
         isFromCurrentUser={isFromCurrentUser}
       />
       

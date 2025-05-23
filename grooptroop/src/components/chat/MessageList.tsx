@@ -31,9 +31,10 @@ interface MessageListProps {
   onRefresh: () => void;
   onReactionPress: (messageId: string, emoji: string) => void;
   onReplyPress: (message: ChatMessage) => void;
-  openImagePreview?: (imageUrl: string) => void;
-  firstUnreadMessageId?: string | null;    // Add this
-  shouldScrollToBottom?: boolean;          // Add this
+  openImagePreview: (imageUrl: string) => void;
+  firstUnreadMessageId?: string | null;
+  shouldScrollToBottom?: boolean;
+  currentUserId: string; // FIXED: Add this missing prop
 }
 
 export interface MessageListRef {
@@ -42,70 +43,61 @@ export interface MessageListRef {
 
 // Items that shouldn't trigger re-renders when they're the same
 const areEqual = (prevProps: MessageListProps, nextProps: MessageListProps) => {
-  // Always re-render if loading state changes
-  if (prevProps.loading !== nextProps.loading) return false;
-  if (prevProps.refreshing !== nextProps.refreshing) return false;
-  if (prevProps.loadingOlderMessages !== nextProps.loadingOlderMessages) return false;
+  // Quick reference equality check first
+  if (prevProps === nextProps) return true;
   
-  // Check if messages array length changed
-  if (prevProps.messages.length !== nextProps.messages.length) {
-    console.log(`MessageList: Length changed ${prevProps.messages.length} → ${nextProps.messages.length}`);
+  // Only re-render for meaningful changes
+  const meaningfulChanges = [
+    prevProps.loading !== nextProps.loading,
+    prevProps.refreshing !== nextProps.refreshing,
+    prevProps.loadingOlderMessages !== nextProps.loadingOlderMessages,
+    prevProps.messages.length !== nextProps.messages.length,
+    prevProps.hasMoreMessages !== nextProps.hasMoreMessages
+  ];
+  
+  if (meaningfulChanges.some(Boolean)) {
+    console.log(`MessageList: Re-rendering due to meaningful change`);
     return false;
   }
   
-  // If lengths are the same, do a deeper check to see if content actually changed
+  // Check if message content actually changed (not just references)
   if (prevProps.messages.length > 0 && nextProps.messages.length > 0) {
-    // Check last message ID to detect if new messages were added
-    const prevLastMsg = prevProps.messages[prevProps.messages.length - 1];
-    const nextLastMsg = nextProps.messages[nextProps.messages.length - 1];
+    const lastPrevMsg = prevProps.messages[prevProps.messages.length - 1];
+    const lastNextMsg = nextProps.messages[nextProps.messages.length - 1];
     
-    // Handle both ChatMessage and DateSeparator types
-    const prevLastId = 'type' in prevLastMsg ? prevLastMsg.id : (prevLastMsg as ChatMessage).id;
-    const nextLastId = 'type' in nextLastMsg ? nextLastMsg.id : (nextLastMsg as ChatMessage).id;
+    // Get message IDs (handle both ChatMessage and DateSeparator)
+    const prevId = 'type' in lastPrevMsg ? lastPrevMsg.id : (lastPrevMsg as any).id;
+    const nextId = 'type' in lastNextMsg ? lastNextMsg.id : (lastNextMsg as any).id;
     
-    if (prevLastId !== nextLastId) {
-      console.log(`MessageList: Last message changed ${prevLastId} → ${nextLastId}`);
+    if (prevId !== nextId) {
+      console.log(`MessageList: Re-rendering due to last message ID change: ${prevId} → ${nextId}`);
       return false;
     }
     
-    // FIXED: Check if any temp messages are present in either array
-    const prevHasTemp = prevProps.messages.some(msg => 
-      !('type' in msg) && (msg as ChatMessage).id.startsWith('temp-')
-    );
-    const nextHasTemp = nextProps.messages.some(msg => 
-      !('type' in msg) && (msg as ChatMessage).id.startsWith('temp-')
-    );
-    
-    // If temp message state changed, we need to re-render
-    if (prevHasTemp !== nextHasTemp) {
-      console.log(`MessageList: Temp message state changed: ${prevHasTemp} → ${nextHasTemp}`);
-      return false;
-    }
-    
-    // Check for reaction changes in the last few messages
-    const checkCount = Math.min(3, prevProps.messages.length);
-    for (let i = 0; i < checkCount; i++) {
+    // Check for reaction changes in recent messages only when necessary
+    const checkRecentCount = Math.min(3, prevProps.messages.length);
+    for (let i = 0; i < checkRecentCount; i++) {
       const prevIndex = prevProps.messages.length - 1 - i;
       const nextIndex = nextProps.messages.length - 1 - i;
       
       const prevMsg = prevProps.messages[prevIndex];
       const nextMsg = nextProps.messages[nextIndex];
       
-      // Only check reactions for actual ChatMessages, not DateSeparators
+      // Only check ChatMessages for reactions
       if (!('type' in prevMsg) && !('type' in nextMsg)) {
-        const prevChatMsg = prevMsg as ChatMessage;
-        const nextChatMsg = nextMsg as ChatMessage;
+        const prevReactions = JSON.stringify((prevMsg as any).reactions || {});
+        const nextReactions = JSON.stringify((nextMsg as any).reactions || {});
         
-        if (JSON.stringify(prevChatMsg.reactions) !== JSON.stringify(nextChatMsg.reactions)) {
-          console.log(`MessageList: Reactions changed for message ${prevChatMsg.id}`);
+        if (prevReactions !== nextReactions) {
+          console.log(`MessageList: Re-rendering due to reaction change in recent message`);
           return false;
         }
       }
     }
-    
-    return true; // No significant changes detected
   }
   
+  // FIXED: No meaningful changes detected - prevent re-render
+  console.log(`MessageList: Skipping re-render - no meaningful changes detected`);
   return true;
 };
 
@@ -202,7 +194,7 @@ const MessageList = React.forwardRef<FlashList<ChatItem>, MessageListProps>(
           onReactionPress={props.onReactionPress}
           onReplyPress={props.onReplyPress}
           openImagePreview={props.openImagePreview}
-          currentUserId={profile?.uid || ''}
+          currentUserId={props.currentUserId} // FIXED: Pass the currentUserId prop
         />
       );
     }, [profile?.uid, props.onReactionPress, props.onReplyPress, props.openImagePreview]);

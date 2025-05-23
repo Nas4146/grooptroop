@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View, 
   Text, 
@@ -303,17 +303,29 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
 
   // Handle reaction press
   const handleReactionPress = useCallback((messageId: string, emoji: string) => {
+    console.log(`[CHAT_SCREEN] Reaction pressed: ${emoji} on message ${messageId}`);
+    
     if (addReaction && profile?.uid) {
+      console.log(`[CHAT_SCREEN] Calling addReaction with userId: ${profile.uid}`);
+      
       // Track performance of reaction operation
       const reactionStartTime = performance.now();
       
-      // Add the missing userId parameter (profile.uid)
+      // Add the reaction
       addReaction(messageId, emoji, profile.uid);
       
       const reactionTime = performance.now() - reactionStartTime;
       ChatPerformanceMonitor.trackRenderTime('ReactionAdd', reactionTime);
+      
+      console.log(`[CHAT_SCREEN] Reaction add completed in ${reactionTime.toFixed(1)}ms`);
+    } else {
+      console.warn(`[CHAT_SCREEN] Cannot add reaction - missing dependencies:`, {
+        hasAddReaction: !!addReaction,
+        hasProfile: !!profile,
+        hasUserId: !!profile?.uid
+      });
     }
-  }, [addReaction, profile?.uid]); // Add profile?.uid to the dependencies array
+  }, [addReaction, profile?.uid]);
 
   // Handle reply press
   const handleReplyPress = useCallback((message: any) => {
@@ -370,6 +382,14 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     console.log('About to render MessageList with', messages.length, 'messages');
   }, [messages.length]);
 
+  // In your ChatScreen component, ensure stable references:
+  const chatProps = useMemo(() => ({
+    hasMoreMessages,
+    loading,
+    messageCount: messages.length,
+    refreshing: false // or whatever your refreshing state is
+  }), [hasMoreMessages, loading, messages.length]);
+
   return (
     <SafeAreaView style={tw`flex-1 bg-white`} edges={['top']}>
       <KeyboardAvoidingView 
@@ -394,7 +414,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
                 refreshing={refreshing}
                 hasMoreMessages={hasMoreMessages}
                 loadingOlderMessages={loadingOlderMessages}
-                onEndReached={handleLoadOlderMessages} // Use the debug wrapper
+                onEndReached={handleLoadOlderMessages}
                 onScroll={handleScroll}
                 onRefresh={handleRefresh}
                 onReactionPress={handleReactionPress}
@@ -402,6 +422,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
                 openImagePreview={handleOpenImagePreview}
                 firstUnreadMessageId={firstUnreadMessageId}
                 shouldScrollToBottom={!firstUnreadMessageId}
+                currentUserId={profile?.uid || ''} // FIXED: Add this missing prop
               />
             </View>
             

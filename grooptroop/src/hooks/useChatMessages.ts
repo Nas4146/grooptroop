@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ChatMessage, ChatItem, MessageOperation, DateSeparator } from '../models/chat';
 import { ChatService } from '../services/chatService';
 import logger from '../utils/logger';
@@ -11,13 +11,18 @@ import { useAuth } from '../contexts/AuthProvider';
 const MESSAGES_PER_PAGE = 30;
 
 const deduplicateMessages = (messages: ChatMessage[]): ChatMessage[] => {
+  // FIXED: Add safety check for undefined/null messages
+  if (!messages || !Array.isArray(messages)) {
+    return [];
+  }
+  
   const seen = new Set<string>();
   const deduplicated: ChatMessage[] = [];
   
   // Process messages in reverse order (newest first) to keep the latest version
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
-    if (!seen.has(msg.id)) {
+    if (msg && !seen.has(msg.id)) {
       seen.add(msg.id);
       deduplicated.unshift(msg); // Add to beginning to maintain chronological order
     }
@@ -179,7 +184,7 @@ export function useChatMessages(groopId: string | undefined) {
                   
                   // FIXED: Only remove messages that are actually in the removed list from Firestore
                   // Don't remove messages just because we're processing optimistic updates
-                  changes.removed.forEach(id => {
+                  (changes.removed || []).forEach(id => {
                     if (id.startsWith('temp-')) {
                       // Always remove temp messages
                       messageMap.delete(id);
@@ -192,6 +197,9 @@ export function useChatMessages(groopId: string | undefined) {
                   
                   // Process added/modified messages
                   [...(changes.added || []), ...(changes.modified || [])].forEach(msg => {
+                    // FIXED: Add safety check for message
+                    if (!msg || !msg.id) return;
+                    
                     messageMap.set(msg.id, msg);
                     logger.chat(`${changes.added?.includes(msg) ? 'Added' : 'Modified'} message: ${msg.id.substring(0, 6)}`);
                     
@@ -223,7 +231,7 @@ export function useChatMessages(groopId: string | undefined) {
                         logger.chat(`Removed optimistic message: ${tempId}`);
                         
                         // Also remove from pending operations
-                        setPendingOperations(prev => prev.filter(op => op.id !== tempId));
+                        setPendingOperations(prev => (prev || []).filter(op => op.id !== tempId));
                       });
                     }
                   });
@@ -352,24 +360,16 @@ export function useChatMessages(groopId: string | undefined) {
     }
   }, [groopId, loadingOlderMessages, hasMoreMessages]);
   
-  // Make sure date separators are processed in the right order:
-
   // Process messages with date separators for display
-  const processMessagesWithDateSeparators = useCallback((): ChatItem[] => {
+  const processMessagesWithDateSeparators = useMemo((): ChatItem[] => {
     if (!messages.length) return [];
 
-    // First, deduplicate messages
+    // FIXED: Use useMemo for expensive operations to prevent unnecessary recalculations
     const deduplicatedMessages = deduplicateMessages(messages);
     
-    // Log if any duplicates were removed
-    if (deduplicatedMessages.length !== messages.length) {
-      logger.chat(`Deduplicated: ${messages.length} → ${deduplicatedMessages.length} messages`);
-    }
-
     const items: ChatItem[] = [];
     let currentDay: Date | null = null;
 
-    // Process deduplicated messages in order to add date separators
     deduplicatedMessages.forEach(message => {
       const messageDate = message.createdAt instanceof Date ? 
         message.createdAt : 
@@ -377,7 +377,6 @@ export function useChatMessages(groopId: string | undefined) {
       
       const messageDay = startOfDay(messageDate);
       
-      // If we're on a new day, add a date separator
       if (!currentDay || messageDay.getTime() !== currentDay.getTime()) {
         currentDay = messageDay;
         items.push({
@@ -387,7 +386,6 @@ export function useChatMessages(groopId: string | undefined) {
         } as DateSeparator);
       }
       
-      // Add the message
       items.push(message);
     });
 
@@ -589,8 +587,8 @@ export function useChatMessages(groopId: string | undefined) {
   }, [groopId, profile?.uid, getLastReadTimestamp]);
   
   return {
-    messages: processMessagesWithDateSeparators(),
-    rawMessages: messages,
+    messages: processMessagesWithDateSeparators,
+    rawMessages: messages || [], // FIXED: Add safety check
     loading,
     error,
     hasMoreMessages,
@@ -599,8 +597,8 @@ export function useChatMessages(groopId: string | undefined) {
     sendMessage,
     addReaction,
     refreshMessages,
-    pendingOperations,
-    firstUnreadMessageId,        // Add this
-    lastReadTimestamp           // Add this
+    pendingOperations: pendingOperations || [], // FIXED: Add safety check
+    firstUnreadMessageId,
+    lastReadTimestamp
   };
 }
