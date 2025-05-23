@@ -159,7 +159,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
     
     return (
       <AnimatedReplyContainer 
-        style={tw`flex-row bg-gray-50 px-4 py-3 mx-3 mt-2 rounded-t-xl border-l-4 border-violet-500`} // Better styling
+        style={tw`flex-row bg-gray-50 px-4 py-3 mx-3 mt-2 rounded-t-xl border-l-4 border-violet-500`}
         entering={FadeIn.duration(200)}
         exiting={FadeOut.duration(200)}
       >
@@ -191,7 +191,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
         <View style={tw`flex-row items-center`}>
           <Image 
             source={{ uri: selectedImage }} 
-            style={tw`w-20 h-20 rounded-xl`} // Larger and more rounded
+            style={tw`w-16 h-16 rounded-lg`}
             resizeMode="cover"
           />
           <View style={tw`flex-1 ml-3`}>
@@ -232,13 +232,17 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
         styles.inputBar,
         hasTopContent ? styles.inputBarWithTopContent : null
       ]}>
-        {/* Camera button - for future implementation */}
+        {/* Camera button */}
         <TouchableOpacity 
           style={styles.iconButton}
           onPress={() => logger.chat('Camera button pressed (not implemented)')}
           disabled={disabled || loading}
         >
-          <Ionicons name="camera-outline" size={24} color={disabled ? '#D1D5DB' : '#6B7280'} />
+          <Ionicons 
+            name="camera-outline" 
+            size={22} 
+            color={disabled ? '#D1D5DB' : '#6B7280'} 
+          />
         </TouchableOpacity>
         
         {/* Image picker button */}
@@ -247,16 +251,20 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
           onPress={handlePickImage}
           disabled={disabled || isImageUploading || loading}
         >
-          <Ionicons name="image-outline" size={24} color={disabled ? '#D1D5DB' : '#6B7280'} />
+          <Ionicons 
+            name="image-outline" 
+            size={22} 
+            color={disabled ? '#D1D5DB' : '#6B7280'} 
+          />
         </TouchableOpacity>
         
-        {/* Text input */}
+        {/* Text input wrapper */}
         <View style={styles.inputWrapper}>
           <TextInput
             ref={inputRef}
             style={[
               styles.input,
-              { height: Math.max(36, inputHeight) }, // Dynamic height
+              { height: Math.max(44, inputHeight + 8) }, // Add padding to height calculation
               disabled && styles.disabledInput
             ]}
             value={text}
@@ -267,13 +275,14 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
             onFocus={handleInputFocus}
             editable={!disabled}
             onContentSizeChange={(e) => {
-              // Limit max height to reasonable value
-              setInputHeight(Math.min(100, e.nativeEvent.contentSize.height));
+              // Limit max height and account for line height
+              const newHeight = Math.min(80, Math.max(20, e.nativeEvent.contentSize.height));
+              setInputHeight(newHeight);
             }}
           />
         </View>
         
-        {/* Send button - shows activity indicator when sending */}
+        {/* Send button */}
         <TouchableOpacity
           style={[
             styles.sendButton,
@@ -285,7 +294,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({
           {isSending || loading ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
-            <Ionicons name="send" size={20} color="#FFFFFF" />
+            <Ionicons name="send" size={18} color="#FFFFFF" />
           )}
         </TouchableOpacity>
       </View>
@@ -318,55 +327,73 @@ const styles = StyleSheet.create({
   inputBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: 'white',
-    borderTopLeftRadius: 0,
-    borderTopRightRadius: 0,
+    marginHorizontal: 12, // Add horizontal margin
+    marginVertical: 8,    // Add vertical margin
+    backgroundColor: '#F3F4F6', // Light gray background for the entire bar
+    borderRadius: 25,     // Circular/rounded corners for the entire bar
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   inputBarWithTopContent: {
-    borderTopLeftRadius: 0,
-    borderTopRightRadius: 0
+    marginTop: 0, // Remove top margin when there's content above
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    borderBottomLeftRadius: 25,
+    borderBottomRightRadius: 25,
   },
   inputWrapper: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 25,
-    paddingHorizontal: 16,
+    backgroundColor: 'white',
+    borderRadius: 18,               // Slightly less rounded than the container
+    paddingHorizontal: 14,
     marginHorizontal: 8,
-    minHeight: 50,
+    minHeight: 44,
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',        // Slightly darker border for more definition
+    shadowColor: '#000',           // Add subtle shadow to the white input
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
+    elevation: 1,
   },
   input: {
     fontSize: 16,
-    paddingTop: Platform.OS === 'ios' ? 12 : 8,
-    paddingBottom: Platform.OS === 'ios' ? 12 : 8,
-    maxHeight: 100,
+    paddingTop: Platform.OS === 'ios' ? 10 : 8,
+    paddingBottom: Platform.OS === 'ios' ? 10 : 8,
+    paddingHorizontal: 0,           // Remove horizontal padding
+    maxHeight: 80,                  // Reduce max height
     color: '#1F2937',
     textAlignVertical: 'center',
+    lineHeight: 20,                 // Add line height for better text positioning
   },
   disabledInput: {
     color: '#6B7280'
   },
   iconButton: {
-    padding: 10,
-    borderRadius: 25,
-    backgroundColor: '#F9FAFB',
+    padding: 8,                     // Reduce padding
+    borderRadius: 20,
+    backgroundColor: 'transparent', // Make transparent
     marginHorizontal: 2,
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,                      // Slightly smaller
+    height: 40,
+    borderRadius: 20,               // Perfect circle
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 8,
   },
   sendButtonEnabled: {
-    backgroundColor: '#7C3AED' // violet-600
+    backgroundColor: '#7C3AED'      // violet-600
   },
   sendButtonDisabled: {
-    backgroundColor: '#C4B5FD' // violet-300
+    backgroundColor: '#C4B5FD'      // violet-300
   },
 });
 
