@@ -5,6 +5,7 @@ import {
   limit, 
   where, 
   getDocs, 
+  getDoc,
   addDoc, 
   updateDoc, 
   doc, 
@@ -19,6 +20,7 @@ import { ChatMessage } from '../models/chat';
 import { EncryptionService } from './EncryptionService';
 import { UserAvatar } from '../contexts/AuthProvider'; // Add this import
 import logger from '../utils/logger';
+import { getAuth } from 'firebase/auth';
 
 interface MessageData {
   text: string;
@@ -380,23 +382,21 @@ export class ChatService {
       if (encryptionEnabled) {
         logger.chat('Encryption enabled, attempting to encrypt message');
         
-        // Check if we have the group key
+        // Use await since hasGroupKey is now async
         const hasKey = await EncryptionService.hasGroupKey(groopId);
-        logger.chat(`Group key exists: ${hasKey}`);
+        if (!hasKey) {
+          logger.error('No encryption key found for groop');
+          throw new Error('No encryption key available for this group');
+        }
         
-        if (hasKey) {
-          try {
-            // Encrypt the message text
-            messageContent.text = await EncryptionService.encryptMessage(messageContent.text, groopId);
-            messageContent.isEncrypted = true;
-            logger.chat('Message encrypted successfully');
-          } catch (error) {
-            logger.error('Failed to encrypt message:', error);
-            // Fall back to unencrypted if encryption fails
-            messageContent.isEncrypted = false;
-          }
-        } else {
-          logger.error('Encryption is enabled but group key is not available');
+        try {
+          // Encrypt the message text
+          messageContent.text = await EncryptionService.encryptMessage(messageContent.text, groopId);
+          messageContent.isEncrypted = true;
+          logger.chat('Message encrypted successfully');
+        } catch (error) {
+          logger.error('Failed to encrypt message:', error);
+          // Fall back to unencrypted if encryption fails
           messageContent.isEncrypted = false;
         }
       }
@@ -561,15 +561,32 @@ export class ChatService {
 
   // Helper methods for the service
   private static async getCurrentUserProfile(): Promise<UserProfile> {
-    // This would need to be implemented based on your auth system
-    // For now we'll assume it comes from a global context or service
-    
-    // Placeholder: Get the user from AuthProvider
-    return { 
-      uid: 'current-user', 
-      displayName: 'Current User',
-      avatar: undefined // Explicitly set as undefined
-    };
+    try {
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+      
+      if (!currentUser) {
+        throw new Error('No authenticated user');
+      }
+      
+      // Get user profile from Firestore
+      const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+      
+      if (!userDoc.exists()) {
+        throw new Error('User profile not found');
+      }
+      
+      const userData = userDoc.data();
+      
+      return {
+        uid: currentUser.uid,
+        displayName: userData.displayName || currentUser.displayName || 'User',
+        avatar: userData.avatar
+      };
+    } catch (error) {
+      logger.error('Error getting current user profile:', error);
+      throw error;
+    }
   }
   
   private static async getGroopEncryptionStatus(groopId: string) {

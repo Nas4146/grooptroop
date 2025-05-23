@@ -146,18 +146,11 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     const checkEncryption = async () => {
       setEncryptionLoading(true);
       try {
-        // Fix the method name from hasGroupKey to hasGroopKey
-        if (typeof EncryptionService.hasGroopKey === 'function') {
-          const hasKey = await EncryptionService.hasGroopKey(currentGroop.id);
-          setHasEncryptionKey(hasKey);
-        } else {
-          // Fallback if the function doesn't exist
-          console.log('[CHAT] EncryptionService.hasGroopKey is not available, assuming encryption is not set up');
-          setHasEncryptionKey(false);
-        }
+        // Use the async method
+        const hasKey = await EncryptionService.hasGroupKey(currentGroop.id);
+        setHasEncryptionKey(hasKey);
       } catch (error) {
         logger.error('Error checking encryption status:', error);
-        // Set a default value on error
         setHasEncryptionKey(false);
       } finally {
         setEncryptionLoading(false);
