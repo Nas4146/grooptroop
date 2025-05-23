@@ -5,12 +5,13 @@ import Animated, {
   useAnimatedStyle, 
   useSharedValue, 
   withSequence, 
-  withTiming
+  withTiming,
+  withSpring
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 
-// Commonly used emoji reactions
-const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
+// More common/popular emojis that people actually use
+const REACTIONS = ['😂', '❤️', '👍', '😮', '😢', '🔥'];
 
 interface ReactionOverlayProps {
   visible: boolean;
@@ -28,29 +29,32 @@ const ReactionOverlay = ({
   isFromCurrentUser
 }: ReactionOverlayProps) => {
   // Animation values
-  const scale = useSharedValue(visible ? 1 : 0.5);
+  const scale = useSharedValue(visible ? 1 : 0.3);
   const opacity = useSharedValue(visible ? 1 : 0);
   
   // Animation when showing/hiding
   React.useEffect(() => {
     if (visible) {
       console.log('[REACTION_OVERLAY] Showing overlay');
-      opacity.value = withTiming(1, { duration: 150 });
-      scale.value = withSequence(
-        withTiming(1.1, { duration: 150 }),
-        withTiming(1, { duration: 100 })
-      );
       
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      // Smooth entrance animation
+      opacity.value = withTiming(1, { duration: 200 });
+      scale.value = withSpring(1, { 
+        damping: 15, 
+        stiffness: 200,
+        mass: 0.8
+      });
+      
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     } else {
       console.log('[REACTION_OVERLAY] Hiding overlay');
-      opacity.value = withTiming(0, { duration: 100 });
-      scale.value = withTiming(0.5, { duration: 100 });
+      opacity.value = withTiming(0, { duration: 150 });
+      scale.value = withTiming(0.3, { duration: 150 });
     }
   }, [visible]);
 
   // Animated styles
-  const animatedStyle = useAnimatedStyle(() => {
+  const containerStyle = useAnimatedStyle(() => {
     return {
       opacity: opacity.value,
       transform: [{ scale: scale.value }]
@@ -59,29 +63,24 @@ const ReactionOverlay = ({
 
   // Handle reaction selection
   const handleReactionSelect = useCallback((emoji: string) => {
-    console.log(`[REACTION_OVERLAY] Emoji ${emoji} selected`);
+    console.log(`[REACTION_OVERLAY] ${emoji} selected`);
     
-    // Provide haptic feedback
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    // Strong haptic feedback for reaction
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     
-    // Call the parent handler
-    onReactionSelect(emoji);
-    
-    // Close the overlay
-    onClose();
+    // Small delay for visual feedback, then execute
+    setTimeout(() => {
+      onReactionSelect(emoji);
+      onClose();
+    }, 100);
   }, [onReactionSelect, onClose]);
 
   // Handle reply press
   const handleReplyPress = useCallback(() => {
     console.log('[REACTION_OVERLAY] Reply selected');
     
-    // Provide haptic feedback
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
-    // Call the parent handler
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onReplyPress();
-    
-    // Close the overlay
     onClose();
   }, [onReplyPress, onClose]);
   
@@ -94,7 +93,7 @@ const ReactionOverlay = ({
       animationType="none"
       onRequestClose={onClose}
     >
-      {/* Backdrop */}
+      {/* Backdrop with proper touch handling */}
       <TouchableOpacity 
         style={styles.backdrop}
         onPress={() => {
@@ -103,114 +102,157 @@ const ReactionOverlay = ({
         }}
         activeOpacity={1}
       >
-        {/* Overlay content */}
-        <View style={styles.overlayContainer}>
-          <Animated.View 
-            style={[
-              styles.overlay,
-              animatedStyle,
-              isFromCurrentUser ? styles.alignRight : styles.alignLeft
-            ]}
-          >
-            <View style={styles.container}>
-              {/* Emoji reactions */}
-              <View style={styles.emojisContainer}>
-                {REACTIONS.map((emoji) => (
+        {/* Main overlay container - FIXED: Shifted right and reduced padding */}
+        <View style={[
+          styles.overlayContainer,
+          isFromCurrentUser ? styles.overlayRight : styles.overlayLeft
+        ]}>
+          <TouchableOpacity activeOpacity={1}>
+            <Animated.View style={[styles.overlay, containerStyle]}>
+              {/* Compact glass container */}
+              <View style={styles.glassContainer}>
+                <View style={styles.innerContainer}>
+                  
+                  {/* Emoji reactions grid - REMOVED header */}
+                  <View style={styles.emojisContainer}>
+                    {REACTIONS.map((emoji, index) => (
+                      <TouchableOpacity
+                        key={emoji}
+                        style={styles.emojiButton}
+                        onPress={() => handleReactionSelect(emoji)}
+                        activeOpacity={0.6}
+                      >
+                        <View style={[styles.emojiGlow, { backgroundColor: getEmojiBackgroundColor(index) }]}>
+                          <Text style={styles.emoji}>{emoji}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  
+                  {/* Compact divider */}
+                  <View style={styles.divider} />
+                  
+                  {/* Reply button - REMOVED icon */}
                   <TouchableOpacity
-                    key={emoji}
-                    style={styles.emojiButton}
-                    onPress={() => handleReactionSelect(emoji)}
+                    style={styles.replyButton}
+                    onPress={handleReplyPress}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.emoji}>{emoji}</Text>
+                    <Text style={styles.replyText}>Reply</Text>
                   </TouchableOpacity>
-                ))}
+                  
+                </View>
               </View>
-              
-              {/* Divider */}
-              <View style={styles.divider} />
-              
-              {/* Reply option */}
-              <TouchableOpacity
-                style={styles.replyButton}
-                onPress={handleReplyPress}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="arrow-undo-outline" size={22} color="#374151" />
-                <Text style={styles.replyText}>Reply</Text>
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
+            </Animated.View>
+          </TouchableOpacity>
         </View>
       </TouchableOpacity>
     </Modal>
   );
 };
 
+// Helper function for emoji background colors
+const getEmojiBackgroundColor = (index: number): string => {
+  const colors = [
+    'rgba(252, 211, 77, 0.1)',  // Yellow for 😂
+    'rgba(239, 68, 68, 0.1)',   // Red for ❤️
+    'rgba(34, 197, 94, 0.1)',   // Green for 👍
+    'rgba(59, 130, 246, 0.1)',  // Blue for 😮
+    'rgba(107, 114, 128, 0.1)', // Gray for 😢
+    'rgba(251, 146, 60, 0.1)'   // Orange for 🔥
+  ];
+  return colors[index % colors.length];
+};
+
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   overlayContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
+    position: 'absolute',
+    bottom: 80, // Position above the message input
+  },
+  overlayLeft: {
+    left: 60, // Shifted right from the left edge
+  },
+  overlayRight: {
+    right: 20, // Keep some margin from right edge
   },
   overlay: {
-    backgroundColor: 'transparent',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  glassContainer: {
+    borderRadius: 20, // Slightly smaller radius
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    overflow: 'hidden',
+    minWidth: 260, // Reduced width
+    maxWidth: 280,
+    // Glass effect shadow
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
     elevation: 8,
   },
-  alignLeft: {
-    alignSelf: 'flex-start',
-  },
-  alignRight: {
-    alignSelf: 'flex-end',
-  },
-  container: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    overflow: 'hidden',
-    minWidth: 280,
+  innerContainer: {
+    padding: 12, // Reduced padding
   },
   emojisContainer: {
     flexDirection: 'row',
-    padding: 8,
     justifyContent: 'space-around',
+    paddingVertical: 4, // Reduced vertical padding
+    marginBottom: 0, // Removed bottom margin
   },
   emojiButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'transparent',
+    width: 38, // Slightly smaller
+    height: 38,
+  },
+  emojiGlow: {
+    width: 34, // Slightly smaller
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   emoji: {
-    fontSize: 24,
+    fontSize: 18, // Slightly smaller emoji
   },
   divider: {
     height: 1,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: 'rgba(156, 163, 175, 0.2)',
+    marginVertical: 8, // Reduced margin
+    marginHorizontal: 8,
   },
   replyButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: 'white',
+    justifyContent: 'center',
+    paddingVertical: 10, // Reduced padding
+    paddingHorizontal: 16,
+    borderRadius: 14, // Smaller radius
+    backgroundColor: 'rgba(99, 102, 241, 0.08)',
   },
   replyText: {
-    marginLeft: 8,
-    fontSize: 16,
-    color: '#374151',
-    fontWeight: '500',
+    fontSize: 15,
+    color: '#6366F1',
+    fontWeight: '600',
+    letterSpacing: 0.3,
   }
 });
 
