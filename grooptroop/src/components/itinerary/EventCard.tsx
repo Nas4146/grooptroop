@@ -17,21 +17,24 @@ export default function EventCard({
   event, 
   isSelected = false,
   isFirst = false,
-  isLast = false 
-}: EventCardProps) {
+  isLast = false,
+  paymentStatus // Add this prop to receive pre-computed payment status
+}: EventCardProps & { paymentStatus?: boolean }) {
   const navigation = useNavigation<EventDetailsNavigationProp>();
   const { currentGroop } = useGroop();
   const { profile } = useAuth();
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [paymentSheetVisible, setPaymentSheetVisible] = useState(false);
-  const [isPaid, setIsPaid] = useState(false);
+  const [isPaid, setIsPaid] = useState(paymentStatus || false);
 
-  // Check if this event is already paid by the user
+  // Only check payment status if not provided as prop
   useEffect(() => {
-    if (event.isPaymentRequired && event.id && currentGroop?.id && profile?.uid) {
+    if (paymentStatus !== undefined) {
+      setIsPaid(paymentStatus);
+    } else if (event.isPaymentRequired && event.id && currentGroop?.id && profile?.uid) {
       checkPaymentStatus();
     }
-  }, [event.id, currentGroop?.id, profile?.uid, paymentSheetVisible]);
+  }, [paymentStatus, event.id, currentGroop?.id, profile?.uid, paymentSheetVisible]);
   
   const checkPaymentStatus = async () => {
     try {

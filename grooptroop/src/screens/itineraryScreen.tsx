@@ -30,22 +30,36 @@ export default function ItineraryScreen() {
   const { profile } = useAuth();
   const [addressCopied, setAddressCopied] = useState(false);
   const [isFirstLoad, setIsFirstLoad] = useState(true);
+  const [dataLoaded, setDataLoaded] = useState(false); // Add this to prevent duplicate calls
 
   // Log screen mount for easier debugging
   useEffect(() => {
     console.log('[performance] ItineraryScreen mounted');
   }, []);
   
+  // Consolidate all data fetching into a single effect
   useEffect(() => {
-    fetchUserGroops();
-  }, []);
+    if (currentGroop && profile && !dataLoaded) {
+      setDataLoaded(true);
+      Promise.all([
+        fetchItinerary(),
+        fetchPaymentSummary()
+      ]).finally(() => {
+        setLoading(false);
+      });
+    } else if (!currentGroop) {
+      setLoading(false);
+    }
+  }, [currentGroop, profile]);
 
   useFocusEffect(
     useCallback(() => {
-      console.log('[ITINERARY] Refreshing data from focus effect');
-      // Refresh itinerary data
-      fetchItineraryData();
-    }, [])
+      // Only refresh if data is already loaded and we're returning to the screen
+      if (dataLoaded && currentGroop && profile) {
+        console.log('[ITINERARY] Refreshing data from focus effect');
+        fetchItineraryData();
+      }
+    }, [dataLoaded, currentGroop, profile])
   );
 
   const fetchItinerary = async (): Promise<ItineraryDay[]> => {

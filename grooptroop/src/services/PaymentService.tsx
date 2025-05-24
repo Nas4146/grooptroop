@@ -612,4 +612,46 @@ static async createDirectPayment(
     };
   }
 }
+
+  // Add a batch payment status check method
+  static async batchCheckEventPaymentStatus(
+    groopId: string, 
+    userId: string, 
+    eventIds: string[]
+  ): Promise<Record<string, boolean>> {
+    try {
+      console.log(`[PAYMENT_SERVICE] Batch checking payment status for ${eventIds.length} events`);
+      
+      // Get all payment records for this user in one query
+      const paymentsRef = collection(db, `groops/${groopId}/payments`);
+      const q = query(
+        paymentsRef,
+        where('userId', '==', userId),
+        where('eventId', 'in', eventIds.slice(0, 10)) // Firestore 'in' limit is 10
+      );
+      
+      const snapshot = await getDocs(q);
+      const paidEvents: Record<string, boolean> = {};
+      
+      // Initialize all as unpaid
+      eventIds.forEach(id => paidEvents[id] = false);
+      
+      // Mark paid events
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.eventId && data.status === 'completed') {
+          paidEvents[data.eventId] = true;
+        }
+      });
+      
+      console.log(`[PAYMENT_SERVICE] Batch check complete: ${Object.values(paidEvents).filter(Boolean).length}/${eventIds.length} paid`);
+      return paidEvents;
+    } catch (error) {
+      console.error('[PAYMENT_SERVICE] Error in batch payment check:', error);
+      // Return all false if error
+      const result: Record<string, boolean> = {};
+      eventIds.forEach(id => result[id] = false);
+      return result;
+    }
+  }
 }

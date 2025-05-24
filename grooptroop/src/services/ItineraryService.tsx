@@ -15,6 +15,8 @@ import { db } from '../lib/firebase';
 import { ItineraryDay, ItineraryEvent } from '../models/itinerary';
 
 export class ItineraryService {
+  private static memoryCache: Map<string, { data: ItineraryDay[], timestamp: number }> = new Map();
+  
   // Cache the itinerary data locally
   static async cacheItinerary(groopId: string, itineraryData: ItineraryDay[]): Promise<void> {
     try {
@@ -77,66 +79,37 @@ export class ItineraryService {
     }
   }
 
-  // Get the full itinerary for a groop
+  // Get the full itinerary for a groop with improved caching
   static async getItinerary(groopId: string, useCache: boolean = true): Promise<ItineraryDay[]> {
     try {
       console.log('[ITINERARY] Fetching itinerary for groop:', groopId);
       
-      // Try to get from cache first if useCache is true
+      // Check memory cache first (faster than AsyncStorage)
       if (useCache) {
+        const memoryCached = this.memoryCache.get(groopId);
+        if (memoryCached) {
+          const cacheAge = (Date.now() - memoryCached.timestamp) / (1000 * 60);
+          if (cacheAge < 5) { // 5 minute memory cache
+            console.log('[ITINERARY] Using memory cache');
+            return memoryCached.data;
+          }
+        }
+        
+        // Then check AsyncStorage cache
         const cachedData = await this.getCachedItinerary(groopId);
         if (cachedData) {
+          // Store in memory cache for next time
+          this.memoryCache.set(groopId, { data: cachedData, timestamp: Date.now() });
           return cachedData;
         }
       }
       
-      // If not in cache or cache disabled, fetch from Firestore
-      const daysRef = collection(db, `groops/${groopId}/itinerary`);
-      const q = query(daysRef, orderBy('date', 'asc'));
-      const daysSnapshot = await getDocs(q);
+      // If not in cache, fetch from Firestore
+      const itinerary = await this.fetchFromFirestore(groopId);
       
-      const itinerary: ItineraryDay[] = [];
-      
-      for (const dayDoc of daysSnapshot.docs) {
-        const dayData = dayDoc.data();
-        
-        // Fetch events for this day
-        const eventsRef = collection(db, `groops/${groopId}/itinerary/${dayDoc.id}/events`);
-        const eventsQuery = query(eventsRef, orderBy('time', 'asc'));
-        const eventsSnapshot = await getDocs(eventsQuery);
-
-        const events: ItineraryEvent[] = eventsSnapshot.docs.map(eventDoc => {
-          const eventData = eventDoc.data();
-          return {
-            id: eventDoc.id,
-            title: eventData.title || '',
-            date: eventData.date || '',
-            time: eventData.time || '',
-            description: eventData.description || '',
-            location: eventData.location || '',
-            isPaymentRequired: Boolean(eventData.isPaymentRequired) || false,
-            totalCost: eventData.totalCost || 0,
-            costPerPerson: eventData.costPerPerson || 0,
-            paid: Boolean(eventData.paid) || false,
-            isOptional: Boolean(eventData.isOptional) || false,
-            type: eventData.type || 'other',
-            tags: eventData.tags || [],
-            attendees: eventData.attendees || 0
-          };
-        });
-
-        itinerary.push({
-          id: dayDoc.id,
-          date: dayData.date,
-          formattedDate: dayData.formattedDate,
-          events: events
-        });
-      }
-
-      console.log('[ITINERARY] Found', itinerary.length, 'days in itinerary');
-
-      // Cache the data for future use
+      // Cache the data
       if (useCache) {
+        this.memoryCache.set(groopId, { data: itinerary, timestamp: Date.now() });
         await this.cacheItinerary(groopId, itinerary);
       }
 
@@ -144,6 +117,68 @@ export class ItineraryService {
     } catch (error) {
       console.error('[ITINERARY] Error fetching itinerary:', error);
       throw error;
+    }
+  }
+
+  private static async fetchFromFirestore(groopId: string): Promise<ItineraryDay[]> {
+    // Move the existing Firestore fetching logic here
+    const daysRef = collection(db, `groops/${groopId}/itinerary`);
+    const q = query(daysRef, orderBy('date', 'asc'));
+    const daysSnapshot = await getDocs(q);
+    
+    const itinerary: ItineraryDay[] = [];
+    
+    // Process all days in parallel instead of sequentially
+    const dayPromises = daysSnapshot.docs.map(async (dayDoc) => {
+      const dayData = dayDoc.data();
+      
+      const eventsRef = collection(db, `groops/${groopId}/itinerary/${dayDoc.id}/events`);
+      const eventsQuery = query(eventsRef, orderBy('time', 'asc'));
+      const eventsSnapshot = await getDocs(eventsQuery);
+
+      const events: ItineraryEvent[] = eventsSnapshot.docs.map(eventDoc => {
+        const eventData = eventDoc.data();
+        return {
+          id: eventDoc.id,
+          title: eventData.title || '',
+          date: eventData.date || '',
+          time: eventData.time || '',
+          description: eventData.description || '',
+          location: eventData.location || '',
+          isPaymentRequired: Boolean(eventData.isPaymentRequired) || false,
+          totalCost: eventData.totalCost || 0,
+          costPerPerson: eventData.costPerPerson || 0,
+          paid: Boolean(eventData.paid) || false,
+          isOptional: Boolean(eventData.isOptional) || false,
+          type: eventData.type || 'other',
+          tags: eventData.tags || [],
+          attendees: eventData.attendees || 0
+        };
+      });
+
+      return {
+        id: dayDoc.id,
+        date: dayData.date,
+        formattedDate: dayData.formattedDate,
+        events: events
+      };
+    });
+
+    const results = await Promise.all(dayPromises);
+    
+    // Sort by date
+    results.sort((a, b) => a.date.localeCompare(b.date));
+    
+    console.log('[ITINERARY] Found', results.length, 'days in itinerary');
+    return results;
+  }
+
+  // Clear memory cache when needed
+  static clearMemoryCache(groopId?: string): void {
+    if (groopId) {
+      this.memoryCache.delete(groopId);
+    } else {
+      this.memoryCache.clear();
     }
   }
   
