@@ -18,7 +18,7 @@ export default function EventCard({
   isSelected = false,
   isFirst = false,
   isLast = false,
-  paymentStatus // Add this prop to receive pre-computed payment status
+  paymentStatus // This should be the primary source
 }: EventCardProps & { paymentStatus?: boolean }) {
   const navigation = useNavigation<EventDetailsNavigationProp>();
   const { currentGroop } = useGroop();
@@ -27,14 +27,16 @@ export default function EventCard({
   const [paymentSheetVisible, setPaymentSheetVisible] = useState(false);
   const [isPaid, setIsPaid] = useState(paymentStatus || false);
 
-  // Only check payment status if not provided as prop
+  // Only check payment status if not provided as prop AND it's critical
   useEffect(() => {
     if (paymentStatus !== undefined) {
       setIsPaid(paymentStatus);
-    } else if (event.isPaymentRequired && event.id && currentGroop?.id && profile?.uid) {
+    } else if (event.isPaymentRequired && event.id && currentGroop?.id && profile?.uid && !paymentSheetVisible) {
+      // Only check if we absolutely need to and don't have the data
+      console.log('[EVENT_CARD] Fallback payment status check for:', event.title);
       checkPaymentStatus();
     }
-  }, [paymentStatus, event.id, currentGroop?.id, profile?.uid, paymentSheetVisible]);
+  }, [paymentStatus, event.id, currentGroop?.id, profile?.uid]); // Remove paymentSheetVisible from deps
   
   const checkPaymentStatus = async () => {
     try {

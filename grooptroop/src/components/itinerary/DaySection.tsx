@@ -12,21 +12,24 @@ export default function DaySection({ day }: DaySectionProps) {
   const { currentGroop } = useGroop();
   const { profile } = useAuth();
   const [paymentStatuses, setPaymentStatuses] = useState<Record<string, boolean>>({});
+  const [isLoading, setIsLoading] = useState(false);
 
   // Batch check payment statuses for all events in this day
   useEffect(() => {
-    if (currentGroop?.id && profile?.uid) {
+    if (currentGroop?.id && profile?.uid && !isLoading) {
       const eventIds = day.events
         .filter(event => event.isPaymentRequired)
         .map(event => event.id);
       
       if (eventIds.length > 0) {
+        setIsLoading(true);
         PaymentService.batchCheckEventPaymentStatus(currentGroop.id, profile.uid, eventIds)
           .then(setPaymentStatuses)
-          .catch(console.error);
+          .catch(console.error)
+          .finally(() => setIsLoading(false));
       }
     }
-  }, [currentGroop?.id, profile?.uid, day.events]);
+  }, [currentGroop?.id, profile?.uid, day.id]);
 
   return (
     <View style={tw`mb-5`}>
@@ -46,7 +49,7 @@ export default function DaySection({ day }: DaySectionProps) {
             event={event}
             isFirst={index === 0}
             isLast={index === day.events.length - 1}
-            paymentStatus={paymentStatuses[event.id]} // Pass pre-computed status
+            paymentStatus={paymentStatuses[event.id]} // Always pass the status
           />
         ))}
       </View>

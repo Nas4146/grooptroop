@@ -17,9 +17,9 @@ import GroopHeader from '../components/common/GroopHeader';
 import { SentryService } from '../utils/sentryService';
 
 export default function ItineraryScreen() {
-  const { currentGroop, userGroops, fetchUserGroops, setCurrentGroop } = useGroop();
+  const { currentGroop, userGroups, setCurrentGroop } = useGroop();
   const navigation = useNavigation();
-  const [itinerary, setItinerary] = useState<ItineraryDay[]>([]);
+  const [itinerary, setItinerary] = useState<ItineraryDay[]>([]); // Ensure initial value is empty array
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -30,36 +30,57 @@ export default function ItineraryScreen() {
   const { profile } = useAuth();
   const [addressCopied, setAddressCopied] = useState(false);
   const [isFirstLoad, setIsFirstLoad] = useState(true);
-  const [dataLoaded, setDataLoaded] = useState(false); // Add this to prevent duplicate calls
+  const [initialDataLoaded, setInitialDataLoaded] = useState(false);
+  const [isMounted, setIsMounted] = useState(true);
+  const [paymentDataLoaded, setPaymentDataLoaded] = useState(false);
 
-  // Log screen mount for easier debugging
+  // Prevent multiple mounts
   useEffect(() => {
     console.log('[performance] ItineraryScreen mounted');
+    setIsMounted(true);
+    
+    return () => {
+      setIsMounted(false);
+    };
   }, []);
-  
-  // Consolidate all data fetching into a single effect
+
+  // Consolidate all initial data loading - ONLY run once
   useEffect(() => {
-    if (currentGroop && profile && !dataLoaded) {
-      setDataLoaded(true);
+    if (!initialDataLoaded && currentGroop && profile && isMounted) {
+      console.log('[ITINERARY] Initial data load starting');
+      setInitialDataLoaded(true);
+      
+      // Run both data fetches in parallel
       Promise.all([
         fetchItinerary(),
         fetchPaymentSummary()
       ]).finally(() => {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+          setPaymentDataLoaded(true);
+        }
       });
-    } else if (!currentGroop) {
+    } else if (!currentGroop && isMounted) {
       setLoading(false);
     }
-  }, [currentGroop, profile]);
+  }, [currentGroop, profile, initialDataLoaded, isMounted]);
 
+  // Only refresh on focus if data already exists
   useFocusEffect(
     useCallback(() => {
-      // Only refresh if data is already loaded and we're returning to the screen
-      if (dataLoaded && currentGroop && profile) {
-        console.log('[ITINERARY] Refreshing data from focus effect');
-        fetchItineraryData();
+      // Only refresh if we've already loaded initial data and are returning to screen
+      if (initialDataLoaded && currentGroop && profile && !loading && isMounted) {
+        console.log('[ITINERARY] Focus refresh - data already loaded');
+        
+        // Only refresh if we've been away from screen for more than 30 seconds
+        const shouldRefresh = Date.now() - (window.lastItineraryView || 0) > 30000;
+        if (shouldRefresh) {
+          fetchItineraryData();
+        }
       }
-    }, [dataLoaded, currentGroop, profile])
+      
+      window.lastItineraryView = Date.now();
+    }, [initialDataLoaded, currentGroop, profile, loading, isMounted])
   );
 
   const fetchItinerary = async (): Promise<ItineraryDay[]> => {
@@ -87,18 +108,20 @@ export default function ItineraryScreen() {
         !refreshing // Use cache unless refreshing
       );
 
-      const eventCount = data.reduce((total, day) => total + day.events.length, 0);
+      // Ensure data is always an array
+      const safeData = Array.isArray(data) ? data : [];
+      const eventCount = safeData.reduce((total, day) => total + (day.events?.length || 0), 0);
 
       console.log(
         '[ITINERARY] Data loaded:',
-        data.length,
+        safeData.length,
         'days',
         eventCount,
         'events'
       );
       
-      setItinerary(data);
-      return data;
+      setItinerary(safeData);
+      return safeData;
     } catch (error) {
       console.error('[ITINERARY] Error fetching itinerary:', error);
       
@@ -112,6 +135,8 @@ export default function ItineraryScreen() {
         console.error('[ITINERARY] Error logging to Sentry:', e);
       }
       
+      // Ensure we return an empty array on error
+      setItinerary([]);
       return [];
     } finally {
       setLoading(false);
@@ -156,7 +181,7 @@ export default function ItineraryScreen() {
       // Also refresh payment data
       if (profile) {
         fetchPaymentSummary();
-
+        
         // Additionally, refresh any payment status in the PaymentService
         PaymentService.clearPaymentStatusCache();
       }
@@ -166,14 +191,9 @@ export default function ItineraryScreen() {
     return Promise.resolve([]);
   }, [currentGroop, profile]);
 
-  useEffect(() => {
-    if (currentGroop && profile) {
-      fetchPaymentSummary();
-    }
-  }, [currentGroop, profile]);
-
   const renderGroopSelector = () => {
-    if (userGroops.length <= 1) return null;
+    // Add safety check for userGroups
+    if (!userGroups || !Array.isArray(userGroups) || userGroups.length <= 1) return null;
 
     return (
       <View style={tw`px-4 mb-4`}>
@@ -183,7 +203,7 @@ export default function ItineraryScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={tw`pb-2`}
         >
-          {userGroops.map((groop) => (
+          {userGroups.map((groop) => (
             <TouchableOpacity
               key={groop.id}
               style={tw`mr-3 p-2 rounded-lg ${currentGroop?.id === groop.id ? 'bg-primary' : 'bg-gray-200'}`}
@@ -528,14 +548,17 @@ export default function ItineraryScreen() {
             />
           }
         >
-          {itinerary.length === 0 ? (
+          {!Array.isArray(itinerary) || itinerary.length === 0 ? (
             <View style={tw`py-8 items-center`}>
               <Text style={tw`text-gray-500`}>No itinerary items found</Text>
             </View>
           ) : (
             itinerary.map((day) => {
+              // Ensure day.events is an array before filtering
+              const events = Array.isArray(day.events) ? day.events : [];
+              
               // Filter out accommodation events from each day's events
-              const filteredEvents = day.events.filter((event) => event.type !== 'accommodation');
+              const filteredEvents = events.filter((event) => event.type !== 'accommodation');
 
               // Create a new day object with filtered events
               const filteredDay = {

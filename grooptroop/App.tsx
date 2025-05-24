@@ -20,28 +20,27 @@ import RootNavigator from './src/navigation/RootNavigator';
 
 // Test function with proper async/await and flush
 const testSentry = async () => {
+  // Completely disable in production builds
+  if (process.env.NODE_ENV === 'production' || !__DEV__) {
+    return;
+  }
+  
+  // Limit to once per app session
+  if (window.sentryTestRun) {
+    return;
+  }
+  window.sentryTestRun = true;
+  
   console.log('[SENTRY] Running basic Sentry test');
   
-  // Basic message
-  Sentry.captureMessage('Test message from GroopTroop App');
+  // Only run a minimal test
+  Sentry.addBreadcrumb({
+    category: 'startup',
+    message: 'App initialized successfully',
+    level: 'info'
+  });
   
-  // Basic error
-  try {
-    throw new Error('Manual test error from App.tsx');
-  } catch (e) {
-    Sentry.captureException(e);
-  }
-  
-  // Force flush to send immediately
-  try {
-    console.log('[SENTRY] Calling flush to send events immediately');
-    await Sentry.flush(5000);
-    console.log('[SENTRY] Flush completed');
-  } catch (e) {
-    console.error('[SENTRY] Error during flush:', e);
-  }
-  
-  console.log('[SENTRY] Test complete, events should appear in dashboard');
+  console.log('[SENTRY] Test complete');
 };
 
 // Main app content with navigation

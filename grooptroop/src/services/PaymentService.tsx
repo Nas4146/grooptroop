@@ -29,6 +29,9 @@ import {
 import { EventData } from '../models/payments';
 
 export class PaymentService {
+  private static paymentStatusCache: Map<string, { data: Record<string, boolean>, timestamp: number }> = new Map();
+  private static CACHE_DURATION = 60000; // 1 minute cache
+
   // Get all payment items for a user (combines events and accommodations with payment status)
   static async getPaymentItems(groopId: string, userId: string): Promise<PaymentItem[]> {
     console.log(`[PAYMENT_SERVICE] Getting payment items for user ${userId} in groop ${groopId}`);
@@ -619,39 +622,92 @@ static async createDirectPayment(
     userId: string, 
     eventIds: string[]
   ): Promise<Record<string, boolean>> {
+    const cacheKey = `${groopId}-${userId}`;
+    
+    // Check cache first
+    const cached = this.paymentStatusCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp) < this.CACHE_DURATION) {
+      console.log(`[PAYMENT_SERVICE] Using cached payment status for ${eventIds.length} events`);
+      const result: Record<string, boolean> = {};
+      eventIds.forEach(id => {
+        result[id] = cached.data[id] || false;
+      });
+      return result;
+    }
+
     try {
       console.log(`[PAYMENT_SERVICE] Batch checking payment status for ${eventIds.length} events`);
       
+      if (eventIds.length === 0) {
+        return {};
+      }
+
       // Get all payment records for this user in one query
       const paymentsRef = collection(db, `groops/${groopId}/payments`);
-      const q = query(
-        paymentsRef,
-        where('userId', '==', userId),
-        where('eventId', 'in', eventIds.slice(0, 10)) // Firestore 'in' limit is 10
-      );
       
-      const snapshot = await getDocs(q);
-      const paidEvents: Record<string, boolean> = {};
+      // Handle Firestore 'in' query limit of 10
+      const chunks = [];
+      for (let i = 0; i < eventIds.length; i += 10) {
+        chunks.push(eventIds.slice(i, i + 10));
+      }
+      
+      const allPaidEvents: Record<string, boolean> = {};
       
       // Initialize all as unpaid
-      eventIds.forEach(id => paidEvents[id] = false);
+      eventIds.forEach(id => allPaidEvents[id] = false);
       
-      // Mark paid events
-      snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        if (data.eventId && data.status === 'completed') {
-          paidEvents[data.eventId] = true;
-        }
+      // Process chunks in parallel
+      const chunkPromises = chunks.map(async (chunk) => {
+        const q = query(
+          paymentsRef,
+          where('userId', '==', userId),
+          where('eventId', 'in', chunk),
+          where('status', '==', 'completed')
+        );
+        
+        const snapshot = await getDocs(q);
+        snapshot.docs.forEach(doc => {
+          const data = doc.data();
+          if (data.eventId) {
+            allPaidEvents[data.eventId] = true;
+          }
+        });
       });
       
-      console.log(`[PAYMENT_SERVICE] Batch check complete: ${Object.values(paidEvents).filter(Boolean).length}/${eventIds.length} paid`);
-      return paidEvents;
+      await Promise.all(chunkPromises);
+      
+      // Cache the full result
+      this.paymentStatusCache.set(cacheKey, {
+        data: { ...allPaidEvents },
+        timestamp: Date.now()
+      });
+      
+      console.log(`[PAYMENT_SERVICE] Batch check complete: ${Object.values(allPaidEvents).filter(Boolean).length}/${eventIds.length} paid`);
+      return allPaidEvents;
     } catch (error) {
       console.error('[PAYMENT_SERVICE] Error in batch payment check:', error);
       // Return all false if error
       const result: Record<string, boolean> = {};
       eventIds.forEach(id => result[id] = false);
       return result;
+    }
+  }
+
+  // Clear payment status cache
+  static clearPaymentStatusCache(): void {
+    this.paymentStatusCache.clear();
+    console.log('[PAYMENT_SERVICE] Payment status cache cleared');
+  }
+
+  // Update cache when payment is made
+  static updatePaymentStatusCache(groopId: string, userId: string, eventId: string, isPaid: boolean): void {
+    const cacheKey = `${groopId}-${userId}`;
+    const cached = this.paymentStatusCache.get(cacheKey);
+    
+    if (cached) {
+      cached.data[eventId] = isPaid;
+      cached.timestamp = Date.now(); // Refresh timestamp
+      this.paymentStatusCache.set(cacheKey, cached);
     }
   }
 }
