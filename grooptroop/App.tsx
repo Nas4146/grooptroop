@@ -12,6 +12,7 @@ import { View, Text, ActivityIndicator } from 'react-native';
 import tw from './src/utils/tw';
 import { GroopProvider } from './src/contexts/GroopProvider';
 import { NotificationProvider } from './src/contexts/NotificationProvider';
+import { PaymentProvider } from './src/contexts/PaymentProvider';
 import { useSentryPerformance } from './src/hooks/useSentryPerformance';
 import * as Sentry from '@sentry/react-native';
 
@@ -48,7 +49,7 @@ const AppContent = () => {
   const { isAuthenticated, isLoading, user, profile } = useAuth();
   // Use the hook with a try/catch for safety
   const perf = useSentryPerformance('AppContent');
-  const navigationRef = useNavigationContainerRef();
+  const navigationRef = useNavigationContainerRef(); // Move this INSIDE AppContent
   
   useEffect(() => {
     // Set user context in Sentry if authenticated
@@ -56,71 +57,57 @@ const AppContent = () => {
       try {
         Sentry.setUser({
           id: user.uid,
-          username: user.displayName || undefined,
-          email: user.email || undefined
+          email: user.email || 'unknown',
+          username: profile?.displayName || 'unknown'
         });
-        
-        if (profile) {
-          Sentry.setTag('user.hasCompletedOnboarding', String(profile.hasCompletedOnboarding || false));
-          Sentry.setTag('user.isAdmin', String(profile.isAdmin || false));
-        }
       } catch (e) {
-        console.error('[SENTRY] Error setting user data:', e);
+        console.error('[SENTRY] Error setting user context:', e);
       }
     }
     
-    // Run test after a delay to ensure initialization is complete
-    setTimeout(() => {
-      testSentry().catch(e => console.error('[SENTRY] Test error:', e));
-    }, 2000);
-    
   }, [isLoading, isAuthenticated, user, profile]);
-  
-  console.log('[APP] AppContent rendering. Auth status:', isAuthenticated ? 'logged in' : 'not logged in');
-  
-  // Show loading state
+
+  // Log authentication status
+  useEffect(() => {
+    const status = isLoading ? 'loading' : isAuthenticated ? 'logged in' : 'not logged in';
+    console.log(`[APP] AppContent rendering. Auth status: ${status}`);
+  });
+
   if (isLoading) {
     return (
-      <View style={tw`flex-1 justify-center items-center bg-gray-100`}>
+      <View style={tw`flex-1 justify-center items-center bg-light`}>
         <ActivityIndicator size="large" color="#7C3AED" />
-        <Text style={tw`mt-3 text-gray-500`}>Loading...</Text>
+        <Text style={tw`mt-4 text-primary`}>Loading...</Text>
       </View>
     );
   }
-  
+
   return (
-    <NavigationContainer
-      ref={navigationRef}
-      onReady={() => {
-        perf.trackInteraction('navigation_ready');
-        Sentry.addBreadcrumb({
-          category: 'navigation',
-          message: 'Navigation container ready',
-          level: 'info'
-        });
-      }}
-    >
+    <NavigationContainer ref={navigationRef}>
       <RootNavigator />
       <StatusBar style="auto" />
     </NavigationContainer>
   );
 };
 
-// Main App component
-function App() {
+export default function App() {
+  useEffect(() => {
+    testSentry();
+  }, []);
+
   return (
-    <GestureHandlerRootView style={tw`flex-1`}>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AuthProvider>
           <GroopProvider>
-            <NotificationProvider>
-              <AppContent />
-            </NotificationProvider>
+            <PaymentProvider>
+              <NotificationProvider>
+                <AppContent />
+              </NotificationProvider>
+            </PaymentProvider>
           </GroopProvider>
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
-
-export default App;

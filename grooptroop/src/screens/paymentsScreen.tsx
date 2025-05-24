@@ -11,7 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useGroop } from '../contexts/GroopProvider';
 import { useAuth } from '../contexts/AuthProvider';
-import { PaymentService } from '../services/PaymentService';
+import { usePayment } from '../contexts/PaymentProvider'; // Use shared context
 import PaymentSheet from '../components/payments/PaymentSheet';
 import { PaymentItem } from '../models/payments';
 import GroopHeader from '../components/common/GroopHeader';
@@ -21,89 +21,35 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 export default function PaymentsScreen() {
   const { currentGroop } = useGroop();
   const { profile } = useAuth();
-  const [loading, setLoading] = useState(true);
+  const { 
+    paymentItems, 
+    paymentSummary, 
+    loading, 
+    refreshPaymentData 
+  } = usePayment(); // Use shared payment data
+  
   const [refreshing, setRefreshing] = useState(false);
-  const [paymentItems, setPaymentItems] = useState<PaymentItem[]>([]);
-  const [totalOwed, setTotalOwed] = useState(0);
-  const [totalPaid, setTotalPaid] = useState(0);
   const [paymentSheetVisible, setPaymentSheetVisible] = useState(false);
   const [selectedPaymentItem, setSelectedPaymentItem] = useState<PaymentItem | null>(null);
   const navigation = useNavigation(); 
 
-const navigateToMembers = () => {
-};
-
-  // Fetch payment data
-  const fetchPayments = async () => {
-    if (!currentGroop || !profile) {
-      setLoading(false);
-      return;
-    }
-    
-    try {
-      console.log('[PAYMENTS_SCREEN] Fetching payment items');
-      setLoading(true);
-      
-      // Get all payment items
-      const items = await PaymentService.getPaymentItems(currentGroop.id, profile.uid);
-      
-      // Sort items: pending first, then paid
-      const sortedItems = [...items].sort((a, b) => {
-        // First sort by payment status (unpaid first)
-        if (a.isPaid !== b.isPaid) {
-          return a.isPaid ? 1 : -1;  // false (unpaid) comes before true (paid)
-        }
-        
-        // For items with the same payment status, sort by type (accommodation first)
-        if (a.type !== b.type) {
-          return a.type === 'accommodation' ? -1 : 1;
-        }
-        
-        // For items with same payment status and type, sort by amount (higher first)
-        return b.amountDue - a.amountDue;
-      });
-      
-      console.log(`[PAYMENTS_SCREEN] Sorted ${sortedItems.length} payment items (${sortedItems.filter(i => !i.isPaid).length} pending)`);
-      setPaymentItems(sortedItems);
-      
-      // Calculate totals
-      const summary = await PaymentService.getUserPaymentSummary(currentGroop.id, profile.uid);
-      setTotalOwed(summary.totalOwed);
-      setTotalPaid(summary.totalPaid);
-      
-      console.log(`[PAYMENTS_SCREEN] Payment summary: Total: $${summary.totalOwed}, Paid: $${summary.totalPaid}, Remaining: $${summary.remaining}`);
-    } catch (error) {
-      console.error('[PAYMENTS_SCREEN] Error fetching payments:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    if (currentGroop && profile) {
-      fetchPayments();
-    }
-  }, [currentGroop, profile]);
-
+  // Only refresh on focus if data is stale (more than 60 seconds old)
   useFocusEffect(
     React.useCallback(() => {
       if (currentGroop?.id && profile?.uid) {
-        console.log('[PAYMENTS_SCREEN] Screen focused, refreshing payment data');
-        // Clear any cached data
-        PaymentService.clearPaymentStatusCache();
-        // Fetch fresh payment data
-        fetchPayments();
+        console.log('[PAYMENTS_SCREEN] Screen focused');
+        // Data is already managed by PaymentProvider, no need to refetch
       }
-      return () => {
-        // Cleanup function to prevent memory leaks
-      };
     }, [currentGroop?.id, profile?.uid])
   );
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setRefreshing(true);
-    fetchPayments();
+    try {
+      await refreshPaymentData();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handlePayItem = (item: PaymentItem) => {
@@ -115,7 +61,9 @@ const navigateToMembers = () => {
   };
   
   const handlePayAll = () => {
-    const remaining = totalOwed - totalPaid;
+    if (!paymentSummary) return;
+    
+    const remaining = paymentSummary.remaining;
     if (remaining <= 0) return;
     
     console.log('[PAYMENTS_SCREEN] Opening payment sheet for all remaining balance');
@@ -125,7 +73,7 @@ const navigateToMembers = () => {
       description: 'Payment for all remaining trip costs',
       amountDue: remaining,
       isPaid: false,
-      type: 'accommodation' // Default, doesn't affect anything
+      type: 'accommodation'
     });
     setPaymentSheetVisible(true);
   };
@@ -137,7 +85,7 @@ const navigateToMembers = () => {
     if (paymentCompleted) {
       console.log('[PAYMENTS_SCREEN] Payment completed, refreshing data');
       setTimeout(() => {
-        fetchPayments();
+        refreshPaymentData();
       }, 500);
     }
   };
@@ -200,7 +148,7 @@ const navigateToMembers = () => {
     }
   };
 
-  if (loading && !refreshing) {
+  if (loading && paymentItems.length === 0) {
     return (
       <SafeAreaView style={tw`flex-1 justify-center items-center bg-light`}>
         <ActivityIndicator size="large" color="#7C3AED" />
@@ -220,6 +168,9 @@ const navigateToMembers = () => {
       </SafeAreaView>
     );
   }
+
+  const totalOwed = paymentSummary?.totalOwed || 0;
+  const totalPaid = paymentSummary?.totalPaid || 0;
 
   return (
     <SafeAreaView style={tw`flex-1 bg-light`}>
@@ -289,51 +240,45 @@ const navigateToMembers = () => {
             <Text style={tw`text-sm font-medium text-gray-500 mb-2`}>YOUR PAYMENTS</Text>
           </View>
         )}
-        renderItem={({ item }) => {
-          // Debug log to see what's happening with item types
-          console.log(`[PAYMENTS_SCREEN] Rendering item: ${item.title}, type: ${item.type}, eventType: ${item.eventType}`);
-          
-          return (
-            <TouchableOpacity 
-              style={tw`mx-4 mb-3 bg-white rounded-lg p-4 flex-row items-center`}
-              onPress={() => handlePayItem(item)}
-              disabled={item.isPaid}
-            >
-              {/* Icon with colored background */}
-              <View style={tw`mr-3 ${getIconBackground(item)}`}>
-                <Ionicons 
-                  name={getIconName(item)} 
-                  size={20} 
-                  color={getIconColor(item)} 
-                />
+        renderItem={({ item }) => (
+          <TouchableOpacity 
+            style={tw`mx-4 mb-3 bg-white rounded-lg p-4 flex-row items-center`}
+            onPress={() => handlePayItem(item)}
+            disabled={item.isPaid}
+          >
+            {/* Icon with colored background */}
+            <View style={tw`mr-3 ${getIconBackground(item)}`}>
+              <Ionicons 
+                name={getIconName(item)} 
+                size={20} 
+                color={getIconColor(item)} 
+              />
+            </View>
+            
+            <View style={tw`flex-1`}>
+              <Text style={tw`text-base font-medium text-neutral`}>{item.title}</Text>
+            </View>
+            
+            <View style={tw`items-end ml-3`}>
+              <Text style={tw`font-bold ${item.isPaid ? 'text-green-600' : 'text-secondary'}`}>
+                ${item.amountDue.toFixed(2)}
+              </Text>
+              <View style={tw`mt-1 flex-row items-center`}>
+                {item.isPaid ? (
+                  <>
+                    <View style={tw`h-2.5 w-2.5 rounded-full bg-green-500 mr-1.5`} />
+                    <Text style={tw`text-xs text-gray-500`}>Paid</Text>
+                  </>
+                ) : (
+                  <>
+                    <View style={tw`h-2.5 w-2.5 rounded-full bg-amber-500 mr-1.5`} />
+                    <Text style={tw`text-xs text-gray-500`}>Pending</Text>
+                  </>
+                )}
               </View>
-              
-              <View style={tw`flex-1`}>
-                {/* Only show the title, remove description and date */}
-                <Text style={tw`text-base font-medium text-neutral`}>{item.title}</Text>
-              </View>
-              
-              <View style={tw`items-end ml-3`}>
-                <Text style={tw`font-bold ${item.isPaid ? 'text-green-600' : 'text-secondary'}`}>
-                  ${item.amountDue.toFixed(2)}
-                </Text>
-                <View style={tw`mt-1 flex-row items-center`}>
-                  {item.isPaid ? (
-                    <>
-                      <View style={tw`h-2.5 w-2.5 rounded-full bg-green-500 mr-1.5`} />
-                      <Text style={tw`text-xs text-gray-500`}>Paid</Text>
-                    </>
-                  ) : (
-                    <>
-                      <View style={tw`h-2.5 w-2.5 rounded-full bg-amber-500 mr-1.5`} />
-                      <Text style={tw`text-xs text-gray-500`}>Pending</Text>
-                    </>
-                  )}
-                </View>
-              </View>
-            </TouchableOpacity>
-          );
-        }}
+            </View>
+          </TouchableOpacity>
+        )}
         ListEmptyComponent={() => (
           <View style={tw`py-10 items-center justify-center`}>
             <Ionicons name="receipt-outline" size={64} color="#CBD5E1" />
@@ -348,7 +293,7 @@ const navigateToMembers = () => {
       {selectedPaymentItem && (
         <PaymentSheet
           visible={paymentSheetVisible}
-          onClose={closePaymentSheet}  // This now accepts a boolean parameter
+          onClose={closePaymentSheet}
           groopId={currentGroop.id}
           eventId={selectedPaymentItem.type === 'event' ? selectedPaymentItem.id : undefined}
           amount={selectedPaymentItem.amountDue}

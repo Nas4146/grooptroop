@@ -11,28 +11,25 @@ import DaySection from '../components/itinerary/DaySection';
 import tw from '../utils/tw';
 import { useGroop } from '../contexts/GroopProvider';
 import PaymentSheet from '../components/payments/PaymentSheet';
-import { PaymentService } from '../services/PaymentService';
 import { useAuth } from '../contexts/AuthProvider';
 import GroopHeader from '../components/common/GroopHeader';
 import { SentryService } from '../utils/sentryService';
+import { usePayment } from '../contexts/PaymentProvider';
 
 export default function ItineraryScreen() {
   const { currentGroop, userGroups, setCurrentGroop } = useGroop();
+  const { paymentSummary, refreshPaymentData } = usePayment(); // Get refresh function too
   const navigation = useNavigation();
   const [itinerary, setItinerary] = useState<ItineraryDay[]>([]); // Ensure initial value is empty array
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
   const [accommodationPaymentVisible, setAccommodationPaymentVisible] = useState(false);
-  const [totalOwed, setTotalOwed] = useState(0);
-  const [totalPaid, setTotalPaid] = useState(0);
-  const [totalTripCost, setTotalTripCost] = useState(0);
   const { profile } = useAuth();
   const [addressCopied, setAddressCopied] = useState(false);
   const [isFirstLoad, setIsFirstLoad] = useState(true);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [isMounted, setIsMounted] = useState(true);
-  const [paymentDataLoaded, setPaymentDataLoaded] = useState(false);
 
   // Prevent multiple mounts
   useEffect(() => {
@@ -50,14 +47,10 @@ export default function ItineraryScreen() {
       console.log('[ITINERARY] Initial data load starting');
       setInitialDataLoaded(true);
       
-      // Run both data fetches in parallel
-      Promise.all([
-        fetchItinerary(),
-        fetchPaymentSummary()
-      ]).finally(() => {
+      // Only fetch itinerary - payment data is handled by PaymentProvider
+      fetchItinerary().finally(() => {
         if (isMounted) {
           setLoading(false);
-          setPaymentDataLoaded(true);
         }
       });
     } else if (!currentGroop && isMounted) {
@@ -144,29 +137,6 @@ export default function ItineraryScreen() {
     }
   };
 
-  const fetchPaymentSummary = async () => {
-    if (!currentGroop || !profile) return;
-
-    try {
-      const summary = await PaymentService.getUserPaymentSummary(currentGroop.id, profile.uid);
-      setTotalOwed(summary.totalOwed);
-      setTotalPaid(summary.totalPaid);
-      
-      // Check if totalTripCost is a string or number and handle appropriately
-      if (currentGroop.totalTripCost) {
-        if (typeof currentGroop.totalTripCost === 'string') {
-          setTotalTripCost(parseFloat(currentGroop.totalTripCost));
-        } else {
-          setTotalTripCost(currentGroop.totalTripCost);
-        }
-      } else {
-        setTotalTripCost(0);
-      }
-    } catch (error) {
-      console.error('[ITINERARY_SCREEN] Error loading payment data:', error);
-    }
-  };
-
   const fetchItineraryData = useCallback((): Promise<ItineraryDay[]> => {
     console.log('[ITINERARY] Refreshing data from focus effect');
 
@@ -177,19 +147,11 @@ export default function ItineraryScreen() {
       return ItineraryService.clearCache(currentGroop.id).then(() => {
         return fetchItinerary();
       });
-
-      // Also refresh payment data
-      if (profile) {
-        fetchPaymentSummary();
-        
-        // Additionally, refresh any payment status in the PaymentService
-        PaymentService.clearPaymentStatusCache();
-      }
     }
     
     // Return empty array if no groop
     return Promise.resolve([]);
-  }, [currentGroop, profile]);
+  }, [currentGroop]);
 
   const renderGroopSelector = () => {
     // Add safety check for userGroups
@@ -221,13 +183,23 @@ export default function ItineraryScreen() {
     );
   };
 
-  const onRefresh = () => {
+  // Update onRefresh to refresh both itinerary and payment data
+  const onRefresh = async () => {
     setRefreshing(true);
-    fetchItinerary();
-    if (currentGroop && profile) {
-      fetchPaymentSummary();
+    try {
+      await Promise.all([
+        fetchItinerary(),
+        refreshPaymentData() // Refresh payment data too
+      ]);
+    } finally {
+      setRefreshing(false);
     }
   };
+
+  // Use payment summary from context
+  const totalOwed = paymentSummary?.totalOwed || 0;
+  const totalPaid = paymentSummary?.totalPaid || 0;
+  const remaining = paymentSummary?.remaining || 0;
 
   useEffect(() => {
     if (currentGroop) {
