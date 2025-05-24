@@ -117,34 +117,36 @@ export default function EventCard({
 
   return (
     <>
-      <View style={tw`relative ${!isFirst ? 'mt-3' : ''}`}>
+      <View style={tw`relative ${!isFirst ? 'mt-2.5' : ''}`}>
         {/* Timeline connector - adjusted position for smaller bubble */}
         {!isLast && (
-          <View style={tw`absolute left-[18px] top-[43px] bottom-0 w-0.5 bg-gray-200 z-0`} />
+          <View style={tw`absolute left-[16px] top-[38px] bottom-0 w-0.5 bg-gray-200 z-0`} />
         )}
         
         <View style={tw`flex-row`}>
           {/* Event time bubble - smaller size and moved left */}
-          <View style={tw`w-11 h-10 rounded-full ${mood.bg} items-center justify-center mr-1.5 z-10`}>
-            <Text style={tw`text-xs font-bold text-gray-700`}>{event.time || ''}</Text>
+          <View style={tw`w-9 h-8 rounded-full ${mood.bg} items-center justify-center mr-1.5 z-10`}>
+            <Text style={tw`text-[10px] font-bold text-gray-700`}>
+              {event.time ? String(event.time) : ''}
+            </Text>
           </View>
           
           <TouchableOpacity
             onPress={handlePress}
-            style={tw`flex-1 rounded-2xl px-3 py-2.5 ${
+            style={tw`flex-1 rounded-xl px-2.5 py-2 ${
               isSelected 
               ? 'bg-sky-100 border border-sky-300' 
               : `bg-white border ${mood.border}`
             }`}
           >
-            <View style={tw`flex-row justify-between items-start pr-1.5`}>
+            <View style={tw`flex-row justify-between items-start pr-1`}>
               <View style={tw`flex-1 pr-1`}>
                 {/* Row with title and mood emoji */}
                 <View style={tw`flex-row items-center flex-wrap`}>
-                  <Text style={tw`text-base font-bold text-gray-800`}>
-                    {event.title || ''}
+                  <Text style={tw`text-sm font-bold text-gray-800`}>
+                    {event.title ? String(event.title) : 'Untitled Event'}
                   </Text>
-                  <Text style={tw`ml-1.5 text-base`}>{mood.emoji}</Text>
+                  <Text style={tw`ml-1 text-sm`}>{mood.emoji}</Text>
                 </View>
                 
                 {/* Locked-in indicator for events requiring payment */}
@@ -153,11 +155,11 @@ export default function EventCard({
                     <View style={tw`bg-blue-100 rounded-full px-1.5 py-0.5 flex-row items-center`}>
                       <Ionicons 
                         name="lock-closed-outline" 
-                        size={10} 
+                        size={8} 
                         color="#3B82F6" 
                         style={tw`mr-0.5`} 
                       />
-                      <Text style={tw`text-xs font-medium text-blue-600`}>Reserved</Text>
+                      <Text style={tw`text-[10px] font-medium text-blue-600`}>Reserved</Text>
                     </View>
                   </View>
                 )}
@@ -165,8 +167,10 @@ export default function EventCard({
                 {/* Location if available */}
                 {event.location && (
                   <View style={tw`flex-row items-center mt-1`}>
-                    <Ionicons name="location-outline" size={14} color="#6B7280" />
-                    <Text style={tw`text-xs text-gray-500 ml-0.5`}>{event.location}</Text>
+                    <Ionicons name="location-outline" size={12} color="#6B7280" />
+                    <Text style={tw`text-[10px] text-gray-500 ml-0.5`}>
+                      {String(event.location)}
+                    </Text>
                   </View>
                 )}
                             
@@ -174,17 +178,17 @@ export default function EventCard({
                 <Text 
                   numberOfLines={2}
                   ellipsizeMode="tail"
-                  style={tw`text-sm text-gray-600 mt-1.5`}
+                  style={tw`text-xs text-gray-600 mt-1`}
                 >
-                  {event.description || ''}
+                  {event.description ? String(event.description) : 'No description available'}
                 </Text>
                             
                 {/* Trending hashtags - more compact */}
                 {event.tags && event.tags.length > 0 && (
-                  <View style={tw`flex-row flex-wrap mt-1.5`}>
-                    {event.tags.map(tag => (
-                      <Text key={tag} style={tw`mr-1.5 text-xs text-secondary font-medium`}>
-                        #{tag}
+                  <View style={tw`flex-row flex-wrap mt-1`}>
+                    {event.tags.map((tag, index) => (
+                      <Text key={`${tag}-${index}`} style={tw`mr-1 text-[10px] text-secondary font-medium`}>
+                        #{String(tag)}
                       </Text>
                     ))}
                   </View>
@@ -201,27 +205,27 @@ export default function EventCard({
                     <>
                       <Ionicons 
                         name="checkmark-circle" 
-                        size={14} 
+                        size={12} 
                         color="#22c55e" 
                         style={tw`mb-0.5 self-center`} 
                       />
-                      <View style={tw`bg-green-100 rounded-full px-2.5 py-1 flex-row items-center`}>
-                        <View style={tw`h-3.5 w-3.5 rounded-full bg-green-500 mr-1.5`} />
-                        <Text style={tw`text-xs font-medium text-green-700`}>Paid</Text>
+                      <View style={tw`bg-green-100 rounded-full px-2 py-0.5 flex-row items-center`}>
+                        <View style={tw`h-3 w-3 rounded-full bg-green-500 mr-1`} />
+                        <Text style={tw`text-[10px] font-medium text-green-700`}>Paid</Text>
                       </View>
                     </>
                   ) : (
                     <>
                       <Ionicons 
                         name="card-outline" 
-                        size={14} 
+                        size={12} 
                         color="#f59e0b" 
                         style={tw`mb-0.5 self-center`} 
                       />
-                      <View style={tw`bg-gray-100 rounded-full px-2.5 py-1 flex-row items-center`}>
-                        <View style={tw`h-3.5 w-3.5 rounded-full bg-amber-500 mr-1.5`} />
-                        <Text style={tw`text-xs font-medium text-gray-700`}>
-                          ${event.costPerPerson || 0}
+                      <View style={tw`bg-gray-100 rounded-full px-2 py-0.5 flex-row items-center`}>
+                        <View style={tw`h-3 w-3 rounded-full bg-amber-500 mr-1`} />
+                        <Text style={tw`text-[10px] font-medium text-gray-700`}>
+                          ${event.costPerPerson ? String(event.costPerPerson) : '0'}
                         </Text>
                       </View>
                     </>
@@ -232,18 +236,18 @@ export default function EventCard({
             
             {/* People attending indicators - more compact */}
             {typeof event.attendees === 'number' && event.attendees > 0 && (
-              <View style={tw`flex-row items-center mt-2`}>
+              <View style={tw`flex-row items-center mt-1.5`}>
                 <View style={tw`flex-row -space-x-2`}>
                   {[1,2,3].map(i => (
-                    <View key={i} style={tw`w-5 h-5 rounded-full border-2 border-white`}>
+                    <View key={i} style={tw`w-4 h-4 rounded-full border-2 border-white`}>
                       <Image 
                         source={{ uri: `https://i.pravatar.cc/100?img=${i+10}` }} 
                         style={tw`w-full h-full rounded-full`}
                       />
                     </View>
                   ))}
-                  <View style={tw`w-5 h-5 rounded-full bg-primary border-2 border-white items-center justify-center`}>
-                    <Text style={tw`text-[10px] text-white font-bold`}>+3</Text>
+                  <View style={tw`w-4 h-4 rounded-full bg-primary border-2 border-white items-center justify-center`}>
+                    <Text style={tw`text-[8px] text-white font-bold`}>+3</Text>
                   </View>
                 </View>
               </View>
@@ -253,26 +257,26 @@ export default function EventCard({
       </View>
       
       {/* Event Details Modal */}
-<EventDetailsModal
-  visible={detailsModalVisible}
-  event={{
-    ...event,
-    paid: isPaid  // Make sure we pass the correct payment status
-  }}
-  groopId={currentGroop?.id || ''}
-  onClose={() => setDetailsModalVisible(false)}
-  onPayment={handlePayment}
-/>
+      <EventDetailsModal
+        visible={detailsModalVisible}
+        event={{
+          ...event,
+          paid: isPaid
+        }}
+        groopId={currentGroop?.id || ''}
+        onClose={() => setDetailsModalVisible(false)}
+        onPayment={handlePayment}
+      />
 
-      {/* Payment Sheet Modal - now with isPaid prop */}
+      {/* Payment Sheet Modal */}
       <PaymentSheet
         visible={paymentSheetVisible}
         onClose={handlePaymentSheetClose}
         groopId={currentGroop?.id || ''}
         eventId={event.id}
         amount={typeof event.costPerPerson === 'number' ? event.costPerPerson : 0}
-        description={`Payment for ${event.title}`}
-        title={`Pay for ${event.title}`}
+        description={`Payment for ${event.title || 'Event'}`}
+        title={`Pay for ${event.title || 'Event'}`}
         isPaid={isPaid}
       />
     </>
