@@ -313,7 +313,7 @@ export default function ItineraryScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={tw`flex-1`}
     >
-      <SafeAreaView style={tw`flex-1 bg-light`}>
+      <SafeAreaView style={tw`flex-1 bg-light`} edges={['top', 'left', 'right']}>
         {/* Add GroopHeader but pass isItineraryScreen=true so it returns null */}
         <GroopHeader
           isItineraryScreen={true}
@@ -498,8 +498,8 @@ export default function ItineraryScreen() {
         </View>
 
         <ScrollView
-          style={tw`flex-1 mt-2`}
-          contentContainerStyle={tw`px-4 pb-20`}
+          style={tw`flex-1 mt-2 mb-0`}
+          contentContainerStyle={tw`px-4 pb-0`} 
           showsVerticalScrollIndicator={false}
           onScroll={Animated.event(
             [{ nativeEvent: { contentOffset: { y: scrollY } } }],
