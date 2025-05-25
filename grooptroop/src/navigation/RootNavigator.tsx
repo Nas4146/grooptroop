@@ -20,36 +20,21 @@ export default function RootNavigator() {
     }
   }, [isAuthenticated, isLoading, profile]);
   
-  if (isLoading) {
-    return (
-      <View style={tw`flex-1 justify-center items-center bg-gray-50`}>
-        <ActivityIndicator size="large" color="#7C3AED" />
-        <Text style={tw`mt-3 text-gray-600`}>Loading...</Text>
-      </View>
-    );
-  }
-  
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       {!isAuthenticated ? (
-        // Auth screen
         <RootStack.Screen name="Auth" component={SimpleLoginScreen} />
       ) : profile && !profile.hasCompletedOnboarding ? (
-        // Profile setup screen
         <RootStack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
       ) : (
-        // Main app with groop checking
         <RootStack.Screen name="MainApp" component={GroopsContentSwitcher} />
       )}
       
-      {/* Your other modal screens */}
       <RootStack.Screen 
         name="DevPerformance" 
         component={DevPerformanceScreen} 
         options={{ 
           title: "Performance Monitor",
-          // Optional: only show in development
-          // headerShown: __DEV__
         }} 
       />
     </RootStack.Navigator>

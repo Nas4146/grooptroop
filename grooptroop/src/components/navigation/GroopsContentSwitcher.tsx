@@ -9,26 +9,23 @@ import tw from '../../utils/tw';
 export default function GroopsContentSwitcher() {
   const { profile } = useAuth();
   const [hasGroops, setHasGroops] = useState<boolean | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false); // Start with false
 
   useEffect(() => {
-    // Function to check if user has any groops
-    const checkUserGroops = async () => {
-      if (!profile) {
-        console.log('[CONTENT_SWITCHER] ⚠️ No profile available, skipping check');
-        setIsLoading(false);
-        return;
-      }
+    if (!profile?.uid) {
+      setHasGroops(false);
+      setIsLoading(false);
+      return;
+    }
 
+    const checkUserGroops = async () => {
       try {
-        console.log('[CONTENT_SWITCHER] 🔍 Checking if user has any groops:', profile.uid);
-        setIsLoading(true);
+        console.log(`[CONTENT_SWITCHER] 🔍 Checking if user has any groops: ${profile.uid}`);
+        const userGroops = await GroopService.getUserGroops(profile.uid);
+        const hasAnyGroops = userGroops && userGroops.length > 0;
         
-        // Use the GroopService directly to get user's groops
-        const groops = await GroopService.getUserGroops(profile.uid);
-        
-        console.log('[CONTENT_SWITCHER] 📊 User has', groops.length, 'groops');
-        setHasGroops(groops.length > 0);
+        console.log(`[CONTENT_SWITCHER] 📊 User has ${userGroops?.length || 0} groops`);
+        setHasGroops(hasAnyGroops);
       } catch (error) {
         console.error('[CONTENT_SWITCHER] ❌ Error checking groops:', error);
         setHasGroops(false);
@@ -38,22 +35,15 @@ export default function GroopsContentSwitcher() {
     };
 
     checkUserGroops();
-  }, [profile]); // Only re-run when profile changes
+  }, [profile]);
 
-  if (isLoading) {
-    return (
-      <View style={tw`flex-1 justify-center items-center bg-white`}>
-        <ActivityIndicator size="large" color="#7C3AED" />
-        <Text style={tw`mt-4 text-gray-600`}>Loading your groops...</Text>
-      </View>
-    );
-  }
-
+  // Show the appropriate screen immediately
   // If hasGroops is false (not null), show NoGroopsScreen
   if (hasGroops === false) {
     return <NoGroopsScreen />;
   }
 
-  // User has groops, show the main app
+  // User has groops or we're still checking, show the main app
+  // The main app will handle its own loading states gracefully
   return <BottomTabbNavigator />;
 }

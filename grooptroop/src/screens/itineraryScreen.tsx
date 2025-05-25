@@ -18,10 +18,10 @@ import { usePayment } from '../contexts/PaymentProvider';
 
 export default function ItineraryScreen() {
   const { currentGroop, userGroups, setCurrentGroop } = useGroop();
-  const { paymentSummary, refreshPaymentData } = usePayment(); // Get refresh function too
+  const { paymentSummary, refreshPaymentData } = usePayment();
   const navigation = useNavigation();
-  const [itinerary, setItinerary] = useState<ItineraryDay[]>([]); // Ensure initial value is empty array
-  const [loading, setLoading] = useState(true);
+  const [itinerary, setItinerary] = useState<ItineraryDay[]>([]);
+  const [loading, setLoading] = useState(false); // Start with false, load in background
   const [refreshing, setRefreshing] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
   const [accommodationPaymentVisible, setAccommodationPaymentVisible] = useState(false);
@@ -41,20 +41,20 @@ export default function ItineraryScreen() {
     };
   }, []);
 
-  // Consolidate all initial data loading - ONLY run once
+  // Consolidate all initial data loading - load in background without loading screen
   useEffect(() => {
     if (!initialDataLoaded && currentGroop && profile && isMounted) {
       console.log('[ITINERARY] Initial data load starting');
       setInitialDataLoaded(true);
       
-      // Only fetch itinerary - payment data is handled by PaymentProvider
+      // Load data in background
       fetchItinerary().finally(() => {
         if (isMounted) {
-          setLoading(false);
+          setIsFirstLoad(false);
         }
       });
     } else if (!currentGroop && isMounted) {
-      setLoading(false);
+      setIsFirstLoad(false);
     }
   }, [currentGroop, profile, initialDataLoaded, isMounted]);
 
@@ -298,19 +298,10 @@ export default function ItineraryScreen() {
     );
   }
 
-  if (loading) {
-    return (
-      <View style={tw`flex-1 justify-center items-center bg-light`}>
-        <ActivityIndicator size="large" color="#7C3AED" />
-        <Text style={tw`mt-4 font-semibold text-primary`}>Loading your vibe...</Text>
-      </View>
-    );
-  }
-
-  // Make header collapse to a smaller size
+  // Show content immediately, handle loading states gracefully within the content
   const headerHeight = scrollY.interpolate({
     inputRange: [0, 120],
-    outputRange: [180, 70], // Increased from 150 to 180 to allow for taller image
+    outputRange: [180, 70],
     extrapolate: 'clamp',
   });
 
@@ -320,16 +311,16 @@ export default function ItineraryScreen() {
       style={tw`flex-1`}
     >
       <SafeAreaView style={tw`flex-1 bg-light`} edges={['top', 'left', 'right']}>
-        {/* Add GroopHeader but pass isItineraryScreen=true so it returns null */}
+        {/* PRESERVE: Add GroopHeader but pass isItineraryScreen=true so it returns null */}
         <GroopHeader
           isItineraryScreen={true}
           showMembers={false}
         />
 
-        {/* Render groop selector if user has multiple groops */}
+        {/* PRESERVE: Render groop selector if user has multiple groops */}
         {renderGroopSelector()}
 
-        {/* Keep your existing header section with dynamic groop data */}
+        {/* PRESERVE: Keep your existing header section with dynamic groop data */}
         <Animated.View style={[
           tw`px-4 pt-1 pb-4 bg-primary rounded-b-3xl`,
           {
@@ -340,7 +331,7 @@ export default function ItineraryScreen() {
             overflow: 'hidden',
           }
         ]}>
-          {/* Your existing header content remains unchanged */}
+          {/* PRESERVE: Your existing header content remains unchanged */}
           <View style={tw`flex-row justify-between items-center`}>
             <Text style={tw`text-xl font-bold text-white`}>{currentGroop.name}</Text>
             <View style={tw`bg-white bg-opacity-20 rounded-full p-1.5`}>
@@ -348,7 +339,7 @@ export default function ItineraryScreen() {
             </View>
           </View>
 
-          {/* Date and location pill on the same row */}
+          {/* PRESERVE: Date and location pill on the same row */}
           <View style={tw`flex-row items-center mt-1`}>
             {currentGroop.dateRange && (
               <>
@@ -359,7 +350,6 @@ export default function ItineraryScreen() {
               </>
             )}
 
-            {/* Location pill */}
             {currentGroop.location && (
               <View style={tw`bg-white bg-opacity-20 rounded-full px-2.5 py-0.5 ml-3`}>
                 <Text style={tw`text-white font-medium text-xs`}>📍 {currentGroop.location}</Text>
@@ -367,11 +357,10 @@ export default function ItineraryScreen() {
             )}
           </View>
 
-          {/* Location image section */}
+          {/* PRESERVE: Location image section */}
           {currentGroop.photoURL && (
             <View style={tw`items-center mt-3 mb-1`}>
               <View style={tw`w-full h-40 rounded-lg overflow-hidden`}>
-                {/* Changed h-20 to h-28 to make the image taller */}
                 <Image
                   source={{ uri: currentGroop.photoURL }}
                   style={[tw`w-full h-full`, { resizeMode: 'cover' }]}
@@ -381,7 +370,7 @@ export default function ItineraryScreen() {
           )}
         </Animated.View>
 
-        {/* Quick access location info */}
+        {/* PRESERVE: Quick access location info */}
         <View style={[
           tw`mx-4 -mt-2 bg-white rounded-xl px-3 py-3`,
           {
@@ -390,7 +379,7 @@ export default function ItineraryScreen() {
             position: 'relative',
           }
         ]}>
-          {/* Restructured layout to handle long addresses better */}
+          {/* PRESERVE: All your existing accommodation content */}
           <View style={tw`flex-row items-start mb-2`}>
             <View style={tw`flex-1 pr-3`}>
               <Text style={tw`font-bold text-neutral text-sm`}>Trip Home Base</Text>
@@ -503,6 +492,7 @@ export default function ItineraryScreen() {
           </View>
         </View>
 
+        {/* PRESERVE: Your existing ScrollView with data */}
         <ScrollView
           style={tw`flex-1 mt-2 mb-0`}
           contentContainerStyle={tw`px-4 pb-0`} 
@@ -522,34 +512,31 @@ export default function ItineraryScreen() {
         >
           {!Array.isArray(itinerary) || itinerary.length === 0 ? (
             <View style={tw`py-8 items-center`}>
-              <Text style={tw`text-gray-500`}>No itinerary items found</Text>
+              {isFirstLoad ? (
+                // Show subtle loading indicator for first load only
+                <>
+                  <ActivityIndicator size="small" color="#7C3AED" />
+                  <Text style={tw`text-gray-500 mt-2 text-sm`}>Loading itinerary...</Text>
+                </>
+              ) : (
+                <Text style={tw`text-gray-500`}>No itinerary items found</Text>
+              )}
             </View>
           ) : (
             itinerary.map((day) => {
-              // Ensure day.events is an array before filtering
               const events = Array.isArray(day.events) ? day.events : [];
-              
-              // Filter out accommodation events from each day's events
               const filteredEvents = events.filter((event) => event.type !== 'accommodation');
+              const filteredDay = { ...day, events: filteredEvents };
 
-              // Create a new day object with filtered events
-              const filteredDay = {
-                ...day,
-                events: filteredEvents,
-              };
-
-              // Only render days that have events after filtering
               if (filteredEvents.length > 0) {
                 return <DaySection key={day.date} day={filteredDay} />;
               }
-
-              // If all events were filtered out (only accommodations), don't render this day
               return null;
             })
           )}
         </ScrollView>
 
-        {/* Payment Sheet Modal */}
+        {/* PRESERVE: Payment Sheet Modal */}
         <PaymentSheet
           visible={accommodationPaymentVisible}
           onClose={() => setAccommodationPaymentVisible(false)}
